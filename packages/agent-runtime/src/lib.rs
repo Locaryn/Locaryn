@@ -56,7 +56,7 @@ pub struct AgentInput {
     /// Contexte projet de la boucle d'outils. Quand les trois sont `Some`,
     /// l'agent tourne la boucle agentique au lieu d'un simple flux.
     pub project_id: Option<uuid::Uuid>,
-    pub        project_path: Option<std::path::PathBuf>,
+    pub project_path: Option<std::path::PathBuf>,
     pub trust: Option<locaryn_shared_types::TrustLevel>,
     /// Base64-encoded images attached to the user message (no data-URL prefix).
     /// Transmises aux modeles multimodaux par le champ `images` de la requete.
@@ -295,8 +295,7 @@ pub fn assemble_system_prompt_pour(
 /// `contributeur` signe les commits du nom de l'application, réglage que l'on
 /// peut retirer depuis le profil.
 pub fn git_discipline_prompt(contributeur: bool) -> String {
-    let mut text =
-        String::from("Version control - work with Git in this project:\n\n");
+    let mut text = String::from("Version control - work with Git in this project:\n\n");
     text.push_str("- Run `git status --short` before claiming anything about changes; `git diff` shows them. The workspace Modifications panel reports exactly what `git status` does: keep the two consistent.\n");
     text.push_str("- When the user asks for a commit, or you have just finished a coherent unit of work in a versioned project, stage exactly what you touched (explicit paths to `git add`, `-A` only when everything changed) and commit. Never stage unrelated files.\n");
     text.push_str("- Before committing, review `git diff --staged`; write the message in this repository's own style, focused on why rather than what.\n");

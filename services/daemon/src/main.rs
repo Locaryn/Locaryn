@@ -1610,6 +1610,11 @@ async fn send_message(
         // Le dialecte natif n'existait que pour Ollama : plus aucun moteur
         // servi ici ne le demande.
         native_chat_api: false,
+        // Comme le bureau : les commits du modèle portent « Co-Authored-By:
+        // Locaryn » tant que la personne ne l'a pas décoché.
+        git_contributeur: locaryn_config::load(None)
+            .map(|c| Some(c.assistance.commit_contributeur))
+            .unwrap_or(None),
     };
 
     // 4. Run the agent: OpenAiCompatAgent (llama-server) when one answers,

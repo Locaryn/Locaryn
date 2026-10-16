@@ -669,7 +669,11 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
         message_parts: MessageParts::default(),
     };
     let (message, message_parts) = phrase(&report, hardware);
-    FitReport { message, message_parts, ..report }
+    FitReport {
+        message,
+        message_parts,
+        ..report
+    }
 }
 
 /// Contexte retenu : celui demandé, sinon un compromis raisonnable, jamais
@@ -1009,7 +1013,9 @@ fn fill_parts(report: &FitReport, hardware: &HardwareProfile) -> MessageParts {
         Verdict::Juste if report.max_gpu_context > 0 && report.max_gpu_context < report.context => {
             Some(report.max_gpu_context)
         }
-        Verdict::Refuse if report.max_gpu_context > 0 && report.max_gpu_context < report.context => {
+        Verdict::Refuse
+            if report.max_gpu_context > 0 && report.max_gpu_context < report.context =>
+        {
             Some(report.max_gpu_context)
         }
         Verdict::Refuse if report.max_context > 0 && report.max_context < report.context => {

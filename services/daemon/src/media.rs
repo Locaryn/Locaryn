@@ -1313,7 +1313,9 @@ async fn download_to(
                 tentative += 1;
                 let _ = out.flush().await;
                 tracing::warn!(error = %coupure, %url, total, tentative, "flux interrompu — pause puis reprise");
-                progress.noter(&format!("Connexion interrompue — reprise… (tentative {tentative}/{MAX_REPRISES})"));
+                progress.noter(&format!(
+                    "Connexion interrompue — reprise… (tentative {tentative}/{MAX_REPRISES})"
+                ));
                 let attente = 2u64.saturating_mul(1u64 << tentative.min(4)).min(30);
                 tokio::time::sleep(std::time::Duration::from_secs(attente)).await;
                 let reprise = match avec_jeton_hf(client.get(url), url)

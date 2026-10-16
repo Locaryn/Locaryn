@@ -460,46 +460,44 @@ pub async fn workspace_changes(
                 fichiers: Vec::new(),
             });
         }
-            // Le fichier ne peut exister : personne n'a encore écrit ici au
-            // moment où le panneau s'est ouvert. S'il existe (dossier créé
-            // par une autre session), on ne recommit pas par-dessus.
-            let baseline = racine.join(".locaryn-baseline");
-            std::fs::write(
+        // Le fichier ne peut exister : personne n'a encore écrit ici au
+        // moment où le panneau s'est ouvert. S'il existe (dossier créé
+        // par une autre session), on ne recommit pas par-dessus.
+        let baseline = racine.join(".locaryn-baseline");
+        std::fs::write(
                 &baseline,
                 "Fichier marqueur utilisee par Locaryn pour ancrer le premier commit du depot de cette conversation. Ne pas modifier.\n",
             )
             .map_err(|e| format!("ancrage du depot : {e}"))?;
 
-            // Un premier commit racine ancre le diff (« HEAD » n'existe pas avant
-            // lui). Sans commit, aucun diff ne peut montrer les fichiers nouveaux.
-            let preparer = std::process::Command::new("git");
-            let mut preparer = preparer;
-            locaryn_config::hide_console(&mut preparer);
-            preparer
-                .current_dir(&racine)
-                .args(["config", "user.email", "noreply@locaryn.dev"]);
-            preparer
-                .args(["config", "user.name", "Locaryn"])
-                .arg("add")
-                .arg("-A");
-            if !preparer.status().success() {
-                tracing::debug!(racine = %racine.display(), "preparation du depot incomplete");
-            }
-            let commit = git(
-                &racine,
-                &[
-                    "commit",
-                    "-m",
-                    "Initial commit - baseline before the chat started",
-                    "--author=Locaryn <noreply@locaryn.dev>",
-                ],
-            )
-            .await?;
-            if !commit.status.success() {
-                // Répertoire totalement vide : un commit sans fichier est refusé,
-                // et c'est bien — le diff prendra le fichier nouveau comme « ?? ».
-                tracing::debug!(racine = %racine.display(), "initial commit vide, pas de HEAD");
-            }
+        // Un premier commit racine ancre le diff (« HEAD » n'existe pas avant
+        // lui). Sans commit, aucun diff ne peut montrer les fichiers nouveaux.
+        // L'identité ne vaut que pour ce commit (`-c`) : l'écrire dans la
+        // configuration du dépôt attribuerait à Locaryn tous les commits
+        // suivants de la personne.
+        let ajout = git(&racine, &["add", "-A"]).await?;
+        if !ajout.status.success() {
+            tracing::debug!(racine = %racine.display(), "preparation du depot incomplete");
+        }
+        let commit = git(
+            &racine,
+            &[
+                "-c",
+                "user.name=Locaryn",
+                "-c",
+                "user.email=noreply@locaryn.dev",
+                "commit",
+                "-m",
+                "Initial commit - baseline before the chat started",
+                "--author=Locaryn <noreply@locaryn.dev>",
+            ],
+        )
+        .await?;
+        if !commit.status.success() {
+            // Répertoire totalement vide : un commit sans fichier est refusé,
+            // et c'est bien — le diff prendra le fichier nouveau comme « ?? ».
+            tracing::debug!(racine = %racine.display(), "initial commit vide, pas de HEAD");
+        }
         statut = git(&racine, &["status", "--porcelain=v1", "-z", "--branch"]).await?;
         if !statut.status.success() {
             return Ok(Modifications {
