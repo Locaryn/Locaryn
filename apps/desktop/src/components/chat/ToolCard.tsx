@@ -77,11 +77,17 @@ type Commande = {
   root: boolean;
 };
 
+/** Cet outil exécute-t-il une commande (wsl_run, ssh_exec, run_command…) ? */
+export function estOutilCommande(tool: string): boolean {
+  const court = tool.replace(/^.*__/, "");
+  return court === "run_command" || /(^|_)(run|exec|start)$/.test(court);
+}
+
 function lireCommande(tool: string, args: unknown): Commande | null {
   const a = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
   if (typeof a.command !== "string") return null;
+  if (!estOutilCommande(tool)) return null;
   const court = tool.replace(/^.*__/, "");
-  if (!/(^|_)(run|exec|run_command|start)$/.test(court) && court !== "run_command") return null;
   const sorte = /^wsl_/.test(court) ? "wsl" : /^ssh_/.test(court) ? "ssh" : "local";
   const lieu =
     sorte === "wsl"
@@ -224,16 +230,20 @@ function CarteCommande({
 }
 
 export function ToolCard({ tool, args, status, output, live }: Props) {
-  const [open, setOpen] = useState(false);
   const icon = TOOL_ICONS[tool] ?? "extensions";
   const commande = lireCommande(tool, args);
+  // Une commande qui tourne s'ouvre d'elle-même : on voit sa sortie arriver en
+  // direct. Une fois finie, elle se referme — ouvrable d'un clic pour relire.
+  // Un clic fige ce choix (`manuel`) et l'emporte sur l'ouverture automatique.
+  const [manuel, setManuel] = useState<boolean | null>(null);
+  const open = manuel ?? (status === "running" && commande !== null);
 
   return (
     <div className={`locaryn-tool-card locaryn-tool-${status}`}>
       <button
         type="button"
         className="locaryn-tool-head"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setManuel(!open)}
         aria-expanded={open}
       >
         <span className="locaryn-tool-icon" aria-hidden="true">

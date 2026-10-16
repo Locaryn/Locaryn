@@ -1,6 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
-import { ToolCard } from "./ToolCard";
+import { ToolCard, estOutilCommande } from "./ToolCard";
 
 export type ToolEntry = {
   id: string;
@@ -38,18 +38,22 @@ function resume(entries: ToolEntry[]): string {
  * qui change, pas sa disponibilite.
  */
 export function ToolRun({ entries }: Props) {
-  const [ouvert, setOuvert] = useState(false);
+  // Déplié de lui-même tant qu'une commande tourne, pour qu'on suive sa sortie
+  // en direct ; replié une fois fini. Un clic fige le choix et l'emporte.
+  const [manuel, setManuel] = useState<boolean | null>(null);
   if (entries.length === 0) return null;
 
   const encours = entries.some((e) => e.status === "running");
   const rate = entries.some((e) => e.status === "error");
+  const commandeEnCours = entries.some((e) => e.status === "running" && estOutilCommande(e.tool));
+  const ouvert = manuel ?? commandeEnCours;
 
   return (
     <div className={`locaryn-toolrun${encours ? " locaryn-toolrun-live" : ""}`}>
       <button
         type="button"
         className="locaryn-toolrun-head"
-        onClick={() => setOuvert((o) => !o)}
+        onClick={() => setManuel(!ouvert)}
         aria-expanded={ouvert}
       >
         <span className="locaryn-toolrun-label">{resume(entries)}</span>
