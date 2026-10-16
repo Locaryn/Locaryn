@@ -1814,6 +1814,38 @@ async fn send_message(
     resultat
 }
 
+/// Un texte borné : son début et sa fin, ce qui manque entre les deux dit.
+fn abreger_sortie(texte: &str, max: usize) -> String {
+    let n = texte.chars().count();
+    if n <= max {
+        return texte.to_string();
+    }
+    let tete: String = texte.chars().take(max * 2 / 3).collect();
+    let queue: String = texte.chars().skip(n - max / 3).collect();
+    format!("{tete}\n[… {} caractères …]\n{queue}", n - max)
+}
+
+/// Les arguments d'un appel, sans le contenu complet des fichiers écrits :
+/// l'historique n'en garde que le début, inutile d'en remplir la base.
+fn args_abreges(args: &serde_json::Value) -> serde_json::Value {
+    match args {
+        serde_json::Value::Object(o) => serde_json::Value::Object(
+            o.iter()
+                .map(|(k, v)| {
+                    let v = match v {
+                        serde_json::Value::String(t) if t.chars().count() > 600 => {
+                            serde_json::Value::String(abreger_sortie(t, 600))
+                        }
+                        autre => autre.clone(),
+                    };
+                    (k.clone(), v)
+                })
+                .collect(),
+        ),
+        autre => autre.clone(),
+    }
+}
+
 /// Mirrors the daemon's `send_message` handler: persist the user message,
 /// resolve project context, ensure the local runtime is up, run the
 /// OpenAI-compatible agent, and persist the assistant reply when the stream
@@ -2551,6 +2583,12 @@ async fn envoyer_message(
     let mut tokens_out = 0u64;
     let mut audio_artifacts: Vec<String> = Vec::new();
     let mut image_artifacts: Vec<String> = Vec::new();
+    // Les outils appelés et ce qu'ils ont rendu, gardés avec la réponse : sans
+    // eux, au message suivant le modèle ne savait plus ce qu'il avait fait
+    // (pendant un /plan, il réécrivait le site ailleurs), et la jauge de
+    // contexte retombait d'un tour à l'autre.
+    let mut appels: Vec<locaryn_shared_types::ToolCall> = Vec::new();
+    let mut resultats: Vec<(String, String)> = Vec::new();
     loop {
         // Stop interrompt aussi l'attente (select) : on cesse d'ecouter,
         // le flux est abandonne et llama-server arrete la generation —
@@ -2563,6 +2601,27 @@ async fn envoyer_message(
         let Some(ev) = ev else { break };
         match &ev {
             StreamEvent::Token { text } => full_text.push_str(text),
+            StreamEvent::ToolCall {
+                call_id,
+                tool,
+                args,
+            } => appels.push(locaryn_shared_types::ToolCall {
+                call_id: call_id.clone(),
+                tool: tool.clone(),
+                args: args_abreges(args),
+            }),
+            StreamEvent::ToolResult {
+                call_id,
+                ok,
+                output,
+            } => resultats.push((
+                call_id.clone(),
+                format!(
+                    "{}{}",
+                    if *ok { "" } else { "[échec] " },
+                    abreger_sortie(output, 4_000)
+                ),
+            )),
             StreamEvent::Artifact {
                 kind: ArtifactKind::AudioWav,
                 path,
@@ -2621,7 +2680,7 @@ async fn envoyer_message(
         persisted_text.push('\n');
         persisted_text.push_str(&image_marker(&path));
     }
-    if !persisted_text.is_empty() {
+    if !persisted_text.is_empty() || !appels.is_empty() {
         if let Err(e) = core
             .storage
             .messages
@@ -2629,7 +2688,7 @@ async fn envoyer_message(
                 session_id,
                 MessageRole::Assistant,
                 &persisted_text,
-                None,
+                (!appels.is_empty()).then_some(appels.as_slice()),
                 None,
                 tokens_in,
                 tokens_out,
@@ -2638,6 +2697,27 @@ async fn envoyer_message(
             .await
         {
             tracing::warn!(error = %e, "failed to persist assistant message");
+        }
+        // Chaque résultat suit la réponse qui l'a demandé : l'historique les
+        // rejoue au modèle (compaction::historique), l'interface les cache.
+        for (call_id, sortie) in &resultats {
+            if let Err(e) = core
+                .storage
+                .messages
+                .append_full(
+                    session_id,
+                    MessageRole::Tool,
+                    sortie,
+                    None,
+                    Some(call_id),
+                    0,
+                    0,
+                    None,
+                )
+                .await
+            {
+                tracing::warn!(error = %e, "résultat d'outil non enregistré");
+            }
         }
     }
 

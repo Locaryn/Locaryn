@@ -340,6 +340,9 @@ function splitInlineAudio(content: string): { text: string; paths: string[] } {
 }
 
 function storedMessageItems(m: { id: string; role: string; content: string }): ChatItem[] {
+  // Les résultats d'outils sont gardés pour le modèle (il sait ce qu'il a
+  // fait au message suivant), pas pour la lecture.
+  if (m.role === "tool") return [];
   const avecSuivi = splitInlineSuivi(m.content);
   const audio = splitInlineAudio(avecSuivi.text);
   const parsed = splitInlineImages(audio.text);
