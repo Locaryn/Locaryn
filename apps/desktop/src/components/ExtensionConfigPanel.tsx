@@ -6,6 +6,7 @@ import {
   type InstalledExtension,
   core,
 } from "../lib/core";
+import { ExtensionSecrets } from "./ExtensionSecrets";
 
 /**
  * Le formulaire de réglages d'une extension.
@@ -561,9 +562,11 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
         {!config ? (
           <p className="locaryn-field-hint">Chargement…</p>
         ) : !hasSchema ? (
-          <p className="locaryn-field-hint">
-            Cette extension ne déclare aucun réglage. Rien à configurer ici.
-          </p>
+          !config.secrets?.length && (
+            <p className="locaryn-field-hint">
+              Cette extension ne déclare aucun réglage. Rien à configurer ici.
+            </p>
+          )
         ) : (
           groups.map(([group, fields]) => (
             <section key={group} style={{ marginBottom: 22 }}>
@@ -584,6 +587,22 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
               </div>
             </section>
           ))
+        )}
+
+        {config?.secrets && config.secrets.length > 0 && (
+          <section style={{ marginBottom: 22 }}>
+            <h4
+              style={{
+                fontSize: "var(--text-md)",
+                marginBottom: 10,
+                paddingBottom: 6,
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              Mots de passe
+            </h4>
+            <ExtensionSecrets declares={config.secrets} />
+          </section>
         )}
 
         {mcpServers && (

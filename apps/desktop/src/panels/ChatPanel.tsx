@@ -589,6 +589,8 @@ export function ChatPanel({
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  /** Les pièces jointes de chaque message envoyé, pour les rendre à l'édition. */
+  const piecesEnvoyees = useRef(new Map<string, Attachment[]>());
   /** JSON output: "auto" (detect from the prompt), "on" or "off".
    *  No composer chip — it wasted space; `/json` cycles it when needed. */
   const [jsonMode, setJsonMode] = useState<"auto" | "on" | "off">("auto");
@@ -1783,10 +1785,14 @@ ${d.texte}`
       });
     setFollowups([]);
     fullTextRef.current = "";
+    const idMessage = nextId("msg");
+    // Les pièces jointes telles qu'envoyées (contenu compris) : éditer le
+    // message les remet dans le champ au lieu de les perdre.
+    if (imgs.length > 0) piecesEnvoyees.current.set(idMessage, imgs);
     setItems((prev) => [
       ...prev,
       {
-        id: nextId("msg"),
+        id: idMessage,
         kind: "msg",
         role: "user",
         // Afficher ce que l'utilisateur a tapé (slash compris) dans la bulle :
@@ -2164,6 +2170,9 @@ ${d.texte}`
           }
         }
         setInput(it.text);
+        setAttachments(piecesEnvoyees.current.get(it.id) ?? []);
+        // Le champ prend la hauteur du texte rendu, sans attendre une frappe.
+        requestAnimationFrame(autoGrow);
         setItems((prev) => prev.slice(0, i));
         setFollowups([]);
         setCtxUsage(null);

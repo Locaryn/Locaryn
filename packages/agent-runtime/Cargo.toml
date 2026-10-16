@@ -30,6 +30,7 @@ pdf-extract = "0.12.1"
 regex = "1"
 base64 = "0.22"
 dirs = "5"
+locaryn-auth = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }

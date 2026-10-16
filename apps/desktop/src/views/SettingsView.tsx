@@ -20,6 +20,7 @@ import {
   OUVRIR_CLES_API_EVENT,
   ProviderApiSettings,
 } from "../components/ProviderApiSettings";
+import { SecretsSettings } from "../components/SecretsSettings";
 import { ServerSettings } from "../components/ServerSettings";
 import { StorageSettings } from "../components/StorageSettings";
 import { TravelSettings } from "../components/TravelSettings";
@@ -153,6 +154,7 @@ export type Section =
   | "performance"
   | "huggingface"
   | "server"
+  | "secrets"
   | "storage"
   | "appearance"
   | "language"
@@ -224,6 +226,12 @@ const SECTIONS: SectionDef[] = [
   },
   { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
   { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },
+  {
+    id: "secrets",
+    icon: "lock",
+    label: "Coffre",
+    desc: "Mots de passe que le modèle utilise sans les voir",
+  },
   {
     id: "server",
     icon: "server",
@@ -635,6 +643,7 @@ export function SettingsView({
             </div>
           )}
 
+          {section === "secrets" && <SecretsSettings />}
           {section === "storage" && <StorageSettings onOpenMarketplace={onOpenMarketplace} />}
 
           {section === "language" && (

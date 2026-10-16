@@ -76,6 +76,8 @@ pub struct AttentionItem {
     /// Vrai quand quelqu'un attend vraiment cette réponse — le cas d'une
     /// question du modèle. Faux pour une alerte, que l'on ferme sans répondre.
     pub blocking: bool,
+    /// Un mot de passe est demandé : champ masqué, réponse remise au coffre.
+    pub secret: bool,
 }
 
 /// Ce que l'utilisateur renvoie.
@@ -214,6 +216,7 @@ impl Attention {
             free_text: None,
             asked_at: horodatage(),
             blocking: false,
+            secret: false,
         };
         {
             let mut etat = self.etat.lock().await;
@@ -360,6 +363,7 @@ impl QuestionGate for Attention {
                 // les portées, plus le refus. Un texte libre n'aurait pas de
                 // portée où être rangé.
                 free_text: None,
+                secret: false,
             })
             .await;
 
@@ -430,6 +434,7 @@ impl QuestionGate for Attention {
             free_text: req.free_text,
             asked_at: horodatage(),
             blocking: true,
+            secret: req.secret,
         };
         {
             let mut etat = self.etat.lock().await;
@@ -510,6 +515,7 @@ mod tests {
                 QuestionChoice::new("a3", "A3"),
             ],
             free_text: Some("Autre réponse".into()),
+            secret: false,
         }
     }
 

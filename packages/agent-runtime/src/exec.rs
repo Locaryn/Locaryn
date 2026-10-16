@@ -107,6 +107,59 @@ pub async fn execute_tool_call(
         return Some(sortie);
     }
 
+    // Un secret se demande comme une question, dans un champ masqué : la
+    // réponse va au trousseau du système, le modèle n'en apprend que le nom.
+    if tool == crate::coffre::OUTIL {
+        let sortie = match crate::coffre::lire_demande(&args) {
+            Ok(d) if crate::coffre::existe(&d.nom) && !d.remplacer => crate::coffre::pret(&d.nom),
+            Ok(d) => {
+                let req = crate::question::QuestionRequest {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    project_id: Some(ctx.project_id.to_string()),
+                    session_id: Some(ctx.session_id.to_string()),
+                    urgency: crate::question::Urgency::Question,
+                    title: d.libelle.clone(),
+                    detail: Some(match &d.raison {
+                        Some(r) => format!(
+                            "{r} — rangé dans le trousseau du système ; le modèle ne le verra pas."
+                        ),
+                        None => {
+                            "Rangé dans le trousseau du système ; le modèle ne le verra pas.".into()
+                        }
+                    }),
+                    choices: Vec::new(),
+                    free_text: Some("Mot de passe".into()),
+                    secret: true,
+                };
+                match crate::question::ask(question, req).await {
+                    crate::question::QuestionOutcome::Answered { text: Some(v), .. } if !v.is_empty() => {
+                        match crate::coffre::definir(&d.nom, &v, &d.libelle) {
+                            Ok(()) => crate::coffre::pret(&d.nom),
+                            Err(e) => format!("ERROR: secret non enregistré : {e}"),
+                        }
+                    }
+                    crate::question::QuestionOutcome::Unanswered { reason } => {
+                        format!("Pas de secret donné : {reason}")
+                    }
+                    _ => "L'utilisateur n'a pas donné le secret. Continuez sans, ou dites-lui ce qui en a besoin.".into(),
+                }
+            }
+            Err(motif) => format!("ERROR: {motif}"),
+        };
+        if tx
+            .send(StreamEvent::ToolResult {
+                call_id: call_id.to_string(),
+                ok: !sortie.starts_with("ERROR:"),
+                output: sortie.clone(),
+            })
+            .await
+            .is_err()
+        {
+            return None;
+        }
+        return Some(sortie);
+    }
+
     if tool == "ask_user" {
         let sortie = match crate::question::lire_appel(
             &args,
@@ -284,6 +337,42 @@ pub async fn execute_tool_call(
                 }
             }
         }
+        // `{{secret:nom}}` : la valeur n'est mise qu'ici, après l'accord et
+        // juste avant l'envoi à l'extension — la carte d'outil et l'historique
+        // gardent la référence. Les outils intégrés (shell du projet) n'en
+        // reçoivent pas : seul un morph qui l'annonce s'en sert.
+        if crate::coffre::reference_dans(&args) {
+            let vers_extension = !crate::tools::is_native_tool(tool)
+                || tool.starts_with(crate::mcp_tools::MCP_PREFIX);
+            let refus = if vers_extension {
+                match crate::coffre::substituer(&args) {
+                    Ok(pleins) => {
+                        args = pleins;
+                        None
+                    }
+                    Err(e) => Some(e),
+                }
+            } else {
+                Some(format!(
+                    "les références {{{{secret:…}}}} ne vont qu'aux outils d'extension, pas à « {tool} »"
+                ))
+            };
+            if let Some(motif) = refus {
+                let sortie = format!("ERROR: appel non envoyé : {motif}.");
+                if tx
+                    .send(StreamEvent::ToolResult {
+                        call_id: call_id.to_string(),
+                        ok: false,
+                        output: sortie.clone(),
+                    })
+                    .await
+                    .is_err()
+                {
+                    return None;
+                }
+                return Some(sortie);
+            }
+        }
         let result = if let Some(h) = host.filter(|h| h.serves(tool)) {
             h.0.call(tool, &args).await
         } else if tool.starts_with(crate::mcp_tools::MCP_PREFIX)
@@ -330,6 +419,10 @@ pub async fn execute_tool_call(
                 return None;
             }
         }
+        // Un secret répété par l'outil (une erreur qui cite la commande, un
+        // fichier relu) n'atteint ni l'écran ni le modèle.
+        let mut result = result;
+        result.output = crate::coffre::masquer(&result.output);
         if tx
             .send(StreamEvent::ToolResult {
                 call_id: call_id.to_string(),

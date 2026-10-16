@@ -1821,15 +1821,19 @@ export function ExtensionsSettings() {
           document.body,
         )}
 
-      {configuring && (
-        <ExtensionConfigPanel
-          extension={configuring}
-          onClose={() => {
-            setConfiguring(null);
-            loadInstalled();
-          }}
-        />
-      )}
+      {/* Dans le corps du document : monté ici, son voile restait pris dans la
+          zone principale et la « Bibliothèque » du rail restait claire. */}
+      {configuring &&
+        createPortal(
+          <ExtensionConfigPanel
+            extension={configuring}
+            onClose={() => {
+              setConfiguring(null);
+              loadInstalled();
+            }}
+          />,
+          document.body,
+        )}
 
       {permissionExt && (
         <ExtensionPermissionsModal

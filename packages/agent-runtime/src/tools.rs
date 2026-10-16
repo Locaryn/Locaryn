@@ -961,6 +961,7 @@ pub const NATIVE_TOOLS: &[&str] = &[
     "run_command",
     "generate_speech",
     "ask_user",
+    crate::coffre::OUTIL,
     "remember_project_context",
     crate::web::WEB_SEARCH,
     crate::web::WEB_FETCH,
@@ -988,7 +989,7 @@ pub async fn dispatch_tool(
         t if crate::web::is_web_tool(t) => crate::web::exec(t, args, project_root).await,
         // `ask_user` a besoin de la porte des questions, que seule la boucle
         // d'outils detient : elle l'intercepte avant d'arriver ici.
-        "ask_user" | "remember_project_context" => ToolResult {
+        "ask_user" | "remember_project_context" | crate::coffre::OUTIL => ToolResult {
             ok: false,
             output: format!(
                 "outil « {tool_name} » indisponible : cette boucle n'a pas de moyen de \

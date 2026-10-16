@@ -3639,6 +3639,7 @@ dependencies = [
  "dirs 5.0.1",
  "futures",
  "http",
+ "locaryn-auth",
  "locaryn-config",
  "locaryn-events",
  "locaryn-mcp",

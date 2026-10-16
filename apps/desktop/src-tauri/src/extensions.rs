@@ -1562,6 +1562,9 @@ pub struct ExtensionConfig {
     pub schema: serde_json::Value,
     /// Current values, defaults filled in from the schema.
     pub values: serde_json::Value,
+    /// Les secrets que l'extension sait utiliser (`secrets` du manifeste),
+    /// gérés par le coffre natif : jamais écrits dans ses réglages.
+    pub secrets: serde_json::Value,
 }
 
 /// Where an extension's settings live: inside its own directory, so removing
@@ -1674,7 +1677,20 @@ async fn config_for(core: &Core, id: Uuid) -> Result<(PathBuf, ExtensionConfig),
         .ok_or_else(|| "dossier de l'extension introuvable".to_string())?;
     let schema = manifest_schema(&root);
     let values = read_values(&root, &schema);
-    Ok((root, ExtensionConfig { schema, values }))
+    let secrets = std::fs::read_to_string(root.join("morph.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|m| m.get("secrets").cloned())
+        .filter(serde_json::Value::is_array)
+        .unwrap_or(serde_json::Value::Null);
+    Ok((
+        root,
+        ExtensionConfig {
+            schema,
+            values,
+            secrets,
+        },
+    ))
 }
 
 #[tauri::command]

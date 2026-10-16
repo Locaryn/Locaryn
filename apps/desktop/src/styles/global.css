@@ -6245,7 +6245,10 @@ pre.md-code {
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
-  animation: lo-fade-in var(--dur-fast) var(--ease-out) both;
+  /* `backwards`, pas `both` : une animation qui reste appliquée après sa fin
+     fait de la page un contexte d'empilement, et le voile des fenêtres
+     ouvertes depuis elle restait dessous la « Bibliothèque » du rail. */
+  animation: lo-fade-in var(--dur-fast) var(--ease-out) backwards;
 }
 .locaryn-page > * {
   flex: 1;
@@ -15082,4 +15085,70 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 .locaryn-git-option-texte .locaryn-field-hint {
   margin: 0;
+}
+
+/* Le coffre des secrets : une ligne par secret, la valeur jamais montrée. */
+.locaryn-coffre-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.locaryn-coffre-ligne {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+}
+.locaryn-coffre-texte {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.locaryn-coffre-libelle {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.locaryn-coffre-nom {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-coffre-valeur {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+.locaryn-coffre-valeur.is-range {
+  color: var(--accent);
+  letter-spacing: normal;
+}
+.locaryn-coffre-champ {
+  width: 180px;
+  flex: none;
+}
+.locaryn-coffre-ajout {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+@media (max-width: 720px) {
+  .locaryn-coffre-ajout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.locaryn-field-error {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--danger);
 }

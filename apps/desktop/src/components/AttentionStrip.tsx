@@ -53,7 +53,9 @@ export function AttentionStrip({ item, onAnswer, onDismiss }: Props) {
   // le compilateur n'y voit plus le retour anticipe ci-dessus.
   const fiche = item;
   const erreur = fiche.urgency === "erreur";
-  const texte = libre.trim();
+  // Un mot de passe garde ses espaces : on n'y touche pas.
+  const secret = fiche.secret === true;
+  const texte = secret ? libre : libre.trim();
 
   function envoyerLibre() {
     if (!texte) return;
@@ -112,10 +114,11 @@ export function AttentionStrip({ item, onAnswer, onDismiss }: Props) {
       )}
 
       {item.free_text &&
-        (champOuvert ? (
+        (champOuvert || secret ? (
           <div className="locaryn-attention-libre">
             <input
-              type="text"
+              type={secret ? "password" : "text"}
+              autoComplete={secret ? "off" : undefined}
               value={libre}
               placeholder={item.free_text}
               aria-label={item.free_text}
@@ -143,7 +146,7 @@ export function AttentionStrip({ item, onAnswer, onDismiss }: Props) {
               disabled={!texte}
               onClick={envoyerLibre}
             >
-              Répondre
+              {secret ? "Ranger dans le coffre" : "Répondre"}
             </button>
           </div>
         ) : (

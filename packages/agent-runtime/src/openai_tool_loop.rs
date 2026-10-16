@@ -190,6 +190,8 @@ pub async fn run_openai_tool_loop(
         .chain(host_specs)
         .chain(extension_tools)
         .chain(mcp_tools.clone())
+        // Demander un secret n'a de sens que si un outil d'extension sait s'en servir.
+        .chain(crate::coffre::outil_si_utile(&mcp_tools))
         .collect();
     // Une figure peut limiter les outils : seuls ceux qu'elle nomme restent
     // dans la liste offerte au modèle. Vide ou absent, tout passe.

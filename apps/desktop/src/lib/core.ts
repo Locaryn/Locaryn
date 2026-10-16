@@ -678,6 +678,8 @@ export interface ExtensionConfig {
   /** `null` quand l'extension ne déclare aucun réglage. */
   schema: Record<string, ExtensionField> | null;
   values: Record<string, unknown>;
+  /** Les secrets qu'elle sait utiliser, rangés dans le coffre natif. */
+  secrets?: SecretDeclare[] | null;
 }
 
 /** Un serveur MCP déclaré par une extension, éditable dans le panneau Réglages.
@@ -1733,6 +1735,25 @@ export interface ReglagesGit {
 
 let demoGit: ReglagesGit = { init_auto: true, co_auteur: true };
 
+/** Un secret du coffre : son nom et son libellé, jamais sa valeur. */
+export interface SecretInfo {
+  nom: string;
+  libelle: string;
+  cree_le: string;
+}
+
+/** Un secret qu'une extension sait utiliser (`secrets` de son manifeste). */
+export interface SecretDeclare {
+  /** Nom, avec `{champ}` remplacé par chaque variante (ex. `wsl-sudo-{name}`). */
+  name: string;
+  title?: string;
+  description?: string;
+  /** Les variantes : l'outil de l'extension qui les liste. */
+  variants?: { tool: string; list?: string; field?: string };
+}
+
+let demoSecrets: SecretInfo[] = [];
+
 export type TaskbarStatus = "none" | "normal" | "indeterminate" | "paused" | "error";
 
 /**
@@ -1802,6 +1823,8 @@ export interface AttentionItem {
   free_text: string | null;
   asked_at: string;
   blocking: boolean;
+  /** Un mot de passe est demandé : champ masqué, réponse remise au coffre. */
+  secret?: boolean;
 }
 
 /**
@@ -2054,6 +2077,10 @@ export interface CoreApi {
   setProviderApi(enabled: boolean): Promise<ProviderApiStatus>;
   /** Le suivi Git du travail de l'agent (dépôt créé, Locaryn co-auteur). */
   gitReglages(): Promise<ReglagesGit>;
+  /** Le coffre : les secrets que le modèle utilise sans les voir. */
+  secretsLister(): Promise<SecretInfo[]>;
+  secretDefinir(nom: string, libelle: string, valeur: string): Promise<void>;
+  secretEffacer(nom: string): Promise<void>;
   setGitReglages(r: ReglagesGit): Promise<void>;
   listApiKeys(): Promise<ApiKeyInfo[]>;
   createApiKey(label: string, expiresInDays: number | null): Promise<ApiKeyCreated>;
@@ -2645,6 +2672,9 @@ const tauriCore: CoreApi = {
     invoke<{ etoiles: number; echecs: number; en_cours?: boolean }>("soutien_repondre", { choix }),
   setProviderApi: (enabled) => invoke<ProviderApiStatus>("set_provider_api", { enabled }),
   gitReglages: () => invoke<ReglagesGit>("git_reglages"),
+  secretsLister: () => invoke<SecretInfo[]>("secrets_lister"),
+  secretDefinir: (nom, libelle, valeur) => invoke<void>("secret_definir", { nom, libelle, valeur }),
+  secretEffacer: (nom) => invoke<void>("secret_effacer", { nom }),
   setGitReglages: (r) => invoke<void>("set_git_reglages", { reglages: r }),
   listApiKeys: () => invoke<ApiKeyInfo[]>("list_api_keys"),
   createApiKey: (label, expiresInDays) =>
@@ -4678,6 +4708,16 @@ Contenu de démonstration, avec **du gras** et une liste :
     echecs: 0,
   }),
   gitReglages: async () => ({ ...demoGit }),
+  secretsLister: async () => [...demoSecrets],
+  secretDefinir: async (nom, libelle) => {
+    demoSecrets = [
+      ...demoSecrets.filter((s) => s.nom !== nom),
+      { nom, libelle, cree_le: new Date().toISOString() },
+    ];
+  },
+  secretEffacer: async (nom) => {
+    demoSecrets = demoSecrets.filter((s) => s.nom !== nom);
+  },
   setGitReglages: async (r) => {
     demoGit = { ...r };
   },

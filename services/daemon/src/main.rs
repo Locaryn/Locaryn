@@ -274,7 +274,12 @@ async fn main() -> anyhow::Result<()> {
             .timeout(std::time::Duration::from_secs(600))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new()),
-        keychain: trousseau(),
+        keychain: {
+            let k = trousseau();
+            // Le coffre des secrets que le modèle utilise sans les voir.
+            locaryn_agent_runtime::coffre::installer(k.clone());
+            k
+        },
         cores: locaryn_core_bridge::manager::CoreManager::new(),
         travel: travel_state.clone(),
         port,

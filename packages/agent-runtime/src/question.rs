@@ -84,6 +84,9 @@ pub struct QuestionRequest {
     /// sens. `None` retire le champ — mieux vaut pas de champ qu'un champ dont
     /// la réponse serait ignorée.
     pub free_text: Option<String>,
+    /// La réponse est un secret : champ masqué, jamais affiché ni enregistré
+    /// dans la conversation. Elle va au coffre, pas au modèle.
+    pub secret: bool,
 }
 
 /// Ce que l'utilisateur a répondu — ou pourquoi il n'a pas répondu.
@@ -333,6 +336,7 @@ pub fn lire_appel(
         } else {
             None
         },
+        secret: false,
     })
 }
 

@@ -46,6 +46,7 @@ mod workspace;
 mod wsl_cmd;
 use locaryn_sdk::secure_client;
 mod api_fournisseur;
+mod coffre;
 mod server_history;
 mod server_mode;
 mod soutien;
@@ -433,6 +434,8 @@ async fn init_core() -> anyhow::Result<Core> {
         .unwrap_or_default();
 
     let keychain: Arc<dyn Keychain> = Arc::new(SystemKeychain::new("locaryn"));
+    // Le coffre des secrets que le modèle utilise sans les voir.
+    locaryn_agent_runtime::coffre::installer(keychain.clone());
 
     Ok(Core {
         storage,
@@ -7358,6 +7361,9 @@ pub fn run() {
             soutien::soutien_repondre,
             api_fournisseur::provider_api_status,
             api_fournisseur::git_reglages,
+            coffre::secrets_lister,
+            coffre::secret_definir,
+            coffre::secret_effacer,
             api_fournisseur::set_git_reglages,
             api_fournisseur::set_provider_api,
             api_fournisseur::list_api_keys,
