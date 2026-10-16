@@ -419,6 +419,7 @@ pub async fn run_openai_tool_loop(
         // le projet dit laquelle.
         input.project_path.as_deref(),
         input.project_context.as_deref(),
+        input.git_contributeur,
     );
     tracing::info!(
         octets = system_prompt.len(),

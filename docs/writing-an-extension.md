@@ -516,6 +516,36 @@ catalogue de l'application, avec les autres.
 }
 ```
 
+**Langue d'affichage.** L'application est en français par défaut, avec un
+mode anglais. Les noms (`name`, `brand`, identifiants de catégories) sont des
+noms de produits : ils ne sont **jamais** traduits (caveman reste caveman).
+Pour que vos descriptions suivent la langue, ajoutez les champs anglais à côté
+du français — sinon le texte français s'affiche tel quel :
+
+```json
+{
+  "id": "ma-categorie",
+  "label": "Ma catégorie",
+  "labelEn": "My category",
+  "icon": "image",
+  "matches": ["ma-capacite"]
+}
+```
+
+```json
+{
+  "id": "mon-modele",
+  "name": "Mon modèle",
+  "brand": "Auteur",
+  "description": "Ce qu'il fait, et pour qui.",
+  "descriptionEn": "What it does, and for whom.",
+  "license": "Apache-2.0"
+}
+```
+
+Même convention pour les skills et commandes (`description` / `descriptionEn`) :
+le nom ne bouge jamais, seule la description suit la langue.
+
 Ce qu'il faut retenir :
 
 - **`refreshUrl`** est relue au lancement. Votre catalogue continue d'évoluer

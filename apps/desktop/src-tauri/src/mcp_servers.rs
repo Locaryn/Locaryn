@@ -618,6 +618,25 @@ pub async fn outils_alleges() -> Result<bool, String> {
         .unwrap_or(false))
 }
 
+/// La préférence d'attribution Git : les commits posés par le modèle
+/// s'endorment d'un « Co-Authored-By: Locaryn ». Coché par défaut.
+#[tauri::command]
+pub async fn commit_contributeur() -> Result<bool, String> {
+    Ok(locaryn_config::load(None)
+        .map(|c| c.assistance.commit_contributeur)
+        .unwrap_or(true))
+}
+
+#[tauri::command]
+pub async fn definir_commit_contributeur(actif: bool) -> Result<bool, String> {
+    locaryn_config::set_global(
+        "assistance",
+        serde_json::json!({ "commit_contributeur": actif }),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(actif)
+}
+
 #[tauri::command]
 pub async fn definir_outils_alleges(actif: bool) -> Result<bool, String> {
     locaryn_config::set_global("assistance", serde_json::json!({ "trim_tools": actif }))

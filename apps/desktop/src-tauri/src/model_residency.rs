@@ -178,6 +178,9 @@ pub struct ModelFit {
     pub overridable: bool,
     /// Phrase montrée telle quelle. Dit ce qui va se passer, pas un code.
     pub message: String,
+    /// Les données de la phrase, structurées : l'interface les recouvre par
+    /// une phrase dans sa langue d'affichage.
+    pub message_parts: llmfit::MessageParts,
 }
 
 impl ModelFit {
@@ -206,6 +209,7 @@ impl ModelFit {
             assumptions: report.assumptions,
             overridable: report.overridable,
             message: report.message,
+            message_parts: report.message_parts,
         }
     }
 }

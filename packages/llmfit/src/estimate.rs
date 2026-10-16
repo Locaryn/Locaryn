@@ -458,6 +458,40 @@ pub struct FitReport {
     pub assumptions: Vec<String>,
     /// Une phrase qui dit ce qui va se passer.
     pub message: String,
+    /// Les mêmes données, structurées : le client les recouvre par-dessus le
+    /// message avec une phrase dans sa langue. Rempli par `phrase`.
+    pub message_parts: MessageParts,
+}
+
+/// Les morceaux dont le client i18n a besoin pour reconstituer la phrase
+/// dans sa langue. Tout champ absent n'intervient pas dans la variante.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageParts {
+    /// Variante de la phrase : `gpu`, `partage`, `ram`, `risque`, `refuse_gpu`,
+    /// `refuse_ram`, `introuvable`.
+    pub variant: String,
+    /// Go de poids + cache, quand la phrase porte sur ce total.
+    pub used_gb: Option<f64>,
+    /// Go réellement nécessaires (refus marge comprise).
+    pub required_gb: Option<f64>,
+    /// VRAM libre à cet instant.
+    pub free_vram_gb: Option<f64>,
+    /// RAM libre à cet instant.
+    pub free_ram_gb: Option<f64>,
+    /// VRAM laissée au système par la prudence.
+    pub vram_reserve_gb: Option<f64>,
+    /// RAM laissée au système par la prudence.
+    pub ram_reserve_gb: Option<f64>,
+    pub gpu_layers: Option<u32>,
+    pub total_layers: Option<u32>,
+    pub context: Option<u32>,
+    /// Contexte plus court qui ferait tout tenir sur le GPU (ou moins loin).
+    pub smaller_context: Option<u32>,
+    /// Quant plus légère qui ferait tout tenir.
+    pub suggested_quant: Option<String>,
+    /// Pas de GPU du tout — justifie la phrase `ram`.
+    pub no_gpu: Option<bool>,
 }
 
 // ============================================================================
@@ -632,9 +666,10 @@ pub fn estimate(spec: &ModelSpec, hardware: &HardwareProfile, options: &RunOptio
         overridable,
         assumptions: assumptions(spec, options, hardware, &split),
         message: String::new(),
+        message_parts: MessageParts::default(),
     };
-    let message = phrase(&report, hardware);
-    FitReport { message, ..report }
+    let (message, message_parts) = phrase(&report, hardware);
+    FitReport { message, message_parts, ..report }
 }
 
 /// Contexte retenu : celui demandé, sinon un compromis raisonnable, jamais
@@ -942,7 +977,53 @@ fn assumptions(
 }
 
 /// La phrase que lit l'utilisateur.
-fn phrase(report: &FitReport, hardware: &HardwareProfile) -> String {
+fn phrase(report: &FitReport, hardware: &HardwareProfile) -> (String, MessageParts) {
+    let text = phrase_fr(report, hardware);
+    let parts = fill_parts(report, hardware);
+    (text, parts)
+}
+
+/// Les données de la phrase, pour que le client les rephrase dans sa langue.
+fn fill_parts(report: &FitReport, hardware: &HardwareProfile) -> MessageParts {
+    let mut parts = MessageParts {
+        variant: match (report.verdict, report.placement) {
+            (Verdict::Confortable, _) => "gpu".to_string(),
+            (Verdict::Juste, Placement::Partage) => "partage".to_string(),
+            (Verdict::Juste, _) => "ram".to_string(),
+            (Verdict::Risque, _) => "risque".to_string(),
+            (Verdict::Refuse, Placement::Partage) => "refuse_gpu".to_string(),
+            (Verdict::Refuse, _) => "refuse_ram".to_string(),
+        },
+        ..Default::default()
+    };
+    parts.used_gb = Some(report.weights_gb + report.kv_cache_gb);
+    parts.required_gb = Some(report.required_gb);
+    parts.free_vram_gb = Some(report.free_vram_gb);
+    parts.free_ram_gb = Some(report.free_ram_gb);
+    parts.vram_reserve_gb = Some(report.vram_reserve_gb);
+    parts.ram_reserve_gb = Some(report.ram_reserve_gb);
+    parts.gpu_layers = Some(report.gpu_layers);
+    parts.total_layers = Some(report.total_layers);
+    parts.context = Some(report.context);
+    parts.smaller_context = match report.verdict {
+        Verdict::Juste if report.max_gpu_context > 0 && report.max_gpu_context < report.context => {
+            Some(report.max_gpu_context)
+        }
+        Verdict::Refuse if report.max_gpu_context > 0 && report.max_gpu_context < report.context => {
+            Some(report.max_gpu_context)
+        }
+        Verdict::Refuse if report.max_context > 0 && report.max_context < report.context => {
+            Some(report.max_context)
+        }
+        _ => None,
+    };
+    parts.suggested_quant = report.suggested_quant.clone();
+    parts.no_gpu = Some(hardware.total_vram_gb <= 0.0);
+    parts
+}
+
+/// La phrase française, alignée sur `fill_parts` : même données, même variante.
+fn phrase_fr(report: &FitReport, hardware: &HardwareProfile) -> String {
     let speed = format_speed(report.tokens_per_second);
     match report.verdict {
         Verdict::Confortable => format!(

@@ -1251,24 +1251,94 @@ async fn download_to(
     progress: &PullProgress,
 ) -> Result<u64, String> {
     let mut partial_cleanup = PartialDownloadGuard::new(part);
-    let resp = avec_jeton_hf(client.get(url), url)
+    // Reprise sur coupure : le `.part` existant donne l'offset de depart.
+    let mut offset: u64 = 0;
+    if part.exists() {
+        offset = std::fs::metadata(part).map(|m| m.len()).unwrap_or(0);
+        if offset > 0 {
+            progress.ajouter(offset, Some("Reprise du partiel…"));
+        }
+    }
+    let mut req = avec_jeton_hf(client.get(url), url);
+    if offset > 0 {
+        req = req.header("Range", format!("bytes={offset}-"));
+    }
+    let mut resp = req
         .send()
         .await
         .map_err(|e| format!("téléchargement impossible : {e}"))?;
-    let status = resp.status();
-    if !status.is_success() {
+    let mut status = resp.status();
+    if !status.is_success() && status.as_u16() != 206 {
         return Err(refus_http(status, url));
+    }
+    // Serveur sans Range : il renvoie 200 avec le fichier entier, on ne peut
+    // pas l'ajouter au partiel existant sans corrompre l'archive.
+    if offset > 0 && status.as_u16() == 200 {
+        offset = 0;
     }
     // Le HEAD n'a pas toujours donné la taille : la réponse du GET, elle, la
     // connaît presque toujours. Dès qu'on l'apprend, la barre devient exacte.
-    progress.definir_total(resp.content_length().unwrap_or(0));
-    let mut out = tokio::fs::File::create(part)
-        .await
-        .map_err(|e| format!("fichier : {e}"))?;
+    progress.definir_total(resp.content_length().map(|l| l + offset).unwrap_or(0));
+    let mut out = if offset > 0 {
+        tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(part)
+            .await
+            .map_err(|e| format!("fichier : {e}"))?
+    } else {
+        tokio::fs::File::create(part)
+            .await
+            .map_err(|e| format!("fichier : {e}"))?
+    };
     let mut stream = resp.bytes_stream();
-    let mut total: u64 = 0;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("lecture : {e}"))?;
+    let mut total: u64 = offset;
+    let mut tentative: u32 = 0;
+    const MAX_REPRISES: u32 = 12;
+    loop {
+        let suite = stream.next().await;
+        let Some(chunk_res) = suite else {
+            break;
+        };
+        let chunk = match chunk_res {
+            Ok(c) => c,
+            Err(coupure) => {
+                if tentative >= MAX_REPRISES {
+                    let _ = out.flush().await;
+                    // Pause, pas suppression : relancer reprend a `total`.
+                    partial_cleanup.commit();
+                    return Err(format!(
+                        "Connexion interrompue à {total} octets — pause, partiel conservé. Relancez pour reprendre. Détail : lecture : {coupure}"
+                    ));
+                }
+                tentative += 1;
+                let _ = out.flush().await;
+                tracing::warn!(error = %coupure, %url, total, tentative, "flux interrompu — pause puis reprise");
+                progress.noter(&format!("Connexion interrompue — reprise… (tentative {tentative}/{MAX_REPRISES})"));
+                let attente = 2u64.saturating_mul(1u64 << tentative.min(4)).min(30);
+                tokio::time::sleep(std::time::Duration::from_secs(attente)).await;
+                let reprise = match avec_jeton_hf(client.get(url), url)
+                    .header("Range", format!("bytes={total}-"))
+                    .send()
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "reprise refusée");
+                        continue;
+                    }
+                };
+                status = reprise.status();
+                if status.as_u16() != 206 {
+                    let _ = out.flush().await;
+                    partial_cleanup.commit();
+                    return Err(format!(
+                        "Serveur sans reprise Range — pause à {total} octets, partiel conservé. Détail : lecture : {coupure}"
+                    ));
+                }
+                stream = reprise.bytes_stream();
+                continue;
+            }
+        };
         total += chunk.len() as u64;
         progress.ajouter(chunk.len() as u64, None);
         out.write_all(&chunk)
@@ -1391,13 +1461,13 @@ async fn pull_repo_files(
     .await;
 
     if let Err(error) = result {
-        // A repository install is one transaction from the user's point of
-        // view. Remove files completed by this attempt, but preserve files
-        // belonging to another already-installed variant in the same repo.
-        for file in &created_files {
-            let _ = std::fs::remove_file(file);
+        // Pause reseau : on garde fichiers termines + `.part` pour reprendre.
+        if !error.contains("partiel conserv") {
+            for file in &created_files {
+                let _ = std::fs::remove_file(file);
+            }
+            remove_empty_parent_dirs(dest_dir, &models_dir);
         }
-        remove_empty_parent_dirs(dest_dir, &models_dir);
         return Err(error);
     }
     result

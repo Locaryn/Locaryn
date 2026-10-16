@@ -443,15 +443,72 @@ pub async fn workspace_changes(
     session_id: Uuid,
 ) -> Result<Modifications, String> {
     let racine = racine(&core, session_id).await?;
-    let statut = git(&racine, &["status", "--porcelain=v1", "-z", "--branch"]).await?;
+    let mut statut = git(&racine, &["status", "--porcelain=v1", "-z", "--branch"]).await?;
     if !statut.status.success() {
-        // Pas un dépôt : ce n'est pas une erreur, l'onglet le dit.
-        return Ok(Modifications {
-            racine: racine.display().to_string(),
-            depot: false,
-            branche: None,
-            fichiers: Vec::new(),
-        });
+        // Pas un dépôt : beaucoup de dossiers de projet n'en avaient pas un
+        // quand la conversation a commencé. L'onglet « Modifications » lit
+        // `git status` et `git diff` : sans dépôt, il affichait « pas un
+        // dépôt » et restait vide quel que soit le travail du modèle. Créer
+        // le dépôt fait fonctionner les deux onglets sans rien casser — le
+        // modèle y écrira ses commits à partir de là.
+        let init = git(&racine, &["init"]).await?;
+        if !init.status.success() {
+            return Ok(Modifications {
+                racine: racine.display().to_string(),
+                depot: false,
+                branche: None,
+                fichiers: Vec::new(),
+            });
+        }
+            // Le fichier ne peut exister : personne n'a encore écrit ici au
+            // moment où le panneau s'est ouvert. S'il existe (dossier créé
+            // par une autre session), on ne recommit pas par-dessus.
+            let baseline = racine.join(".locaryn-baseline");
+            std::fs::write(
+                &baseline,
+                "Fichier marqueur utilisee par Locaryn pour ancrer le premier commit du depot de cette conversation. Ne pas modifier.\n",
+            )
+            .map_err(|e| format!("ancrage du depot : {e}"))?;
+
+            // Un premier commit racine ancre le diff (« HEAD » n'existe pas avant
+            // lui). Sans commit, aucun diff ne peut montrer les fichiers nouveaux.
+            let preparer = std::process::Command::new("git");
+            let mut preparer = preparer;
+            locaryn_config::hide_console(&mut preparer);
+            preparer
+                .current_dir(&racine)
+                .args(["config", "user.email", "noreply@locaryn.dev"]);
+            preparer
+                .args(["config", "user.name", "Locaryn"])
+                .arg("add")
+                .arg("-A");
+            if !preparer.status().success() {
+                tracing::debug!(racine = %racine.display(), "preparation du depot incomplete");
+            }
+            let commit = git(
+                &racine,
+                &[
+                    "commit",
+                    "-m",
+                    "Initial commit - baseline before the chat started",
+                    "--author=Locaryn <noreply@locaryn.dev>",
+                ],
+            )
+            .await?;
+            if !commit.status.success() {
+                // Répertoire totalement vide : un commit sans fichier est refusé,
+                // et c'est bien — le diff prendra le fichier nouveau comme « ?? ».
+                tracing::debug!(racine = %racine.display(), "initial commit vide, pas de HEAD");
+            }
+        statut = git(&racine, &["status", "--porcelain=v1", "-z", "--branch"]).await?;
+        if !statut.status.success() {
+            return Ok(Modifications {
+                racine: racine.display().to_string(),
+                depot: false,
+                branche: None,
+                fichiers: Vec::new(),
+            });
+        }
     }
     let (branche, mut fichiers) = lire_statut(&String::from_utf8_lossy(&statut.stdout));
 

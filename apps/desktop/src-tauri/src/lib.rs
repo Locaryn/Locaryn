@@ -2437,6 +2437,12 @@ async fn envoyer_message(
         // répondre : c'est ici que la promesse se tient. Les portées que cette
         // installation ne peut pas honorer sont écartées à la lecture — sans
         // serveur, une fiche « partagée » n'existe pas.
+        // La préférence d'attribution Git : les commits du modèle portent
+        // la mention « Co-Authored-By: Locaryn » tant que la personne ne l'a
+        // pas décochée.
+        git_contributeur: locaryn_config::load(None)
+            .map(|c| Some(c.assistance.commit_contributeur))
+            .unwrap_or(None),
         project_context: match project_id {
             Some(p) => project_context::contexte_pour_le_modele(&core, p).await,
             None => None,
@@ -4753,7 +4759,11 @@ async fn pull_hf_repo(
     .await;
     core.pull_cancels.lock().await.remove(&cancel_key);
     if let Err(error) = result {
-        cleanup_failed_hf_selection(&dest_dir, &models_dir, &selected_paths, &created_files);
+        // Pause reseau : on garde fichiers termines + `.part` pour reprendre.
+        // Nettoyage seulement sur erreur definitive.
+        if !error.contains("partiel conserv") {
+            cleanup_failed_hf_selection(&dest_dir, &models_dir, &selected_paths, &created_files);
+        }
         return Err(error);
     }
 
@@ -5051,7 +5061,11 @@ async fn do_pull_with_aggregate(
     // gros modèle ne pouvait jamais arriver au bout. On rouvre la connexion là
     // où elle s'est arrêtée, ce que le serveur sait faire — c'est le même
     // mécanisme que la reprise entre deux lancements.
-    let mut reprises_restantes = 4u32;
+    // Coupure reseau = pause + reprise auto (Range), pas erreur seche.
+    // Le `.part` est conserve meme apres epuisement : relancer reprend.
+    const MAX_REPRISES: u32 = 12;
+    let mut reprises_restantes = MAX_REPRISES;
+    let mut tentative: u32 = 0;
 
     loop {
         let suite = stream.next().await;
@@ -5059,16 +5073,28 @@ async fn do_pull_with_aggregate(
             break;
         };
         if cancel.is_cancelled() {
-            return Err("Telechargement annule".into());
+            let _ = writer.flush().await;
+            partial_cleanup.commit();
+            return Err("Telechargement annule — partiel conserve, relancez pour reprendre".into());
         }
 
         let chunk = match chunk_result {
             Ok(chunk) => chunk,
             Err(coupure) => {
                 if reprises_restantes == 0 {
-                    return Err(format!("stream error: {coupure}"));
+                    let _ = writer.flush().await;
+                    partial_cleanup.commit();
+                    let pct = if event_total > 0 {
+                        (downloaded as f64 / event_total as f64 * 100.0).min(100.0)
+                    } else {
+                        0.0
+                    };
+                    return Err(format!(
+                        "Connexion interrompue a {pct:.1}% ({downloaded} / {event_total} octets) — pause, partiel conserve. Relancez pour reprendre. Detail : stream error: {coupure}"
+                    ));
                 }
                 reprises_restantes -= 1;
+                tentative += 1;
                 // Ce qui est déjà écrit doit atteindre le disque avant qu'on
                 // demande la suite à partir de ce point.
                 writer
@@ -5076,11 +5102,11 @@ async fn do_pull_with_aggregate(
                     .await
                     .map_err(|e| format!("write error: {e}"))?;
                 tracing::warn!(
-                    error = %coupure, %file_name, downloaded,
-                    "flux interrompu — reprise à l'octet courant"
+                    error = %coupure, %file_name, downloaded, tentative,
+                    "flux interrompu — pause puis reprise a l'octet courant"
                 );
                 let _ = on_event.send(PullProgressEvent {
-                    status: format!("Reprise de {file_name}…"),
+                    status: format!("Connexion interrompue — reprise de {file_name}… (tentative {tentative}/{MAX_REPRISES})"),
                     completed: aggregate
                         .as_deref()
                         .map(|overall| overall.completed)
@@ -5092,7 +5118,8 @@ async fn do_pull_with_aggregate(
                         0.0
                     },
                 });
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                let attente = 2u64.saturating_mul(1u64 << tentative.min(4)).min(30);
+                tokio::time::sleep(std::time::Duration::from_secs(attente)).await;
 
                 let mut reprise = client
                     .get(url)
@@ -5111,7 +5138,11 @@ async fn do_pull_with_aggregate(
                 // recoller après ce qui est déjà écrit produirait une archive
                 // corrompue. Mieux vaut rendre la panne d'origine.
                 if reponse.status().as_u16() != 206 {
-                    return Err(format!("stream error: {coupure}"));
+                    let _ = writer.flush().await;
+                    partial_cleanup.commit();
+                    return Err(format!(
+                        "Serveur sans reprise Range — pause a {downloaded} octets, partiel conserve. Relancez pour reprendre. Detail : stream error: {coupure}"
+                    ));
                 }
                 stream = reponse.bytes_stream();
                 continue;
@@ -7542,6 +7573,8 @@ pub fn run() {
             mailbox::chat_mail_withdraw,
             mcp_servers::outils_alleges,
             mcp_servers::definir_outils_alleges,
+            mcp_servers::commit_contributeur,
+            mcp_servers::definir_commit_contributeur,
             startup::app_ready,
             mcp_servers::add_mcp_server,
             mcp_servers::list_mcp_tools,

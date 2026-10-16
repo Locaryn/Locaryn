@@ -20,6 +20,9 @@ import {
   core,
 } from "../lib/core";
 import { findMetric, formatRate, formatSpeed } from "./SpeedBadge";
+import { type ModelFit as FitType } from "../lib/core";
+import { useI18n } from "../lib/i18n";
+type Lang = "fr" | "en";
 
 /** Le point de l'indicateur : couleur et libellé disent la même chose, pour
  *  que l'information ne repose pas seulement sur la couleur. */
@@ -52,6 +55,60 @@ function debitMesure(metrics: ModelMetric[], model: string): string | null {
 function contextLabel(tokens: number): string {
   if (tokens >= 1024) return `${Math.round(tokens / 1024)}K`;
   return String(tokens);
+}
+
+/** La phrase du verdict, reconstituée dans la langue d'affichage à partir
+ *  des données structurées du moteur. Fallback : la phrase française
+ *  d'origine, quand les parts ne sont pas là (daemon ancien). */
+function fitMessage(fit: FitType | null, lang: Lang): string | null {
+  if (!fit) return null;
+  const parts = fit.message_parts;
+  if (!parts || parts.variant === "any") return fit.message;
+  if (lang !== "en") return fit.message;
+  const n = (v: number | undefined, d = 1) =>
+    v === undefined ? "" : v.toLocaleString("en-US", { maximumFractionDigits: d });
+  const tok = (v: number | undefined) =>
+    v === undefined ? "" : v.toLocaleString("en-US");
+  const speed =
+    fit.tokens_per_second > 0
+      ? `About ${
+          fit.tokens_per_second >= 10
+            ? Math.round(fit.tokens_per_second)
+            : fit.tokens_per_second.toFixed(1)
+        } tok/s.`
+      : "";
+  const quantHint = () => {
+    const q = parts.suggested_quant;
+    if (q) return ` The ${q} build would fit entirely on the GPU.`;
+    if (parts.smaller_context)
+      return ` With a ${tok(parts.smaller_context)}-token context it would fit entirely on the GPU.`;
+    return "";
+  };
+  switch (parts.variant) {
+    case "gpu":
+      return `${n(parts.used_gb)} GB entirely on the GPU (${n(parts.free_vram_gb)} GB free), ${tok(parts.context)}-token context. ${speed}`;
+    case "partage":
+      return `${parts.gpu_layers ?? 0} of ${parts.total_layers ?? 0} layers fit in the ${n(parts.free_vram_gb)} GB of free VRAM, the rest runs from RAM. ${speed}${quantHint()}`;
+    case "ram":
+      return `${n(parts.used_gb)} GB in RAM (${n(parts.free_ram_gb)} GB free)${parts.no_gpu ? ", no GPU detected" : ", the VRAM is too small to take a useful share"}. ${speed}`;
+    case "risque":
+      return `${n(parts.required_gb)} GB needed for ${n(parts.free_ram_gb)} GB free. The system will compensate on disk: severe slowdown, and the app may be killed for lack of memory.`;
+    case "refuse_gpu": {
+      let text = `Too much VRAM already in use to load this model: ${n(parts.used_gb)} GB to place on the card, ${n(parts.free_vram_gb)} GB free right now, of which ${n(parts.vram_reserve_gb)} GB stay reserved for the system by the chosen caution. Close an app using the GPU (game, 3D software…), or pick a lighter build.`;
+      text += quantHint();
+      return text;
+    }
+    case "refuse_ram": {
+      let text = `Too much memory already in use to load this model: ${n(parts.required_gb)} GB needed, ${n(parts.free_ram_gb)} GB free right now, of which ${n(parts.ram_reserve_gb)} GB stay reserved for the system by the chosen caution. Close a memory-hungry app, or pick a lighter build.`;
+      const q = parts.suggested_quant;
+      if (q) text += ` The ${q} build would fit.`;
+      else if (parts.smaller_context)
+        text += ` With a ${tok(parts.smaller_context)}-token context instead of ${tok(parts.context)}, it would fit.`;
+      return text;
+    }
+    default:
+      return fit.message;
+  }
 }
 
 function minutes(seconds: number): string {
@@ -95,6 +152,7 @@ function isChatModel(name: string): boolean {
 }
 
 export function ModelResidency() {
+  const { lang } = useI18n();
   const [status, setStatus] = useState<ResidencyStatus | null>(null);
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState<string[]>([]);
@@ -369,12 +427,12 @@ export function ModelResidency() {
           </div>
 
           {busy === "fit" && (
-            <div className="locaryn-res-checking">Vérification de la mémoire…</div>
+            <div className="locaryn-res-checking">{lang === "en" ? "Checking memory…" : "Vérification de la mémoire…"}</div>
           )}
 
           {fit && (
             <div className={`locaryn-res-fit ${fit.verdict}`}>
-              <div className="locaryn-res-fit-msg">{fit.message}</div>
+              <div className="locaryn-res-fit-msg">{fitMessage(fit, lang)}</div>
 
               {/* Les trois postes de mémoire séparés : ils ne se corrigent pas
                   de la même façon. Des poids trop lourds appellent une
@@ -382,26 +440,26 @@ export function ModelResidency() {
                   plus court. */}
               <dl className="locaryn-res-fit-numbers">
                 <div>
-                  <dt>Poids</dt>
+                  <dt>{lang === "en" ? "Weights" : "Poids"}</dt>
                   <dd>{fit.size_gb.toFixed(1)} Go</dd>
                 </div>
                 <div>
-                  <dt>Cache {fit.context.toLocaleString("fr-FR")} jetons</dt>
+                  <dt>Cache {fit.context.toLocaleString(lang === "en" ? "en-US" : "fr-FR")} tok</dt>
                   <dd>{fit.kv_cache_gb.toFixed(1)} Go</dd>
                 </div>
                 <div>
-                  <dt>Couches GPU</dt>
+                  <dt>{lang === "en" ? "GPU layers" : "Couches GPU"}</dt>
                   <dd>
                     {fit.gpu_layers}/{fit.total_layers}
                   </dd>
                 </div>
                 <div>
-                  <dt>Débit estimé</dt>
+                  <dt>{lang === "en" ? "Estimated speed" : "Débit estimé"}</dt>
                   <dd>
                     {fit.tokens_per_second >= 10
                       ? Math.round(fit.tokens_per_second)
                       : fit.tokens_per_second.toFixed(1)}{" "}
-                    jetons/s
+                    tok/s
                   </dd>
                 </div>
               </dl>
@@ -410,7 +468,7 @@ export function ModelResidency() {
                   vérifiable : elles sont là, repliées. */}
               {fit.assumptions.length > 0 && (
                 <details className="locaryn-res-fit-why">
-                  <summary>Sur quoi repose cette estimation</summary>
+                  <summary>{lang === "en" ? "What this estimate relies on" : "Sur quoi repose cette estimation"}</summary>
                   <ul>
                     {fit.assumptions.map((line) => (
                       <li key={line}>{line}</li>
@@ -427,7 +485,7 @@ export function ModelResidency() {
                       onClick={() => void confirmLoad(true)}
                       disabled={busy !== null}
                     >
-                      Forcer quand même
+                      {lang === "en" ? "Force anyway" : "Forcer quand même"}
                     </button>
                   )
                 ) : (
@@ -437,7 +495,7 @@ export function ModelResidency() {
                     onClick={() => void confirmLoad(false)}
                     disabled={busy !== null}
                   >
-                    {busy === "load" ? "Chargement…" : "Charger et garder en mémoire"}
+                    {lang === "en" ? (busy === "load" ? "Loading…" : "Load and keep in memory") : (busy === "load" ? "Chargement…" : "Charger et garder en mémoire")}
                   </button>
                 )}
               </div>

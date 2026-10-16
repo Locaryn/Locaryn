@@ -15,6 +15,7 @@ import {
 import { pickAnyFile, pickFolder } from "../lib/dialog";
 import { lirePressePapiers } from "../lib/pressePapiers";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
+import { useI18n } from "../lib/i18n";
 
 type Props = {
   /** "extension" = dépôt / dossier / ZIP ; "marketplace" = dépôt marketplace.json. */
@@ -47,6 +48,7 @@ export function ExtensionInstallDialog({
   onMarketplaceAdded,
 }: Props) {
   const [spec, setSpec] = useState(initialSource ?? "");
+  const { lang } = useI18n();
   // Erreur affichée À L'INTÉRIEUR de la fenêtre : un `setError` du panneau
   // parent passerait sous le fond de la modale, donc invisible.
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -303,13 +305,13 @@ export function ExtensionInstallDialog({
                           type="button"
                           className="locaryn-chip"
                           style={{ fontSize: 11, padding: "2px 8px" }}
-                          title={entry.description ?? undefined}
+                          title={lang === "en" ? (entry.descriptionEn ?? entry.description ?? undefined) : (entry.description ?? undefined)}
                           onClick={() => {
                             setSpec(entry.install_source);
                             inputRef.current?.focus();
                           }}
                         >
-                          <Icon name="extensions" size={12} /> {entry.display_name}
+                          <Icon name="extensions" size={12} /> <span data-no-translate>{entry.display_name}</span>
                         </button>
                       ))}
                     </div>
@@ -334,7 +336,7 @@ export function ExtensionInstallDialog({
                       gap: 8,
                     }}
                   >
-                    <strong style={{ fontSize: 13 }}>{preview.name}</strong>
+                    <strong style={{ fontSize: 13 }} data-no-translate>{preview.name}</strong>
                     <span className="locaryn-tag">
                       {ECOSYSTEM_LABELS[preview.ecosystem as ExtensionEcosystem] ??
                         preview.ecosystem}
@@ -345,9 +347,9 @@ export function ExtensionInstallDialog({
                       v{preview.version}
                     </p>
                   )}
-                  {preview.description && (
+                  {(lang === "en" ? (preview.descriptionEn ?? preview.description) : preview.description) && (
                     <p className="locaryn-box-desc" style={{ marginTop: 6 }}>
-                      {preview.description}
+                      {lang === "en" ? (preview.descriptionEn ?? preview.description) : preview.description}
                     </p>
                   )}
                   <p className="locaryn-field-hint" style={{ marginTop: 6 }}>

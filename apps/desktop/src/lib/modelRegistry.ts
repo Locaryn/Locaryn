@@ -48,6 +48,9 @@ export interface ModelFamily {
   name: string;
   brand: string;
   description: string;
+  /** English rendering of `description`. Absent = French only (shown as-is).
+   *  `name` and `brand` are product nouns and are never translated. */
+  descriptionEn?: string;
   license: string;
   contextWindow?: string;
   releaseDate: string;
@@ -362,6 +365,8 @@ export type ModelCategory = string;
 export interface ModelCategoryDefinition {
   id: ModelCategory;
   label: string;
+  /** English rendering of `label`. Absent = shown as-is. */
+  labelEn?: string;
   icon: string;
   /** A family is included when it declares at least one matching capability. */
   matches: string[];
@@ -370,12 +375,57 @@ export interface ModelCategoryDefinition {
 }
 
 export const MODEL_CATEGORIES: ModelCategoryDefinition[] = [
-  { id: "all", label: "Tous", icon: "models", matches: [] },
+  { id: "all", label: "Tous", labelEn: "All", icon: "models", matches: [] },
   { id: "chat", label: "Chat / Instruct", icon: "chat", matches: ["chat"] },
   { id: "code", label: "Code", icon: "cpu", matches: ["code"] },
   { id: "vision", label: "Vision", icon: "image", matches: ["vision"] },
-  { id: "reasoning", label: "Raisonnement", icon: "memory", matches: ["reasoning"] },
+  { id: "reasoning", label: "Raisonnement", labelEn: "Reasoning", icon: "memory", matches: ["reasoning"] },
 ];
+
+
+/** Display language for catalogue data. */
+export type DisplayLang = "fr" | "en";
+
+/** Localised family description. `name` and `brand` are product nouns:
+ *  they are never translated, only the description is. */
+export function familyDescription(
+  f: Pick<ModelFamily, "description" | "descriptionEn" | "source">,
+  lang: DisplayLang,
+): string {
+  if (lang === "en") {
+    if (f.descriptionEn) return f.descriptionEn;
+    const hf = hfDiscoveredDescriptionEn(f.description);
+    if (hf) return hf;
+  }
+  return f.description;
+}
+
+/** English rendering of an auto-generated HuggingFace discovery blurb
+ *  ("Poids GGUF publies sur HuggingFace par …"), or null when the text is
+ *  not one of those. Lets live-discovered models read English without
+ *  storing a translation per repository. */
+function hfDiscoveredDescriptionEn(fr: string): string | null {
+  const m = /^Poids GGUF [\s\S]*? sur HuggingFace par (.+?)(?:, ([\d\s.,]+) [\s\S]*?chargements)?\.$/.exec(
+    fr.trim(),
+  );
+  if (!m) return null;
+  const author = m[1];
+  const digits = m[2]?.replace(/[^\d]/g, "");
+  if (digits) {
+    const n = Number(digits);
+    const social = Number.isFinite(n) ? n.toLocaleString("en-US") : m[2];
+    return `GGUF weights published on HuggingFace by ${author}, ${social} downloads.`;
+  }
+  return `GGUF weights published on HuggingFace by ${author}.`;
+}
+
+/** Localised category label. Category ids are never translated. */
+export function categoryLabelText(
+  c: Pick<ModelCategoryDefinition, "label" | "labelEn">,
+  lang: DisplayLang,
+): string {
+  return lang === "en" ? (c.labelEn ?? c.label) : c.label;
+}
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -433,6 +483,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "DeepSeek / AirLLM",
     description:
       "Modèle de raisonnement 70B exécutable sur petit GPU (4 Go VRAM) grâce au chargement couche par couche AirLLM.",
+      descriptionEn: "70B reasoning model runnable on a small GPU (4GB VRAM) thanks to AirLLM layer-by-layer loading.",
     license: "MIT",
     contextWindow: "128k",
     releaseDate: "2025-01",
@@ -457,6 +508,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Meta / AirLLM",
     description:
       "Flagship 70B de Meta exécutable en local sur machine modeste via le streaming de couches AirLLM.",
+      descriptionEn: "Meta's 70B flagship runnable locally on a modest machine via AirLLM layer streaming.",
     license: "Llama 3.3 Community",
     contextWindow: "128k",
     releaseDate: "2024-12",
@@ -481,6 +533,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Alibaba / Qwen / AirLLM",
     description:
       "Le plus puissant modèle Qwen 2.5 de 72B exécutable localement avec ~4 Go de VRAM.",
+      descriptionEn: "The most powerful 72B Qwen 2.5 model runnable locally with ~4GB of VRAM.",
     license: "Apache-2.0",
     contextWindow: "128k",
     releaseDate: "2024-09",
@@ -505,6 +558,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Mistral AI / AirLLM",
     description:
       "Modèle compact et rapide 24B pour le code et le chat, ultra-fluide avec AirLLM sur GPU 2-4 Go.",
+      descriptionEn: "Compact, fast 24B model for code and chat, ultra-smooth with AirLLM on 2-4GB GPUs.",
     license: "Apache-2.0",
     contextWindow: "128k",
     releaseDate: "2024-07",
@@ -529,6 +583,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Mistral AI / AirLLM",
     description:
       "Architecture MoE 47B paramètres (8 experts) tournant couche par couche sur 4 Go de VRAM.",
+      descriptionEn: "47B-parameter MoE architecture (8 experts) running layer by layer on 4GB of VRAM.",
     license: "Apache-2.0",
     contextWindow: "32k",
     releaseDate: "2024-01",
@@ -551,6 +606,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     name: "Qwen 2.5 Coder 32B (AirLLM)",
     brand: "Alibaba / Qwen / AirLLM",
     description: "Le modèle de code 32B spécialisé pour le développement logiciel long-horizon.",
+    descriptionEn: "The 32B code model specialised for long-horizon software development.",
     license: "Apache-2.0",
     contextWindow: "128k",
     releaseDate: "2024-11",

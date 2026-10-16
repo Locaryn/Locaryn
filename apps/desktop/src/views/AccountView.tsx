@@ -6,14 +6,19 @@ import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
 import { NotificationSettings } from "../components/NotificationSettings";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
+import { type UseThemeReturn } from "../hooks/useTheme";
 import { type LocalProfile, type Project, type Session, core } from "../lib/core";
 import { pickImageFile } from "../lib/dialog";
 import { toMediaUrl } from "../lib/media";
 import { ArchivesView } from "./ArchivesView";
+import { AppearancePane } from "./AppearancePane";
+import { LanguagePane } from "./LanguagePane";
 
 type Props = {
   /** Ouvre une conversation sortie des archives dans le chat principal. */
   onOpenSession: (session: Session) => void;
+  /** Thème et accent, pour le volet Apparence. */
+  theme: UseThemeReturn;
   activeCapabilities?: string[];
   embedded?: boolean;
   /** Les conversations, pour l'historique consultable du compte. */
@@ -38,7 +43,8 @@ export type AccountSection =
   | "notifications"
   | "memory"
   | "archives"
-  | "conversations";
+  | "conversations"
+  | "appearance";
 
 /**
  * Espace compte.
@@ -50,6 +56,7 @@ export type AccountSection =
  */
 export function AccountView({
   onOpenSession,
+  theme,
   activeCapabilities = [],
   embedded = false,
   projects = [],
@@ -74,6 +81,23 @@ export function AccountView({
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  // Signe les commits du modèle « Co-Authored-By: Locaryn » tant que la
+  // personne ne le décoche pas. Lit le réglage une fois monté.
+  const [commitSig, setCommitSig] = useState<boolean | null>(null);
+  useEffect(() => {
+    core
+      .commitContributeur()
+      .then(setCommitSig)
+      .catch(() => setCommitSig(null));
+  }, []);
+  async function basculerSignature() {
+    if (commitSig === null) return;
+    try {
+      setCommitSig(await core.definirCommitContributeur(!commitSig));
+    } catch (error) {
+      setProfileError(String(error));
+    }
+  }
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -246,11 +270,30 @@ export function AccountView({
               <small>Conversations rangées</small>
             </span>
           </button>
+          <button
+            type="button"
+            className={`locaryn-account-nav-item${section === "appearance" ? " locaryn-active" : ""}`}
+            onClick={() => setSection("appearance")}
+          >
+            <span className="locaryn-account-nav-icon locaryn-account-nav-icon-models">
+              <Icon name="studio" size={15} />
+            </span>
+            <span className="locaryn-account-nav-text">
+              <strong>Apparence & Langue</strong>
+              <small>Thème, couleur d'accentuation, langue</small>
+            </span>
+          </button>
         </nav>
       )}
 
       <div className="locaryn-account-content">
-        {section === "archives" ? (
+        {section === "appearance" ? (
+          <>
+            <AppearancePane theme={theme} />
+            <div style={{ height: 16 }} />
+            <LanguagePane />
+          </>
+        ) : section === "archives" ? (
           <ArchivesView onOpenSession={onOpenSession} />
         ) : section === "models" ? (
           <ModelPreferencesSettings activeCapabilities={activeCapabilities} />
@@ -368,6 +411,29 @@ export function AccountView({
               </div>
 
               {profileError && <div className="locaryn-vp-error">{profileError}</div>}
+
+            <div className="locaryn-conn-budget">
+              <div className="locaryn-conn-budget-text">
+                <strong>Signer les commits « Co-Authored-By: Locaryn »</strong>
+                <p>
+                  Coché : quand le modèle pose un commit dans un projet versionné, un bandeau
+                  vient dire qu'une partie du travail a été faite avec Locaryn, l'application
+                  s'en reconnaît co-auteure. Décoché : les commits partent comme si la personne
+                  les avait écrits seuls.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={commitSig === true}
+                aria-label="Signer les commits Co-Authored-By Locaryn"
+                className={`locaryn-switch${commitSig ? " locaryn-switch-on" : ""}`}
+                disabled={commitSig === null}
+                onClick={() => void basculerSignature()}
+              >
+                <span className="locaryn-switch-knob" aria-hidden="true" />
+              </button>
+            </div>
             </div>
 
             <div className="locaryn-card locaryn-account-remote-card">

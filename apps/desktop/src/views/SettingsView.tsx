@@ -1,4 +1,4 @@
-import { Icon, type IconName, type ThemeMode } from "@locaryn/ui-core";
+import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { AboutSettings } from "../components/AboutSettings";
 import { ApiKeysSettings } from "../components/ApiKeysSettings";
@@ -30,7 +30,6 @@ import {
   getSlotContributions,
 } from "../components/extensions/SlotRegistry";
 import type { UseThemeReturn } from "../hooks/useTheme";
-import { ACCENT_PRESETS } from "../hooks/useTheme";
 import {
   type AppInfo,
   type InstalledExtension,
@@ -78,6 +77,12 @@ const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon:
   },
   { id: "memory", label: "Mémoire", desc: "Ce que Locaryn retient", icon: "memory" },
   { id: "archives", label: "Archives", desc: "Conversations rangées", icon: "archive" },
+  {
+    id: "appearance",
+    label: "Apparence & Langue",
+    desc: "Thème, couleur d'accentuation, langue",
+    icon: "studio",
+  },
 ];
 
 /**
@@ -138,13 +143,6 @@ function accountExtras(extensions: InstalledExtension[]): AccountExtra[] {
   return [...ready, ...pending];
 }
 
-/** Les trois réglages de thème, dans l'ordre où ils se lisent. */
-const THEME_MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
-  { value: "dark", label: "Sombre", icon: "moon" },
-  { value: "light", label: "Clair", icon: "sun" },
-  { value: "system", label: "Système", icon: "monitor" },
-];
-
 export type Section =
   | "account"
   | "extensions"
@@ -156,8 +154,6 @@ export type Section =
   | "server"
   | "secrets"
   | "storage"
-  | "appearance"
-  | "language"
   | "about";
 
 type SectionDef = {
@@ -224,8 +220,6 @@ const SECTIONS: SectionDef[] = [
     label: "Connecteurs & MCP",
     desc: "Connexions SSH, bases de données et serveurs MCP",
   },
-  { id: "appearance", icon: "studio", label: "Apparence", desc: "Couleur d'accentuation, thème" },
-  { id: "language", icon: "chat", label: "Langue", desc: "Langue de l'interface" },
   {
     id: "secrets",
     icon: "lock",
@@ -535,6 +529,7 @@ export function SettingsView({
             accountSection !== "api-keys" && (
               <AccountView
                 embedded
+                theme={theme}
                 section={accountSection as AccountSection}
                 onSectionChange={setAccountSection}
                 activeCapabilities={activeCapabilities}
@@ -563,73 +558,6 @@ export function SettingsView({
           {section === "extensions" && <ExtensionsSettings />}
           {section === "connectors" && <ConnectorsSettings />}
 
-          {section === "appearance" && (
-            <div className="locaryn-field">
-              <div className="locaryn-field-label">Thème</div>
-              <p className="locaryn-field-hint">
-                Sombre par défaut. En clair, l'accent s'assombrit tout seul pour rester lisible.
-              </p>
-              <div className="locaryn-segmented" style={{ marginTop: 12 }} role="group">
-                {THEME_MODES.map((m) => (
-                  <button
-                    key={m.value}
-                    type="button"
-                    className={`locaryn-segment${settings.mode === m.value ? " locaryn-segment-on" : ""}`}
-                    aria-pressed={settings.mode === m.value}
-                    onClick={() => updateMode(m.value)}
-                  >
-                    <Icon name={m.icon} size={14} />
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="locaryn-field-label" style={{ marginTop: 32 }}>
-                Couleur d'accentuation
-              </div>
-              <p className="locaryn-field-hint">
-                La teinte unique de l'interface. Sobre et naturelle par défaut.
-              </p>
-              <div className="locaryn-swatch-grid" style={{ marginTop: 12 }}>
-                {ACCENT_PRESETS.map((p) => (
-                  <button
-                    key={p.hex}
-                    type="button"
-                    className={`locaryn-swatch${settings.accentHex === p.hex ? " locaryn-swatch-active" : ""}`}
-                    style={{ background: p.hex }}
-                    title={p.name}
-                    aria-label={`Accent ${p.name}`}
-                    onClick={() => updateAccent(p.hex)}
-                  >
-                    {settings.accentHex === p.hex && (
-                      <span className="locaryn-swatch-check">
-                        <Icon name="check" size={14} />
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-              <div className="locaryn-custom-color" style={{ marginTop: 16 }}>
-                <input
-                  type="color"
-                  value={settings.accentHex}
-                  onChange={(e) => updateAccent(e.target.value)}
-                  className="locaryn-color-input"
-                  aria-label="Couleur personnalisée"
-                />
-                <span className="locaryn-color-value">{settings.accentHex}</span>
-              </div>
-              <button
-                type="button"
-                className="locaryn-settings-reset"
-                style={{ marginTop: 16 }}
-                onClick={resetTheme}
-              >
-                Réinitialiser l'apparence
-              </button>
-            </div>
-          )}
-
           {section === "server" && (
             <div className="locaryn-network-layout">
               <div className="locaryn-network-config">
@@ -646,42 +574,6 @@ export function SettingsView({
           {section === "secrets" && <SecretsSettings />}
           {section === "storage" && <StorageSettings onOpenMarketplace={onOpenMarketplace} />}
 
-          {section === "language" && (
-            <div className="locaryn-field">
-              <div className="locaryn-field-label">Langue de l'interface</div>
-              <p className="locaryn-field-hint">
-                Change la langue des textes de l'application. Les noms de modèles, de marques et les
-                termes techniques restent inchangés.
-              </p>
-              <div className="locaryn-lang-grid" style={{ marginTop: 12 }}>
-                {LANGUAGES.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    className={`locaryn-lang-item${lang === l.id ? " locaryn-active" : ""}`}
-                    onClick={() => setLang(l.id)}
-                  >
-                    <span className="locaryn-lang-flag">{l.flag}</span>
-                    <span>{l.label}</span>
-                    {lang === l.id && (
-                      <span className="locaryn-lang-check">
-                        <Icon name="check" size={14} />
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-              <p className="locaryn-field-hint" style={{ marginTop: 16 }}>
-                <strong>Jamais traduits</strong> — noms de produits et termes techniques :
-              </p>
-              <div className="locaryn-lang-terms">
-                {DO_NOT_TRANSLATE.slice(0, 14).map((w) => (
-                  <code key={w}>{w}</code>
-                ))}
-                <span className="locaryn-field-hint">+{DO_NOT_TRANSLATE.length - 14} autres</span>
-              </div>
-            </div>
-          )}
 
           {section === "about" && <AboutSettings />}
         </div>

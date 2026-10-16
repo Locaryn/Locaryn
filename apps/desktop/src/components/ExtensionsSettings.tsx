@@ -22,6 +22,7 @@ import { pickAnyFile } from "../lib/dialog";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
+import { useI18n } from "../lib/i18n";
 
 /**
  * The extension store, wired to the real registry.
@@ -154,6 +155,18 @@ function versionsOf(entry: CatalogEntry): MorphVersionRelease[] {
   ];
 }
 
+/** Author-provided description in the display language. Names are product
+ *  nouns (caveman stays caveman): never translated, only descriptions are. */
+function extDescription(
+  e: { description?: string | null; descriptionEn?: string | null } | null | undefined,
+  lang: "fr" | "en",
+  fallback: string,
+): string {
+  if (!e) return fallback;
+  if (lang === "en") return e.descriptionEn ?? e.description ?? fallback;
+  return e.description ?? fallback;
+}
+
 export function ExtensionsSettings() {
   // Le daemon fait foi pour les labels ; en cas de silence (daemon arrêté),
   // on garde la copie embarquée à la compilation.
@@ -176,6 +189,7 @@ export function ExtensionsSettings() {
   const [sources, setSources] = useState<CatalogSource[]>([]);
   const [ecosystem, setEcosystem] = useState<ExtensionEcosystem | "all">("all");
   const [query, setQuery] = useState("");
+  const { lang, t } = useI18n();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -764,7 +778,7 @@ export function ExtensionsSettings() {
       return (
         entry.name.toLowerCase().includes(q) ||
         entry.display_name.toLowerCase().includes(q) ||
-        (entry.description ?? "").toLowerCase().includes(q) ||
+        ((entry.description ?? "") + " " + (entry.descriptionEn ?? "")).toLowerCase().includes(q) ||
         entry.keywords.some((k) => k.toLowerCase().includes(q))
       );
     });
@@ -1153,7 +1167,7 @@ export function ExtensionsSettings() {
                         <div key={e.id} className="locaryn-box-card">
                           <div className="locaryn-box-head">
                             <div style={{ minWidth: 0 }}>
-                              <h3 className="locaryn-box-name">{e.name}</h3>
+                              <h3 className="locaryn-box-name" data-no-translate>{e.name}</h3>
                               <span className="locaryn-box-brand">
                                 v{e.version} · driver {e.core?.driver}
                               </span>
@@ -1167,7 +1181,7 @@ export function ExtensionsSettings() {
                             <span className="locaryn-tag">{meta.label}</span>
                           </div>
                           <p className="locaryn-box-desc">
-                            {e.description ?? "Pas de description fournie."}
+                            {extDescription(e, lang, t("Pas de description fournie."))}
                           </p>
                           <p className="locaryn-field-hint" style={{ wordBreak: "break-all" }}>
                             {e.core?.api_url}
@@ -1268,18 +1282,18 @@ export function ExtensionsSettings() {
                                       }}
                                     >
                                       <div style={{ minWidth: 0 }}>
-                                        <strong style={{ fontSize: 13 }}>{sk.name}</strong>
+                                        <strong style={{ fontSize: 13 }} data-no-translate>{sk.name}</strong>
                                         {!sk.verified && (
                                           <span className="locaryn-tag" style={{ marginLeft: 6 }}>
                                             non vérifié
                                           </span>
                                         )}
-                                        {sk.description && (
+                                        {extDescription(sk, lang, "") && (
                                           <span
                                             className="locaryn-field-hint"
                                             style={{ display: "block" }}
                                           >
-                                            {sk.description}
+                                            {extDescription(sk, lang, "")}
                                           </span>
                                         )}
                                       </div>
@@ -1321,7 +1335,7 @@ export function ExtensionsSettings() {
                       <div key={e.id} className="locaryn-box-card">
                         <div className="locaryn-box-head">
                           <div>
-                            <h3 className="locaryn-box-name">{e.name}</h3>
+                            <h3 className="locaryn-box-name" data-no-translate>{e.name}</h3>
                             <span className="locaryn-box-brand">
                               v{e.version}
                               {e.author ? ` · ${e.author}` : ""}
@@ -1345,7 +1359,7 @@ export function ExtensionsSettings() {
                         </div>
 
                         <p className="locaryn-box-desc">
-                          {e.description ?? "Pas de description fournie."}
+                          {extDescription(e, lang, t("Pas de description fournie."))}
                         </p>
                         <p className="locaryn-field-hint">{componentSummary(e)}</p>
                         {e.capabilities.length > 0 && (
@@ -1561,6 +1575,7 @@ export function ExtensionsSettings() {
                                 whiteSpace: "nowrap",
                               }}
                               title={c.display_name}
+                              data-no-translate
                             >
                               {c.display_name}
                             </h3>
@@ -1600,7 +1615,7 @@ export function ExtensionsSettings() {
                             minHeight: 48,
                           }}
                         >
-                          {c.description ?? "Pas de description fournie."}
+                          {extDescription(c, lang, t("Pas de description fournie."))}
                         </p>
 
                         <p
@@ -1692,14 +1707,14 @@ export function ExtensionsSettings() {
                   aria-label="Fermer le détail"
                   onClick={() => setSelectedDetailEntry(null)}
                 />
-                <aside className="locaryn-drawer" aria-label={`Détail de ${c.display_name}`}>
+                <aside className="locaryn-drawer" aria-label={t(`Détail de ${c.display_name}`)}>
                   <header className="locaryn-drawer-head">
                     <div className="locaryn-drawer-ident">
                       <span className="locaryn-box-brand">
                         {c.author ? `${c.author} · ` : ""}
                         {c.catalog_label}
                       </span>
-                      <h2 className="locaryn-drawer-name">{c.display_name}</h2>
+                      <h2 className="locaryn-drawer-name" data-no-translate>{c.display_name}</h2>
                     </div>
                     <button
                       type="button"
@@ -1713,7 +1728,7 @@ export function ExtensionsSettings() {
 
                   <div className="locaryn-drawer-body">
                     <p className="locaryn-drawer-desc">
-                      {c.description ?? "Aucune description fournie pour ce paquet."}
+                      {extDescription(c, lang, t("Aucune description fournie pour ce paquet."))}
                     </p>
 
                     <div className="locaryn-drawer-meta">

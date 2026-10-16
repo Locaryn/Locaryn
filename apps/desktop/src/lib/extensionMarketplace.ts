@@ -149,6 +149,9 @@ export function parseExtensionMarketplace(
           {
             id,
             label,
+            // Optional English rendering supplied by the morph author.
+            // Category ids are never translated.
+            labelEn: text(category.labelEn) ?? undefined,
             icon: text(category.icon) ?? "extensions",
             matches,
             requires: strings(category.requires),
@@ -165,6 +168,9 @@ export function parseExtensionMarketplace(
         const name = text(model.name);
         const brand = text(model.brand);
         const description = text(model.description);
+        // Optional English rendering supplied by the morph author.
+        // `name` and `brand` are product nouns: never translated.
+        const descriptionEn = text(model.descriptionEn);
         const license = text(model.license);
         const releaseDate = text(model.releaseDate);
         const releaseYear = number(model.releaseYear);
@@ -195,6 +201,7 @@ export function parseExtensionMarketplace(
             name,
             brand,
             description,
+            descriptionEn: descriptionEn ?? undefined,
             license,
             contextWindow: text(model.contextWindow) ?? undefined,
             releaseDate,

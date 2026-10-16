@@ -56,7 +56,7 @@ pub struct AgentInput {
     /// Contexte projet de la boucle d'outils. Quand les trois sont `Some`,
     /// l'agent tourne la boucle agentique au lieu d'un simple flux.
     pub project_id: Option<uuid::Uuid>,
-    pub project_path: Option<std::path::PathBuf>,
+    pub        project_path: Option<std::path::PathBuf>,
     pub trust: Option<locaryn_shared_types::TrustLevel>,
     /// Base64-encoded images attached to the user message (no data-URL prefix).
     /// Transmises aux modeles multimodaux par le champ `images` de la requete.
@@ -78,6 +78,11 @@ pub struct AgentInput {
     /// was before extensions existed.
     #[allow(clippy::doc_markdown)]
     pub extra_system: Option<String>,
+
+    /// Vrai quand le modèle signe ses commits « Co-Authored-By: Locaryn ».
+    /// Venu de la préférence du profil ; « None » vient d'un contexte sans
+    /// réglage lisible et laisse la consigne figée par défaut (vrai).
+    pub git_contributeur: Option<bool>,
     /// Ce que les personnes qui travaillent sur ce projet ont noté.
     ///
     /// Distinct de `extra_system`, qui porte l'apport des extensions et se
@@ -229,7 +234,7 @@ pub fn assemble_system_prompt(
     avec_outils: bool,
     extra: Option<&String>,
 ) -> String {
-    assemble_system_prompt_pour(consigne, avec_outils, extra, None, None)
+    assemble_system_prompt_pour(consigne, avec_outils, extra, None, None, None)
 }
 
 /// Le même message, plus ce que le projet ouvert permet de vérifier.
@@ -247,6 +252,7 @@ pub fn assemble_system_prompt_pour(
     extra: Option<&String>,
     projet: Option<&std::path::Path>,
     contexte: Option<&str>,
+    git_contributeur: Option<bool>,
 ) -> String {
     let mut morceaux: Vec<String> = Vec::new();
     if let Some(texte) = consigne.map(str::trim).filter(|texte| !texte.is_empty()) {
@@ -260,10 +266,16 @@ pub fn assemble_system_prompt_pour(
     }
     if avec_outils {
         morceaux.push(tool_discipline_prompt());
+        // Git : toujours dit quand un dossier est ouvert — le panneau
+        // Modifications le lit, le modèle doit l'avoir en tête ; la
+        // signature des commits suit le réglage du profil.
+        if projet.is_some() {
+            morceaux.push(git_discipline_prompt(git_contributeur.unwrap_or(true)));
+        }
         // Sans outils, la consigne serait creuse : il n'y aurait pas de
         // `run_command` pour lancer quoi que ce soit.
-        if let Some(racine) = projet {
-            if let Some(v) = verification::consigne(racine) {
+        if let Some(vers_proj) = projet {
+            if let Some(v) = verification::consigne(vers_proj) {
                 morceaux.push(v);
             }
         }
@@ -274,6 +286,27 @@ pub fn assemble_system_prompt_pour(
 /// Append `extra` to a base system prompt, under a heading that tells the
 /// model where the text came from. Kept here so both tool loops compose the
 /// prompt identically.
+/// Ce que le modèle doit savoir pour travailler avec Git dans le projet.
+///
+/// L'onglet « Modifications » lit `git status` et `git diff` : un projet sans
+/// dépôt peut avoir été créé par la conversation elle-même — l'application
+/// initie alors le dépôt, et ces consignes font que le modèle s'y retrouve.
+///
+/// `contributeur` signe les commits du nom de l'application, réglage que l'on
+/// peut retirer depuis le profil.
+pub fn git_discipline_prompt(contributeur: bool) -> String {
+    let mut text =
+        String::from("Version control - work with Git in this project:\n\n");
+    text.push_str("- Run `git status --short` before claiming anything about changes; `git diff` shows them. The workspace Modifications panel reports exactly what `git status` does: keep the two consistent.\n");
+    text.push_str("- When the user asks for a commit, or you have just finished a coherent unit of work in a versioned project, stage exactly what you touched (explicit paths to `git add`, `-A` only when everything changed) and commit. Never stage unrelated files.\n");
+    text.push_str("- Before committing, review `git diff --staged`; write the message in this repository's own style, focused on why rather than what.\n");
+    text.push_str("- Never rewrite history (rebase, force-push, hard reset) unless the user asks; never push.\n");
+    if contributeur {
+        text.push_str("\nWhen the commit was made while working through Locaryn, end the message with this trailer:\n\nGenerated with Locaryn - AI-assisted coding\nCo-Authored-By: Locaryn <noreply@locaryn.dev>\n");
+    }
+    text
+}
+
 pub fn compose_system_prompt(base: &str, extra: Option<&String>) -> String {
     match extra.map(|s| s.trim()).filter(|s| !s.is_empty()) {
         // Un apport qui porte déjà ses titres (extensions, mémoire) passe tel

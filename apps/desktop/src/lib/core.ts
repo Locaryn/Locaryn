@@ -526,6 +526,8 @@ export interface CoreSkillEntry {
   slug: string;
   name: string;
   description?: string | null;
+  /** English rendering of `description`. Absent = shown as-is. */
+  descriptionEn?: string | null;
   verified: boolean;
 }
 
@@ -543,6 +545,9 @@ export interface InstalledExtension {
   version: string;
   api_version: string;
   description: string | null;
+  /** English rendering of `description`, supplied by the author. Absent = shown as-is.
+   *  Names are product nouns and are never translated. */
+  descriptionEn?: string | null;
   author: string | null;
   homepage: string | null;
   kind: string;
@@ -590,6 +595,9 @@ export interface CatalogEntry {
   name: string;
   display_name: string;
   description: string | null;
+  /** English rendering of `description`, supplied by the author. Absent = shown as-is.
+   *  Names are product nouns and are never translated. */
+  descriptionEn?: string | null;
   author: string | null;
   version: string | null;
   homepage: string | null;
@@ -635,6 +643,9 @@ export interface ExtensionCommand {
   name: string;
   plugin: string;
   description: string | null;
+  /** English rendering of `description`, supplied by the author. Absent = shown as-is.
+   *  Names are product nouns and are never translated. */
+  descriptionEn?: string | null;
   arguments: string[];
 }
 
@@ -716,6 +727,9 @@ export interface ExtensionSourcePreview {
   name: string;
   version: string | null;
   description: string | null;
+  /** English rendering of `description`, supplied by the author. Absent = shown as-is.
+   *  Names are product nouns and are never translated. */
+  descriptionEn?: string | null;
   author: string | null;
   requested_permissions: string[];
   /** Serveurs MCP déclarés par la source (lien nom → commande ou URL). */
@@ -1519,6 +1533,23 @@ export interface ModelFit {
   overridable: boolean;
   /** Phrase montrée telle quelle : ce qui va se passer, pas un code. */
   message: string;
+  /**Les données de la phrase, structurées : rephrasées dans la langue
+   *  d'affichage par le renderer. Typées au strict nécessaire. */
+  message_parts?: {
+    variant: string;
+    used_gb?: number;
+    required_gb?: number;
+    free_vram_gb?: number;
+    free_ram_gb?: number;
+    vram_reserve_gb?: number;
+    ram_reserve_gb?: number;
+    gpu_layers?: number;
+    total_layers?: number;
+    context?: number;
+    smaller_context?: number;
+    suggested_quant?: string | null;
+    no_gpu?: boolean;
+  };
 }
 
 /** La machine telle que l'estimateur la mesure. */
@@ -1866,6 +1897,10 @@ export interface CoreApi {
    *  connecteurs partent au modèle. */
   outilsAlleges(): Promise<boolean>;
   definirOutilsAlleges(actif: boolean): Promise<boolean>;
+  /** Signe les commits du modèle « Co-Authored-By: Locaryn ». 
+   *  Coché par défaut. */
+  commitContributeur(): Promise<boolean>;
+  definirCommitContributeur(actif: boolean): Promise<boolean>;
   /** Le navigateur intégré : montrer à sa place, cacher, suivre la place. */
   browserShow(frame: BrowserFrame, url?: string): Promise<BrowserState>;
   browserHide(): Promise<void>;
@@ -2473,6 +2508,9 @@ const tauriCore: CoreApi = {
   freeChatProject: () => invoke<Project>("free_chat_project"),
   sessionWorkspace: (sessionId) => invoke<string>("session_workspace", { sessionId }),
   outilsAlleges: () => invoke<boolean>("outils_alleges"),
+  commitContributeur: () => invoke<boolean>("commit_contributeur"),
+  definirCommitContributeur: (actif: boolean) =>
+    invoke<boolean>("definir_commit_contributeur", { actif }),
   definirOutilsAlleges: (actif) => invoke<boolean>("definir_outils_alleges", { actif }),
   browserShow: (cadre, url) => invoke<BrowserState>("browser_show", { cadre, url: url ?? null }),
   browserHide: () => invoke("browser_hide"),
@@ -3982,6 +4020,12 @@ const demoCore: CoreApi = {
   },
   async definirOutilsAlleges(actif) {
     demoOutilsAlleges = actif;
+    return actif;
+  },
+  async commitContributeur() {
+    return true;
+  },
+  async definirCommitContributeur(actif) {
     return actif;
   },
   // Le navigateur est une vue native : il n'existe que dans l'application.

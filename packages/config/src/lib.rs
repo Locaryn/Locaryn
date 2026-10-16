@@ -77,6 +77,16 @@ pub struct AssistanceConfig {
     /// ce qu'elles apprennent de durable sur la personne.
     #[serde(default)]
     pub memory_learning_off: bool,
+    /// Signer les commits que le modèle pose dans un projet du nom de
+    /// « Locaryn » (`Co-Authored-By: Locaryn <noreply@locaryn.dev>`). Vrai par
+    /// défaut ; le désactiver fait partir les commits comme si la personne les
+    /// avait écrits seuls.
+    #[serde(default = "default_true")]
+    pub commit_contributeur: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -740,6 +750,9 @@ fn merge(into: &mut Config, other: Config) {
     // quel que soit le choix fait dans Réglages.
     if other.assistance.trim_tools {
         into.assistance.trim_tools = true;
+    }
+    if other.assistance.commit_contributeur {
+        into.assistance.commit_contributeur = true;
     }
     if other.assistance.default_trust != TrustLevel::default() {
         into.assistance.default_trust = other.assistance.default_trust;

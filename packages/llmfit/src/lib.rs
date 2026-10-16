@@ -21,7 +21,8 @@ pub mod hardware;
 pub mod quant;
 
 pub use estimate::{
-    estimate, FitReport, Headroom, KvType, ModelSpec, Placement, RunOptions, SpecSource, Verdict,
+    estimate, FitReport, Headroom, KvType, MessageParts, ModelSpec, Placement, RunOptions,
+    SpecSource, Verdict,
 };
 pub use gguf::{read_summary, GgufError, GgufSummary};
 pub use hardware::{profile, Backend, HardwareProfile};
@@ -161,6 +162,10 @@ fn introuvable(name: &str, hardware: &HardwareProfile, options: &RunOptions) -> 
         "Impossible de mesurer « {name} » : le fichier est introuvable dans le dossier des \
          modèles. Le chargement peut échouer."
     );
+    report.message_parts = MessageParts {
+        variant: "introuvable".to_string(),
+        ..Default::default()
+    };
     report
 }
 

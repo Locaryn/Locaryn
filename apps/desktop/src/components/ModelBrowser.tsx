@@ -20,6 +20,9 @@ import {
 import {
   type AttentionShape,
   MODEL_CATEGORIES,
+  categoryLabelText,
+  type DisplayLang,
+  familyDescription,
   type ModelCategory,
   type ModelCategoryDefinition,
   type ModelDownloadSource,
@@ -35,6 +38,7 @@ import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
 import { ModelObliterator } from "./ModelObliterator";
 import { ResponsibilityGate } from "./ResponsibilityGate";
 import { SpeedBadge, findMetric } from "./SpeedBadge";
+import { t, useI18n } from "../lib/i18n";
 
 type Props = {
   /** Download / Install model to local storage. */
@@ -152,7 +156,11 @@ type Pastille = { icon: IconName; label: string };
  * morph category the family belongs to, with the label and icon the morph
  * declared.
  */
-function capBadges(f: ModelFamily, morphCategories: ModelCategoryDefinition[] = []): Pastille[] {
+function capBadges(
+  f: ModelFamily,
+  morphCategories: ModelCategoryDefinition[] = [],
+  lang: DisplayLang = "fr",
+): Pastille[] {
   const caps: Pastille[] = [];
   if (f.source === "airllm" || f.variants.some((v) => v.quants.includes("airllm"))) {
     caps.push({ icon: "star", label: "AirLLM" });
@@ -160,12 +168,12 @@ function capBadges(f: ModelFamily, morphCategories: ModelCategoryDefinition[] = 
   const owned = familyMarketplaceCapabilities(f);
   for (const category of morphCategories) {
     if (category.matches.some((capability) => owned.has(capability))) {
-      caps.push({ icon: badgeIcon(category.icon), label: category.label });
+      caps.push({ icon: badgeIcon(category.icon), label: categoryLabelText(category, lang) });
     }
   }
   if (f.vision) caps.push({ icon: "image", label: "Vision" });
   if (f.code) caps.push({ icon: "cpu", label: "Code" });
-  if (f.reasoning) caps.push({ icon: "memory", label: "Raisonnement" });
+  if (f.reasoning) caps.push({ icon: "memory", label: t("Raisonnement") });
   if (f.instruct) caps.push({ icon: "chat", label: "Instruct" });
   return caps;
 }
@@ -277,7 +285,7 @@ function variantCompat(
   if (storageGb === 0) {
     return {
       level: "unknown",
-      label: "Modèle local",
+      label: t("Modèle local"),
       short: "Local",
       color: "var(--info)",
     };
@@ -285,7 +293,7 @@ function variantCompat(
   if (!hw) {
     return {
       level: "unknown",
-      label: "Analyse PC requise pour estimer",
+      label: t("Analyse PC requise pour estimer"),
       short: "?",
       color: "var(--text-faint)",
     };
@@ -296,33 +304,34 @@ function variantCompat(
   if (vram > 0 && need <= vram) {
     return {
       level: "gpu",
-      label: "Tient dans votre VRAM — fluide sur GPU",
-      short: "Fluide GPU",
+      label: t("Tient dans votre VRAM — fluide sur GPU"),
+      short: t("Fluide GPU"),
       color: "var(--accent-300)",
     };
   }
   if (need <= ram * 0.85) {
     return {
       level: "offload",
-      label: "Trop gros pour la VRAM, mais tourne via la RAM (offload CPU, plus lent)",
-      short: "OK via RAM",
+      label: t("Trop gros pour la VRAM, mais tourne via la RAM (offload CPU, plus lent)"),
+      short: t("OK via RAM"),
       color: "var(--warn)",
     };
   }
   if (airllm) {
     return {
       level: "airllm",
-      label:
+      label: t(
         "Trop lourd pour la VRAM/RAM de ce PC, mais exécutable localement via AirLLM " +
-        "(chargement des couches une par une — un GPU 4 Go de VRAM suffit)",
+          "(chargement des couches une par une — un GPU 4 Go de VRAM suffit)",
+      ),
       short: "AirLLM",
       color: "var(--info)",
     };
   }
   return {
     level: "heavy",
-    label: "Dépasse la mémoire de ce PC — non recommandé",
-    short: "Trop lourd",
+    label: t("Dépasse la mémoire de ce PC — non recommandé"),
+    short: t("Trop lourd"),
     color: "var(--danger)",
   };
 }
@@ -371,7 +380,7 @@ function compatFromFit(fit: ModelFit, airllm: boolean): Compat {
     return {
       level: "gpu",
       label: fit.message,
-      short: `Fluide GPU${speed}`,
+      short: t(`Fluide GPU${speed}`),
       color: "var(--accent-300)",
     };
   }
@@ -379,7 +388,7 @@ function compatFromFit(fit: ModelFit, airllm: boolean): Compat {
     return {
       level: "offload",
       label: fit.message,
-      short: `${fit.gpu_layers}/${fit.total_layers} couches GPU${speed}`,
+      short: t(`${fit.gpu_layers}/${fit.total_layers} couches GPU${speed}`),
       color: "var(--warn)",
     };
   }
@@ -402,7 +411,7 @@ function compatFromFit(fit: ModelFit, airllm: boolean): Compat {
   return {
     level: "heavy",
     label: fit.message,
-    short: "Trop lourd",
+    short: t("Trop lourd"),
     color: "var(--danger)",
   };
 }
@@ -713,6 +722,7 @@ export function ModelBrowser({
   const [airllmError, setAirllmError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "grid">("grid");
   const [selectedQuants, setSelectedQuants] = useState<Record<string, string>>({});
+  const { lang } = useI18n();
 
   useEffect(() => {
     try {
@@ -997,7 +1007,9 @@ export function ModelBrowser({
         }
         if (
           q &&
-          !`${f.name} ${f.brand} ${f.description} ${f.releaseDate}`.toLowerCase().includes(q)
+          !`${f.name} ${f.brand} ${f.description} ${f.descriptionEn ?? ""} ${f.releaseDate}`
+            .toLowerCase()
+            .includes(q)
         ) {
           return null;
         }
@@ -1904,12 +1916,12 @@ export function ModelBrowser({
       <div className="locaryn-models-top-bar">
         <div className="locaryn-view-stats" style={{ marginBottom: "var(--space-2)" }}>
           <span>
-            {catalogueCounts.familles} famille{catalogueCounts.familles > 1 ? "s" : ""}
+            {catalogueCounts.familles} {catalogueCounts.familles > 1 ? t("familles") : t("famille")}
           </span>
           <span>
-            {catalogueCounts.tailles} taille{catalogueCounts.tailles > 1 ? "s" : ""}
+            {catalogueCounts.tailles} {catalogueCounts.tailles > 1 ? t("tailles") : t("taille")}
           </span>
-          <span>{catalogueCounts.quants} quantifications</span>
+          <span>{catalogueCounts.quants} {t("quantifications")}</span>
         </div>
         <div className="locaryn-models-search-row">
           <input
@@ -1946,7 +1958,7 @@ export function ModelBrowser({
                 <option value="all">Toutes les années</option>
                 {years.map((y) => (
                   <option key={y} value={y.toString()}>
-                    Sortie {y}
+                    {t(`Sortie ${y}`)}
                   </option>
                 ))}
               </select>
@@ -2140,7 +2152,7 @@ export function ModelBrowser({
                   className={`locaryn-chip${category === cat.id ? " locaryn-chip-on" : ""}`}
                   onClick={() => setCategory(cat.id)}
                 >
-                  {isIconName(cat.icon) && <Icon name={cat.icon} size={14} />} {cat.label}
+                  {isIconName(cat.icon) && <Icon name={cat.icon} size={14} />} {categoryLabelText(cat, lang)}
                 </button>
               ))}
               <button
@@ -2461,21 +2473,21 @@ export function ModelBrowser({
                     </span>
                     <span style={{ color: "var(--accent-300)" }}>
                       <span className="locaryn-dot" style={{ background: "var(--accent-300)" }} />{" "}
-                      {counts.gpu} fluides GPU
+                      {counts.gpu} {t("fluides GPU")}
                     </span>
                     <span style={{ color: "var(--warn)" }}>
                       <span className="locaryn-dot" style={{ background: "var(--warn)" }} />{" "}
                       {counts.offload} via RAM
                     </span>
                     <span className="locaryn-hw-banner-note">
-                      — AirLLM actif : chaque modèle est exécutable en local
+                      {t("— AirLLM actif : chaque modèle est exécutable en local")}
                     </span>
                   </>
                 ) : (
                   <>
                     <span style={{ color: "var(--accent-300)" }}>
                       <span className="locaryn-dot" style={{ background: "var(--accent-300)" }} />{" "}
-                      {counts.gpu} fluides GPU
+                      {counts.gpu} {t("fluides GPU")}
                     </span>
                     <span style={{ color: "var(--warn)" }}>
                       <span className="locaryn-dot" style={{ background: "var(--warn)" }} />{" "}
@@ -2483,10 +2495,10 @@ export function ModelBrowser({
                     </span>
                     <span style={{ color: "var(--danger)" }}>
                       <span className="locaryn-dot" style={{ background: "var(--danger)" }} />{" "}
-                      {counts.heavy} trop lourds
+                      {counts.heavy} {t("trop lourds")}
                     </span>
                     <span className="locaryn-hw-banner-note">
-                      — triés du plus adapté au plus lourd
+                      {t("— triés du plus adapté au plus lourd")}
                     </span>
                   </>
                 )}
@@ -2539,8 +2551,8 @@ export function ModelBrowser({
             const maxP = Math.max(...paramNums);
             const cleanSizeRange = minP === maxP ? `${minP}B` : `${minP}B – ${maxP}B`;
             const expandLabel = isExpanded
-              ? "▲ Masquer les variantes"
-              : `▼ ${f.variants.length} variantes (${cleanSizeRange})`;
+              ? t("▲ Masquer les variantes")
+              : t(`▼ ${f.variants.length} variantes (${cleanSizeRange})`);
             const compat = familyBestCompat(f.variants, hardwareSpec, airllmEnabled, fits);
             // Family-level AirLLM speed estimate: best case = smallest variant.
             const bestVariant = f.variants.reduce((a, b) => (a.storageGb <= b.storageGb ? a : b));
@@ -2567,14 +2579,14 @@ export function ModelBrowser({
                   if ((e.target as HTMLElement).closest("button")) return;
                   setDrawerFamily(f.id);
                 }}
-                title="Voir le détail"
+                title={t("Voir le détail")}
               >
                 <div className="locaryn-box-head">
                   <div style={{ minWidth: 140, flex: "1 1 55%" }}>
-                    <span className="locaryn-box-brand" title={f.brand}>
+                    <span className="locaryn-box-brand" title={f.brand} data-no-translate>
                       {f.brand}
                     </span>
-                    <h3 className="locaryn-box-name" title={f.name}>
+                    <h3 className="locaryn-box-name" title={f.name} data-no-translate>
                       {f.name}
                     </h3>
                   </div>
@@ -2650,7 +2662,7 @@ export function ModelBrowser({
                         <Icon name="marketplace" size={15} /> HuggingFace
                       </span>
                     )}
-                    {capBadges(f, morphCategories).map((c) => (
+                    {capBadges(f, morphCategories, lang).map((c) => (
                       <span key={c.label} className="locaryn-tag">
                         <Icon name={c.icon} size={13} /> {c.label}
                       </span>
@@ -2659,7 +2671,7 @@ export function ModelBrowser({
                   </div>
                 </div>
 
-                <p className="locaryn-box-desc">{f.description}</p>
+                <p className="locaryn-box-desc">{familyDescription(f, lang)}</p>
 
                 {/* Contexte, licence, date : de la fiche, pas de la vignette.
                     La maquette n'en met aucun sur la carte. */}
@@ -2667,16 +2679,16 @@ export function ModelBrowser({
                   <div className="locaryn-box-stats">
                     {f.contextWindow && (
                       <div className="locaryn-stat-item">
-                        <span className="locaryn-stat-label">Contexte</span>
+                        <span className="locaryn-stat-label">{t("Contexte")}</span>
                         <span className="locaryn-stat-value">{f.contextWindow}</span>
                       </div>
                     )}
                     <div className="locaryn-stat-item">
-                      <span className="locaryn-stat-label">Licence</span>
+                      <span className="locaryn-stat-label">{t("Licence")}</span>
                       <span className="locaryn-stat-value">{f.license}</span>
                     </div>
                     <div className="locaryn-stat-item">
-                      <span className="locaryn-stat-label">Sortie</span>
+                      <span className="locaryn-stat-label">{lang === "en" ? "Released" : "Sortie"}</span>
                       <span className="locaryn-stat-value">{f.releaseDate}</span>
                     </div>
                   </div>
@@ -2691,7 +2703,7 @@ export function ModelBrowser({
                     className="locaryn-box-detail"
                     onClick={() => setDrawerFamily(f.id)}
                   >
-                    Détail
+                    {t("Détail")}
                     <Icon name="arrow-right" size={13} />
                   </button>
                 </div>
@@ -2717,10 +2729,10 @@ export function ModelBrowser({
                       aria-expanded={open}
                     >
                       <div className="locaryn-model-title">
-                        <span className="locaryn-model-name" title={f.name}>
+                        <span className="locaryn-model-name" title={f.name} data-no-translate>
                           {f.name}
                         </span>
-                        <span className="locaryn-model-brand" title={f.brand}>
+                        <span className="locaryn-model-brand" title={f.brand} data-no-translate>
                           {f.brand}
                         </span>
                       </div>
@@ -2765,7 +2777,7 @@ export function ModelBrowser({
                             <Icon name="marketplace" size={15} /> HuggingFace
                           </span>
                         )}
-                        {capBadges(f, morphCategories).map((c) => (
+                        {capBadges(f, morphCategories, lang).map((c) => (
                           <span key={c.label} className="locaryn-tag">
                             <Icon name={c.icon} size={13} /> {c.label}
                           </span>
@@ -2781,7 +2793,7 @@ export function ModelBrowser({
 
                 {open && (
                   <div className="locaryn-model-body">
-                    <p className="locaryn-model-desc">{f.description}</p>
+                    <p className="locaryn-model-desc">{familyDescription(f, lang)}</p>
                     {f.variants.map((v) => {
                       const activeQuant = selectedQuants[v.tag] || v.quants[0] || "q4_K_M";
                       const targetTag = getQuantTag(v.tag, activeQuant);
@@ -2892,7 +2904,7 @@ export function ModelBrowser({
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
                                 >
-                                  <Icon name="close" size={15} /> Annuler ({progress}%)
+                                  <Icon name="close" size={15} /> {t(`Annuler (${progress}%)`)}
                                 </button>
                               ) : compatV.level === "airllm" ? (
                                 (() => {
@@ -3823,11 +3835,11 @@ export function ModelBrowser({
                 aria-label="Fermer le détail"
                 onClick={() => setDrawerFamily(null)}
               />
-              <aside className="locaryn-drawer" aria-label={`Détail de ${f.name}`}>
+              <aside className="locaryn-drawer" aria-label={t(`Détail de ${f.name}`)}>
                 <header className="locaryn-drawer-head">
                   <div className="locaryn-drawer-ident">
-                    <span className="locaryn-box-brand">{f.brand}</span>
-                    <h2 className="locaryn-drawer-name">{f.name}</h2>
+                    <span className="locaryn-box-brand" data-no-translate>{f.brand}</span>
+                    <h2 className="locaryn-drawer-name" data-no-translate>{f.name}</h2>
                   </div>
                   <button
                     type="button"
@@ -3840,21 +3852,21 @@ export function ModelBrowser({
                 </header>
 
                 <div className="locaryn-drawer-body">
-                  <p className="locaryn-drawer-desc">{f.description}</p>
+                  <p className="locaryn-drawer-desc">{familyDescription(f, lang)}</p>
 
                   <div className="locaryn-drawer-meta">
                     {f.contextWindow && (
                       <div>
-                        <span>Contexte</span>
+                        <span>{t("Contexte")}</span>
                         <strong>{f.contextWindow}</strong>
                       </div>
                     )}
                     <div>
-                      <span>Licence</span>
+                      <span>{t("Licence")}</span>
                       <strong>{f.license}</strong>
                     </div>
                     <div>
-                      <span>Sortie</span>
+                      <span>{lang === "en" ? "Released" : "Sortie"}</span>
                       <strong>{f.releaseDate}</strong>
                     </div>
                   </div>
@@ -3978,7 +3990,7 @@ export function ModelBrowser({
                                   onClick={() => handleCancelInstall(targetTag)}
                                   title="Annuler le téléchargement en cours"
                                 >
-                                  <Icon name="close" size={15} /> Annuler ({progress}%)
+                                  <Icon name="close" size={15} /> {t(`Annuler (${progress}%)`)}
                                 </button>
                               ) : compatV.level === "airllm" ? (
                                 (() => {
