@@ -48,6 +48,7 @@ use locaryn_sdk::secure_client;
 mod api_fournisseur;
 mod server_history;
 mod server_mode;
+mod soutien;
 mod startup;
 mod storage_root;
 mod travel_mode;
@@ -7353,6 +7354,8 @@ pub fn run() {
             client_cert::announce_pairing,
             client_cert::confirm_pairing,
             server_mode::server_status,
+            soutien::soutien_etat,
+            soutien::soutien_repondre,
             api_fournisseur::provider_api_status,
             api_fournisseur::set_provider_api,
             api_fournisseur::list_api_keys,

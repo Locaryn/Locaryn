@@ -835,6 +835,14 @@ export interface ApiKeyCreated {
   expires_at: string | null;
 }
 
+/** Proposer une étoile GitHub : seulement sans réponse donnée, GitHub connecté. */
+export interface EtatSoutien {
+  proposer: boolean;
+  login: string | null;
+  /** Ce qu'« Oui » étoilerait : Locaryn puis les morphs installés. */
+  depots: string[];
+}
+
 /** Le QR de connexion d'un compte (code temporaire qui se renouvelle). */
 export interface UserLoginQr {
   code: string;
@@ -2029,6 +2037,8 @@ export interface CoreApi {
   createServerUser(username: string, password: string, isAdmin?: boolean): Promise<ServerStatus>;
   deleteServerUser(userId: string): Promise<ServerStatus>;
   providerApiStatus(): Promise<ProviderApiStatus>;
+  soutienEtat(): Promise<EtatSoutien>;
+  soutienRepondre(choix: "oui" | "tout" | "non"): Promise<{ etoiles: number; echecs: number }>;
   setProviderApi(enabled: boolean): Promise<ProviderApiStatus>;
   listApiKeys(): Promise<ApiKeyInfo[]>;
   createApiKey(label: string, expiresInDays: number | null): Promise<ApiKeyCreated>;
@@ -2615,6 +2625,9 @@ const tauriCore: CoreApi = {
     }),
   deleteServerUser: (userId) => invoke<ServerStatus>("delete_server_user", { userId }),
   providerApiStatus: () => invoke<ProviderApiStatus>("provider_api_status"),
+  soutienEtat: () => invoke<EtatSoutien>("soutien_etat"),
+  soutienRepondre: (choix) =>
+    invoke<{ etoiles: number; echecs: number }>("soutien_repondre", { choix }),
   setProviderApi: (enabled) => invoke<ProviderApiStatus>("set_provider_api", { enabled }),
   listApiKeys: () => invoke<ApiKeyInfo[]>("list_api_keys"),
   createApiKey: (label, expiresInDays) =>
@@ -4638,6 +4651,15 @@ Contenu de démonstration, avec **du gras** et une liste :
     blocker: "Aucun compte n'existe.",
   }),
   providerApiStatus: async () => ({ ...demoApi }),
+  soutienEtat: async () => ({
+    proposer: true,
+    login: "demo",
+    depots: ["Locaryn/Locaryn", "Locaryn/morph-browser", "Locaryn/morph-desktop"],
+  }),
+  soutienRepondre: async (choix) => ({
+    etoiles: choix === "tout" ? 14 : choix === "oui" ? 3 : 0,
+    echecs: 0,
+  }),
   setProviderApi: async (enabled) => {
     demoApi = { ...demoApi, enabled };
     return { ...demoApi };

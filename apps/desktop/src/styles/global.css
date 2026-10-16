@@ -14927,3 +14927,110 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-xs);
   color: var(--text-faint);
 }
+
+/* ── Soutien : une étoile GitHub, une fois ─────────────────────────────── */
+.locaryn-soutien {
+  width: min(520px, 100%);
+  padding: 28px 28px 24px;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+.locaryn-soutien h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.locaryn-soutien-etoile {
+  font-size: 42px;
+  line-height: 1;
+}
+.locaryn-soutien-detail {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  line-height: 1.6;
+}
+.locaryn-soutien-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.locaryn-soutien-non {
+  padding: 6px 12px;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.locaryn-soutien-non:hover {
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+.locaryn-soutien-oui {
+  width: auto;
+  padding: 8px 18px;
+}
+.locaryn-soutien-fond {
+  padding: 10px 18px;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  color: #1a1a1a;
+  background: linear-gradient(135deg, #f2c94c, #f2994a 55%, #eb5757);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 6px 22px rgba(242, 153, 74, 0.45);
+  animation: locaryn-soutien-vibre 2.4s ease-in-out infinite;
+}
+.locaryn-soutien-fond:hover {
+  animation-duration: 0.9s;
+  filter: brightness(1.08);
+}
+.locaryn-soutien-fond:disabled,
+.locaryn-soutien-oui:disabled,
+.locaryn-soutien-non:disabled {
+  opacity: 0.6;
+  cursor: progress;
+  animation: none;
+}
+/* Une secousse brève toutes les deux secondes, pas un tremblement continu. */
+@keyframes locaryn-soutien-vibre {
+  0%,
+  70%,
+  100% {
+    transform: translateX(0) rotate(0) scale(1);
+  }
+  74% {
+    transform: translateX(-3px) rotate(-2deg) scale(1.04);
+  }
+  78% {
+    transform: translateX(3px) rotate(2deg) scale(1.06);
+  }
+  82% {
+    transform: translateX(-3px) rotate(-2deg) scale(1.06);
+  }
+  86% {
+    transform: translateX(2px) rotate(1deg) scale(1.04);
+  }
+  90% {
+    transform: translateX(0) rotate(0) scale(1.02);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-soutien-fond {
+    animation: none;
+  }
+}
+.locaryn-confettis {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 200;
+}

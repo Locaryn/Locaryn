@@ -13,6 +13,7 @@ import { ModeleTropLourd } from "./components/ModeleTropLourd";
 import { NAVIGABLE_VIEWS, NavDrawer, isNativeViewAccessible } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { SupportDialog } from "./components/SupportDialog";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
 import { TopBar } from "./components/TopBar";
 import { UpdateDialog } from "./components/UpdateDialog";
@@ -1534,6 +1535,7 @@ export function App() {
           que lorsqu'il y a quelque chose a dire, et ce qu'elle dit vaut pour
           l'application entiere. */}
         <UpdateDialog />
+        <SupportDialog />
         {/* Un chargement refusé par la prudence choisie se dit dans une fenêtre. */}
         <ModeleTropLourd onOpenSettings={() => setActiveView("settings")} />
         {/* Le clic droit de l'application, à la place du menu du navigateur. */}

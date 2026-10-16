@@ -8,6 +8,7 @@ import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
 import { SousAgentsEnCours } from "../components/SousAgentsEnCours";
+import { REPONSE_FINIE_EVENT } from "../components/SupportDialog";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ContextDetails, type ContextUsage } from "../components/chat/ContextDetails";
 import { FichiersDuTour } from "../components/chat/FichiersDuTour";
@@ -1219,6 +1220,10 @@ ${d.texte}`
       return;
     }
     // L'appel complet (ou la suite du texte) remplace les brouillons.
+    // La première vraie réponse ouvre, une fois, la proposition de soutien.
+    if (ev.type === "message_end" && fullTextRef.current.trim()) {
+      window.dispatchEvent(new CustomEvent(REPONSE_FINIE_EVENT));
+    }
     if (ev.type === "tool_call" || ev.type === "message_end") {
       setItems((prev) =>
         prev.some((it) => it.kind === "brouillon")
