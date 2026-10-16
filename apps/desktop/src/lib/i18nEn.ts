@@ -744,7 +744,6 @@ export const EN_EXACT: Record<string, string> = {
   "Everything (démo)": "Everything (demo)",
   "Excellente qualité compressée par calibration.":
     "Excellent quality, compressed through calibration.",
-  "Excellente vitesse d'inférence sur puces ARM.": "Excellent inference speed on ARM chips.",
   "Exception posée sur cette conversation ; les autres chats ne bougent pas.":
     "Exception set on this conversation; other chats are unchanged.",
   "Experts des N premières couches sur le CPU (-ncmoe N)":
@@ -2268,9 +2267,10 @@ export const EN_EXACT: Record<string, string> = {
   "version inconnue": "unknown version",
   Étapes: "Steps",
   "2-bit Extrême": "2-bit Extreme",
-  "4-bit Vectorisé (ARM / NPU)": "4-bit Vectorized (ARM / NPU)",
-  "4-bit structuré par blocs, optimisé pour l'accélération matricielle parallèle sur puces ARM / Apple Silicon.":
-    "Block-structured 4-bit, optimized for parallel matrix acceleration on ARM / Apple Silicon chips.",
+  "4-bit ARM (format retiré)": "4-bit ARM (retired format)",
+  "Ancien réarrangement de Q4_0 pour les processeurs ARM. Les versions récentes de llama.cpp ne le chargent plus : prenez Q4_0, réarrangé automatiquement au chargement.":
+    "Old Q4_0 repacking for ARM processors. Recent llama.cpp versions no longer load it: pick Q4_0, repacked automatically at load time.",
+  "Format obsolète.": "Obsolete format.",
   "4-bit uniforme avec offset pour une fidélité légèrement supérieure à Q4_0.":
     "Uniform 4-bit with offset for slightly higher fidelity than Q4_0.",
   "6-bit K-Quant (Qualité / RAM)": "6-bit K-Quant (Quality / RAM)",
