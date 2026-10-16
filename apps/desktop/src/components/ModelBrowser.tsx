@@ -172,7 +172,7 @@ function capBadges(
     }
   }
   if (f.vision) caps.push({ icon: "image", label: "Vision" });
-  if (f.code) caps.push({ icon: "cpu", label: "Code" });
+  if (f.code) caps.push({ icon: "code", label: "Code" });
   if (f.reasoning) caps.push({ icon: "memory", label: t("Raisonnement") });
   if (f.instruct) caps.push({ icon: "chat", label: "Instruct" });
   return caps;
@@ -1303,16 +1303,16 @@ export function ModelBrowser({
     }
     if (q.includes("Q4_0_4_4") || q.includes("Q4_0_8_8") || q.includes("Q4_0_4_8")) {
       return {
-        badge: "4-bit Vectorisé (ARM / NPU)",
+        badge: "4-bit ARM (format retiré)",
         badgeStyle: {
-          background: "rgba(110, 168, 254, 0.15)",
-          color: "var(--info)",
-          border: "1px solid rgba(110, 168, 254, 0.35)",
+          background: "rgba(251, 191, 36, 0.15)",
+          color: "var(--warn)",
+          border: "1px solid rgba(251, 191, 36, 0.35)",
         },
         advice:
-          "4-bit structuré par blocs, optimisé pour l'accélération matricielle parallèle sur puces ARM / Apple Silicon.",
-        detail: "Excellente vitesse d'inférence sur puces ARM.",
-        priority: 88,
+          "Ancien réarrangement de Q4_0 pour les processeurs ARM (CPU, pas NPU). Les versions récentes de llama.cpp ne le chargent plus : prenez Q4_0, réarrangé automatiquement au chargement.",
+        detail: "Format obsolète.",
+        priority: 40,
         isRecommended: false,
         category: "recommended",
       };

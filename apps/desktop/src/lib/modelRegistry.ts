@@ -377,7 +377,7 @@ export interface ModelCategoryDefinition {
 export const MODEL_CATEGORIES: ModelCategoryDefinition[] = [
   { id: "all", label: "Tous", labelEn: "All", icon: "models", matches: [] },
   { id: "chat", label: "Chat / Instruct", icon: "chat", matches: ["chat"] },
-  { id: "code", label: "Code", icon: "cpu", matches: ["code"] },
+  { id: "code", label: "Code", icon: "code", matches: ["code"] },
   { id: "vision", label: "Vision", icon: "image", matches: ["vision"] },
   { id: "reasoning", label: "Raisonnement", labelEn: "Reasoning", icon: "memory", matches: ["reasoning"] },
 ];
