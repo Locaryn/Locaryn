@@ -374,6 +374,7 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
 pub async fn signaler_activite(core: State<'_, Core>) -> Result<(), String> {
     if let Some(p) = core.storage.providers.active().await.ok().flatten() {
         if crate::moteur_supervise(&p.engine) {
+            tracing::info!("délai d'inactivité repoussé : la personne se sert de l'application");
             core.supervisor.note_activity(&p.engine).await;
         }
     }

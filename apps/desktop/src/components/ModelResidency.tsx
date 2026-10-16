@@ -223,7 +223,11 @@ export function ModelResidency() {
   // lisait sa réponse ou qu'on écrivait la suite.
   useEffect(() => {
     let dernier = 0;
-    const surActivite = () => {
+    const surActivite = (e: Event) => {
+      // Regarder le compte à rebours ou ouvrir ce panneau n'est pas se servir
+      // du modèle : un clic ici le remettait à 30 min, et le modèle n'était
+      // jamais libéré tant qu'on le surveillait.
+      if (boxRef.current && e.target instanceof Node && boxRef.current.contains(e.target)) return;
       const maintenant = Date.now();
       if (maintenant - dernier < 60_000) return;
       dernier = maintenant;

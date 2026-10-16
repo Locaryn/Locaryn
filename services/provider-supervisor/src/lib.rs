@@ -156,6 +156,9 @@ struct EngineState {
     pinned: bool,
     /// Vrai quand l'instance tournait déjà et a été adoptée sous supervision.
     adopted: bool,
+    /// Depuis quand le délai est prolongé parce que le moteur dit travailler
+    /// sans que personne de connu ne l'utilise (voir la boucle de santé).
+    occupe_depuis: Option<Instant>,
 }
 
 impl EngineState {
@@ -489,6 +492,7 @@ impl Supervisor {
                     pinned: false,
                     owned: true,
                     adopted: true,
+                    occupe_depuis: None,
                 });
                 drop(states);
 
@@ -640,6 +644,7 @@ impl Supervisor {
                         owned: true,
                         pinned,
                         adopted: false,
+                        occupe_depuis: None,
                     },
                 );
             }
@@ -922,6 +927,7 @@ impl Supervisor {
         let mut states = self.inner.states.lock().await;
         if let Some(s) = states.get_mut(engine) {
             s.last_activity = Instant::now();
+            s.occupe_depuis = None;
         }
     }
 
@@ -985,6 +991,7 @@ impl Supervisor {
                 pinned: false,
                 owned: true,
                 adopted: true,
+                occupe_depuis: None,
             }
         });
     }
@@ -1173,7 +1180,14 @@ impl Supervisor {
                     let idle = Instant::now().duration_since(state.last_activity);
                     // Une réponse demandée par quelqu'un n'est jamais coupée.
                     if self.utilisateur_occupe() {
+                        if idle >= idle_timeout {
+                            tracing::info!(
+                                ?engine,
+                                "délai d'inactivité repoussé : une réponse est en cours"
+                            );
+                        }
                         state.last_activity = Instant::now();
+                        state.occupe_depuis = None;
                         continue;
                     }
                     // Un moteur en pleine génération n'est pas inactif, même
@@ -1182,13 +1196,29 @@ impl Supervisor {
                     // était coupée en plein travail. Le travail d'arrière-plan
                     // de l'application, lui, ne retient pas le modèle : à
                     // l'échéance, tant pis s'il n'a pas fini.
+                    // Prolongé une fois au plus : une requête restée pendue (client
+                    // parti, génération qui ne finit pas) gardait le modèle en
+                    // mémoire pour toujours, le compte à rebours repartant à
+                    // 30 min à chaque échéance.
+                    let deja_prolonge = state
+                        .occupe_depuis
+                        .is_some_and(|d| Instant::now().duration_since(d) >= idle_timeout);
                     if idle >= idle_timeout
+                        && !deja_prolonge
                         && !self.arriere_plan_actif()
                         && !extension_specs.contains_key(engine.as_token().as_str())
                         && llama_occupe(&self.inner.http, &state.endpoint).await
                     {
+                        tracing::info!(?engine, "délai d'inactivité repoussé : le moteur génère encore (requête hors de l'application)");
+                        state.occupe_depuis.get_or_insert_with(Instant::now);
                         state.last_activity = Instant::now();
                         continue;
+                    }
+                    if deja_prolonge && idle >= idle_timeout {
+                        tracing::warn!(
+                            ?engine,
+                            "moteur toujours occupé après une prolongation : éjection quand même"
+                        );
                     }
                     if idle >= idle_timeout {
                         tracing::info!(
