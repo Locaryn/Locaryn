@@ -182,7 +182,7 @@ type Props = {
 const SECTIONS: SectionDef[] = [
   {
     id: "account",
-    icon: "private",
+    icon: "user-circle",
     label: "Compte",
     desc: "Profil local, identité, préférences et mémoire",
   },
@@ -548,8 +548,8 @@ export function SettingsView({
           {section === "huggingface" && <HuggingFaceSettings />}
           {section === "projects" && (
             <>
-              <GitSettings />
               <ProjectSettings projects={projects} onArchived={onProjectArchived} />
+              <GitSettings />
             </>
           )}
           {section === "extensions" && <ExtensionsSettings />}

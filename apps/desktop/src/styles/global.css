@@ -15046,9 +15046,40 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   z-index: 200;
 }
 
-.locaryn-settings-subtitle {
-  margin: 0 0 var(--space-2);
+.locaryn-git-reglages {
+  margin-top: var(--space-5, 24px);
+  padding-top: var(--space-4, 18px);
+  border-top: 1px solid var(--border);
+}
+.locaryn-git-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-3, 12px);
+}
+.locaryn-git-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 8px);
+  cursor: pointer;
+}
+.locaryn-git-option input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.locaryn-git-option-texte {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.locaryn-git-option-titre {
   font-size: var(--text-sm);
-  font-weight: 600;
   color: var(--text);
+}
+.locaryn-git-option-texte .locaryn-field-hint {
+  margin: 0;
 }

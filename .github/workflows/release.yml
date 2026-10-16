@@ -118,22 +118,8 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }} -p locaryn-daemon -p locaryn-cli -p locaryn-server
 
       # ── Archive portable ───────────────────────────────────────────────
-      - name: Archive portable (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $out = "dist/locaryn-server-portable"
-          New-Item -ItemType Directory -Force $out | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/locaryn-daemon.exe" $out
-          Copy-Item "target/${{ matrix.target }}/release/locaryn.exe" $out
-          Copy-Item "target/${{ matrix.target }}/release/locaryn-server.exe" $out
-          Copy-Item "README.md","LICENSE*" $out -EA SilentlyContinue
-          Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-server-${{ matrix.label }}.zip" -Force
-          # Le dossier portable est déjà archivé dans le .zip : on le retire,
-          # sinon ses binaires bruts (locaryn-daemon.exe, locaryn.exe) se
-          # retrouvent en doublon dans l'artefact puis dans la release.
-          Remove-Item $out -Recurse -Force
-
+      # Windows : pas d'archive portable du serveur — le .msi (démon, CLI,
+      # locaryn-server, ajoutés au PATH) est la seule forme publiée.
       - name: Archive portable (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -478,24 +464,14 @@ jobs:
           Compress-Archive -Path "$out/*" -DestinationPath "dist/locaryn-$env:VER-desktop-windows-arm64-portable.zip" -Force
           Remove-Item $out -Recurse -Force
 
-          # Serveur sans interface : les mêmes binaires, déjà compilés.
-          $srv = "dist/locaryn-server-portable"
-          New-Item -ItemType Directory -Force $srv | Out-Null
-          Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn-daemon.exe" $srv
-          Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn.exe" $srv
-          Copy-Item "target/aarch64-pc-windows-msvc/release/locaryn-server.exe" $srv
-          Copy-Item "README.md","LICENSE*" $srv -EA SilentlyContinue
-          Compress-Archive -Path "$srv/*" -DestinationPath "dist/locaryn-$env:VER-server-windows-arm64.zip" -Force
-          Remove-Item $srv -Recurse -Force
           Get-ChildItem dist
 
       # L'installeur du serveur pour Windows ARM64, comme en x64 : démon, CLI
       # et locaryn-server, ajoutés au PATH. Les binaires sont déjà compilés
       # pour la cible (`--no-build`) ; main.wxs choisit Program Files 64 bits
-      # pour arm64. Non bloquant le temps d'une première publication.
+      # pour arm64. Seule forme publiée du serveur Windows ARM64.
       - name: Installeur .msi du serveur (ARM64)
         shell: pwsh
-        continue-on-error: true
         working-directory: services/daemon
         run: |
           cargo install cargo-wix --locked
@@ -900,14 +876,12 @@ jobs:
 
             | Plateforme | Fichier | Notes |
             |---|---|---|
-            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.msi` | installe le démon **et** la CLI, et les ajoute au PATH — installation pour tous les utilisateurs, donc à lancer en administrateur |
-            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.zip` | portable, sans auto-update |
+            | Windows x64 | `locaryn-${{ env.VER }}-server-windows-x64.msi` | installe le démon, la CLI et `locaryn-server`, et les ajoute au PATH (en administrateur) |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.deb` | Debian / Ubuntu |
             | Linux x64 | `locaryn-${{ env.VER }}-server-linux-x64.tar.gz` | portable, sans auto-update |
             | Linux ARM64 | `locaryn-${{ env.VER }}-server-linux-arm64.deb` | Debian / Ubuntu (Raspberry Pi 5, serveurs ARM) |
             | Linux ARM64 | `locaryn-${{ env.VER }}-server-linux-arm64.tar.gz` | portable, sans auto-update |
             | Windows ARM64 | `locaryn-${{ env.VER }}-server-windows-arm64.msi` | installe le démon, la CLI et `locaryn-server`, et les ajoute au PATH (en administrateur) |
-            | Windows ARM64 | `locaryn-${{ env.VER }}-server-windows-arm64.zip` | portable |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.pkg` | installe le démon **et** la CLI dans `/usr/local/bin` |
             | macOS Apple Silicon | `locaryn-${{ env.VER }}-server-macos-arm64.tar.gz` | portable |
             | macOS Intel | `locaryn-${{ env.VER }}-server-macos-x64.pkg` | installe le démon **et** la CLI dans `/usr/local/bin` |

@@ -30,37 +30,38 @@ export function GitSettings() {
     void core.setGitReglages(suivant).catch(() => setR(r));
   };
 
+  const options: { cle: keyof ReglagesGit; titre: string; aide: string }[] = [
+    {
+      cle: "init_auto",
+      titre: "Créer un dépôt Git dans les projets qui n'en ont pas",
+      aide: "Dès que l'agent écrit un fichier, chaque modification se suit et s'annule. Jamais à la racine d'un disque ni dans votre dossier personnel.",
+    },
+    {
+      cle: "co_auteur",
+      titre: "Ajouter Locaryn en co-auteur des commits de l'agent",
+      aide: "Les commits de l'agent portent « Co-Authored-By: Locaryn » : sur GitHub, on voit ce qui vient de lui. Vos propres commits ne changent pas.",
+    },
+  ];
+
   return (
-    <div className="locaryn-notif-settings">
-      <h4 className="locaryn-settings-subtitle">Suivi Git</h4>
-      <label className="locaryn-notif-groupe">
-        <input
-          type="checkbox"
-          checked={r.init_auto}
-          onChange={(e) => appliquer({ ...r, init_auto: e.target.checked })}
-        />
-        <span className="locaryn-notif-groupe-texte">
-          <strong>Créer un dépôt Git dans les projets qui n'en ont pas</strong>
-          <span className="locaryn-field-hint">
-            Dès que l'agent écrit un fichier, chaque modification se suit et s'annule. Jamais à la
-            racine d'un disque ni dans votre dossier personnel.
-          </span>
-        </span>
-      </label>
-      <label className="locaryn-notif-groupe">
-        <input
-          type="checkbox"
-          checked={r.co_auteur}
-          onChange={(e) => appliquer({ ...r, co_auteur: e.target.checked })}
-        />
-        <span className="locaryn-notif-groupe-texte">
-          <strong>Ajouter Locaryn en co-auteur des commits de l'agent</strong>
-          <span className="locaryn-field-hint">
-            Les commits que fait l'agent portent « Co-Authored-By: Locaryn » : sur GitHub, on voit
-            ce qui vient de lui. Vos propres commits ne changent pas.
-          </span>
-        </span>
-      </label>
+    <div className="locaryn-field locaryn-git-reglages">
+      <div className="locaryn-field-label">Suivi Git</div>
+      <p className="locaryn-field-hint">Pour tous les projets.</p>
+      <div className="locaryn-git-options">
+        {options.map((o) => (
+          <label key={o.cle} className="locaryn-git-option">
+            <input
+              type="checkbox"
+              checked={r[o.cle]}
+              onChange={(e) => appliquer({ ...r, [o.cle]: e.target.checked })}
+            />
+            <span className="locaryn-git-option-texte">
+              <span className="locaryn-git-option-titre">{o.titre}</span>
+              <span className="locaryn-field-hint">{o.aide}</span>
+            </span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
