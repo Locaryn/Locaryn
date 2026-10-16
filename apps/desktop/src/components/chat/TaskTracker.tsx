@@ -3,11 +3,13 @@ import { useState } from "react";
 
 const CLE_REPLI = "locaryn.suivi.replie";
 
+/** Replié par défaut : une ligne, comme la liste de tâches de Freebuff ou de
+ *  Claude Code. Déplié, il est retenu d'un plan à l'autre. */
 function lireRepli(): boolean {
   try {
-    return localStorage.getItem(CLE_REPLI) === "1";
+    return localStorage.getItem(CLE_REPLI) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -36,9 +38,13 @@ const LIBELLE_ETAT: Record<Suivi["etat"], string> = {
 };
 
 /**
- * Le suivi d'un plan (`/plan`, `/workflow`) ou d'un objectif (`/objectif`) :
- * combien d'étapes, lesquelles sont faites, laquelle tourne. Il remplace les
- * lignes de journal « Étape 2/5 » qui se perdaient entre les réponses.
+ * Le suivi d'un plan (`/plan`, `/workflow`) ou d'un objectif (`/objectif`),
+ * posé au-dessus de la zone de saisie, à la largeur de la conversation.
+ *
+ * Replié : une ligne — « Plan 2/5 », l'étape en cours, l'essai. Déplié : la
+ * liste, les étapes faites cochées et barrées. Il remplace les lignes de
+ * journal « Étape 2/5 » qui se perdaient entre les réponses, sans plus
+ * cacher la conversation comme le grand cadre d'avant.
  */
 export function TaskTracker({
   suivi,
@@ -49,8 +55,6 @@ export function TaskTracker({
   onArreter?: () => void;
   onFermer?: () => void;
 }) {
-  // Replié, le suivi ne garde que sa tête et l'étape en cours : il ne cache
-  // plus la conversation. Le choix est retenu d'un plan à l'autre.
   const [replie, setReplie] = useState(lireRepli);
   const basculer = () => {
     setReplie((r) => {
@@ -63,104 +67,81 @@ export function TaskTracker({
     });
   };
   const faites = suivi.etapes.filter((e) => e.etat === "fait").length;
-  const courante = suivi.etapes.find((e) => e.etat === "cours");
+  const courante =
+    suivi.etapes.find((e) => e.etat === "cours") ?? suivi.etapes.find((e) => e.etat === "echec");
   const total = suivi.etapes.length;
   const enCours = suivi.etat === "cours";
+  const etat = `${LIBELLE_ETAT[suivi.etat]}${
+    suivi.genre === "plan" && suivi.maxEssais > 1 && suivi.essai > 1
+      ? ` · essai ${suivi.essai}/${suivi.maxEssais}`
+      : ""
+  }`;
   return (
     <section
-      className={`locaryn-suivi is-${suivi.etat}`}
+      className={`locaryn-todo is-${suivi.etat}${replie ? "" : " is-ouvert"}`}
       aria-label={suivi.genre === "plan" ? "Plan" : "Objectif"}
     >
-      <header className="locaryn-suivi-tete">
-        <span className="locaryn-suivi-icone" aria-hidden>
-          <Icon name={suivi.genre === "plan" ? "list-bullets" : "crosshair"} size={16} />
-        </span>
-        <span className="locaryn-suivi-titre">
-          <strong>{suivi.genre === "plan" ? "Plan" : "Objectif"}</strong>
-          <span>{suivi.titre}</span>
-        </span>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span className="locaryn-suivi-compte" aria-live="polite">
+      <div className="locaryn-todo-ligne">
+        <button
+          type="button"
+          className="locaryn-todo-tete"
+          onClick={basculer}
+          aria-expanded={!replie}
+          title={replie ? "Voir toutes les étapes" : "Replier"}
+        >
+          <Icon name={suivi.genre === "plan" ? "list-bullets" : "crosshair"} size={14} />
+          <span className="locaryn-todo-libelle">
+            {suivi.genre === "plan" ? "Plan" : "Objectif"}
+          </span>
+          <span className="locaryn-todo-compte" aria-live="polite">
             {suivi.genre === "plan" ? `${faites}/${total}` : `tour ${total}`}
           </span>
-          <button
-            type="button"
-            className={`locaryn-suivi-replier${replie ? " is-replie" : ""}`}
-            onClick={basculer}
-            title={replie ? "Déplier le suivi" : "Replier le suivi"}
-            aria-label={replie ? "Déplier le suivi" : "Replier le suivi"}
-            aria-expanded={!replie}
-          >
-            <Icon name="caret-down" size={14} />
-          </button>
-          {onFermer && !enCours && (
-            <button
-              type="button"
-              className="locaryn-suivi-fermer"
-              onClick={onFermer}
-              title="Fermer ce suivi"
-              aria-label="Fermer ce suivi"
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                padding: "2px 4px",
-                color: "var(--text-faint)",
-                display: "inline-flex",
-                alignItems: "center",
-              }}
-            >
-              <Icon name="x" size={14} />
-            </button>
-          )}
-        </div>
-      </header>
-
-      {replie && courante && <p className="locaryn-suivi-courante">{courante.texte}</p>}
-
-      {suivi.genre === "plan" && total > 0 && (
-        <div className="locaryn-suivi-barre" aria-hidden>
-          {suivi.etapes.map((e, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: une étape n'a pas d'autre identité que son rang.
-            <span key={i} className={`is-${e.etat}`} />
-          ))}
-        </div>
-      )}
-
-      <ol className="locaryn-suivi-etapes" hidden={replie}>
-        {suivi.etapes.map((e, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: une étape n'a pas d'autre identité que son rang.
-          <li key={i} className={`is-${e.etat}`}>
-            <span className="locaryn-suivi-puce" aria-hidden>
-              {e.etat === "fait" ? (
-                <Icon name="check" size={12} />
-              ) : e.etat === "echec" ? (
-                <Icon name="close" size={12} />
-              ) : e.etat === "cours" ? (
-                <span className="locaryn-suivi-pouls" />
-              ) : (
-                i + 1
-              )}
-            </span>
-            <span className="locaryn-suivi-texte">{e.texte}</span>
-          </li>
-        ))}
-      </ol>
-
-      <footer className="locaryn-suivi-pied">
-        <span className={`locaryn-suivi-etat is-${suivi.etat}`}>
-          {LIBELLE_ETAT[suivi.etat]}
-          {suivi.genre === "plan" &&
-            suivi.maxEssais > 1 &&
-            ` · essai ${suivi.essai}/${suivi.maxEssais}`}
-        </span>
-        {suivi.note && !replie && <span className="locaryn-suivi-note">{suivi.note}</span>}
+          <span className="locaryn-todo-courante">
+            {replie ? (courante?.texte ?? suivi.titre) : suivi.titre}
+          </span>
+          <span className={`locaryn-todo-etat is-${suivi.etat}`}>{etat}</span>
+          <Icon name={replie ? "caret-right" : "caret-down"} size={13} />
+        </button>
         {enCours && onArreter && (
-          <button type="button" className="locaryn-suivi-arreter" onClick={onArreter}>
+          <button type="button" className="locaryn-todo-arreter" onClick={onArreter}>
             Arrêter
           </button>
         )}
-      </footer>
+        {!enCours && onFermer && (
+          <button
+            type="button"
+            className="locaryn-todo-fermer"
+            onClick={onFermer}
+            title="Fermer ce suivi"
+            aria-label="Fermer ce suivi"
+          >
+            <Icon name="x" size={13} />
+          </button>
+        )}
+      </div>
+
+      {!replie && (
+        <>
+          <ol className="locaryn-todo-liste">
+            {suivi.etapes.map((e, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: une étape n'a pas d'autre identité que son rang.
+              <li key={i} className={`is-${e.etat}`}>
+                <span className="locaryn-todo-puce" aria-hidden>
+                  {e.etat === "fait" ? (
+                    <Icon name="check" size={11} />
+                  ) : e.etat === "echec" ? (
+                    <Icon name="x" size={11} />
+                  ) : e.etat === "cours" ? (
+                    <span className="locaryn-todo-pouls" />
+                  ) : null}
+                </span>
+                <span className="locaryn-todo-texte">{e.texte}</span>
+              </li>
+            ))}
+          </ol>
+          {suivi.note && <p className="locaryn-todo-note">{suivi.note}</p>}
+        </>
+      )}
     </section>
   );
 }

@@ -40,6 +40,17 @@ export interface WorkflowHooks {
   arret?: () => boolean;
 }
 
+/**
+ * Reprises d'une étape coupée par la limite d'actions d'un message (20) :
+ * elles ne comptent pas comme des essais. Une étape de plan qui écrit un
+ * site entier dépasse vite vingt actions ; s'arrêter là laissait l'étape
+ * « non aboutie » et tout le plan avec elle.
+ */
+const MAX_SUITES = 8;
+
+/** La source de l'avis d'un tour coupé (`SOURCE_TOUR_INACHEVE` du runtime). */
+const TOUR_INACHEVE = "tour_inacheve";
+
 /** Nombre max de retries par étape en mode goal. */
 const MAX_STEP_RETRIES = 3;
 
@@ -258,6 +269,8 @@ export async function runWorkflow(
     let lastReste = "";
     // Relances après une simple annonce, sans compter d'essai (bornées).
     let relances = 0;
+    let suites = 0;
+    let suiteEnCours = false;
     let relanceEnCours = false;
 
     // En goalMode : on retente la même étape si elle échoue, jusqu'à
@@ -277,7 +290,7 @@ export async function runWorkflow(
         `[Étape ${i + 1}/${steps.length} du plan] : ${step}`,
         `Demande globale : ${request}`,
         `État actuel du dossier du projet (ce qui existe déjà — pars de là, ne recommence pas ailleurs) :\n${dossierAvant}`,
-        (stepRetry > 0 || relanceEnCours) && lastReste
+        (stepRetry > 0 || relanceEnCours || suiteEnCours) && lastReste
           ? `[Correction / Ce qui reste à faire pour valider cette étape] : ${lastReste}`
           : "",
         `Consigne impérative : Réalise cette étape de manière concrète et autonome en utilisant directement tes outils. Ne pose pas de question d'attente à l'utilisateur, ne t'arrête pas en chemin et ne demande pas de confirmation : accomplis le travail requis pour cette étape.`,
@@ -287,6 +300,7 @@ export async function runWorkflow(
 
       let answer = "";
       let outilsAppeles = 0;
+      let coupe = false;
       let stepError = false;
       try {
         await core.sendMessage(
@@ -295,6 +309,7 @@ export async function runWorkflow(
           (ev) => {
             if (ev.type === "token") answer += ev.text;
             if (ev.type === "tool_call") outilsAppeles++;
+            if (ev.type === "log" && ev.source === TOUR_INACHEVE) coupe = true;
             hooks.onEvent(ev);
           },
           undefined,
@@ -315,6 +330,17 @@ export async function runWorkflow(
         globalOk = false;
         break;
       }
+
+      // Coupée par la limite d'actions : on reprend la même étape là où elle
+      // s'est arrêtée, sans juger un travail inachevé ni compter d'essai.
+      if (coupe && suites < MAX_SUITES && !hooks.arret?.()) {
+        suites++;
+        lastReste =
+          "La limite d'actions du message précédent a coupé ton travail. Continue cette étape exactement là où tu t'es arrêté (l'état du dossier ci-dessus montre ce qui existe déjà), sans recommencer ce qui est fait.";
+        suiteEnCours = true;
+        continue;
+      }
+      suiteEnCours = false;
 
       if (simpleAnnonce(answer, outilsAppeles) && relances < 2 && !hooks.arret?.()) {
         relances++;

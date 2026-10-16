@@ -3012,6 +3012,22 @@ ${preview}`,
         )}
       </div>
 
+      {/* Le suivi du plan ou de l'objectif, au-dessus de la ligne qui sépare la
+          conversation de la saisie : il fait partie de ce qui se passe, pas
+          du champ où l'on écrit. */}
+      {latestSuivi && suiviMasque !== latestSuivi.id && (
+        <div className="locaryn-todo-dock">
+          <TaskTracker
+            suivi={latestSuivi.suivi}
+            onArreter={() => {
+              arretSuiviRef.current = true;
+              void stopGeneration();
+            }}
+            onFermer={() => setSuiviMasque(latestSuivi.id)}
+          />
+        </div>
+      )}
+
       <div className="locaryn-composer">
         {/* « @ » : désigner un connecteur ou une extension au modèle */}
         {mention && mention.items.length > 0 && (
@@ -3307,20 +3323,6 @@ ${preview}`,
               })}
             </ol>
           </section>
-        )}
-
-        {/* Fenêtre de suivi (Plan / Objectif) affichée juste au-dessus du champ de texte */}
-        {latestSuivi && suiviMasque !== latestSuivi.id && (
-          <div className="locaryn-suivi-dock">
-            <TaskTracker
-              suivi={latestSuivi.suivi}
-              onArreter={() => {
-                arretSuiviRef.current = true;
-                void stopGeneration();
-              }}
-              onFermer={() => setSuiviMasque(latestSuivi.id)}
-            />
-          </div>
         )}
 
         <div className="locaryn-composer-card">
