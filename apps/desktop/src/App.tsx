@@ -39,6 +39,7 @@ import { pickFolder } from "./lib/dialog";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { setRunReveal } from "./lib/runPanel";
 import { suivreSousAgents } from "./lib/sousAgents";
+import { keepIfEqual } from "./lib/stableState";
 import { taskCenter } from "./lib/taskCenter";
 import { VUE_RECHOISIE } from "./lib/vues";
 import { KINDS, type WorkspaceKind, openTab, setWorkspaceOpen, toggleTab } from "./lib/workspace";
@@ -360,7 +361,7 @@ export function App() {
         if (!ext.enabled) continue;
         for (const c of ext.capabilities ?? []) caps.add(c);
       }
-      setActiveCapabilities([...caps]);
+      setActiveCapabilities((prev) => keepIfEqual(prev, [...caps]));
       // Un tunnel est une capacité du plugin Remote, pas du socle local. Si le
       // plugin a été désactivé ou retiré, on coupe aussi un tunnel qui aurait
       // été laissé actif par la session précédente.
@@ -368,8 +369,20 @@ export function App() {
         void core.setTravelMode(null).catch(() => {});
       }
       // Les noyaux installés alimentent le choix à la création de session.
-      setInstalledCores(installed.filter((e) => e.core != null && e.enabled));
-      setActiveExtensions(installed.filter((e) => e.enabled));
+      // Relue toutes les vingt secondes : sans changement, l'état garde son
+      // identité, sinon tout ce qui en dépend se recharge pour rien.
+      setInstalledCores((prev) =>
+        keepIfEqual(
+          prev,
+          installed.filter((e) => e.core != null && e.enabled),
+        ),
+      );
+      setActiveExtensions((prev) =>
+        keepIfEqual(
+          prev,
+          installed.filter((e) => e.enabled),
+        ),
+      );
     } catch {
       if (refreshId !== capabilitiesRefreshId.current) return;
       // Registre illisible : on n'invente pas de capacités. L'interface se
@@ -583,7 +596,7 @@ export function App() {
       const p = await core.listProviders();
       const active = p.find((pr) => pr.is_active) ?? p[0];
       const chatModels = active ? await core.listModels(active.endpoint).catch(() => []) : [];
-      setInstalledModels(chatModels);
+      setInstalledModels((prev) => keepIfEqual(prev, chatModels));
     } catch {
       setInstalledModels([]);
     }
