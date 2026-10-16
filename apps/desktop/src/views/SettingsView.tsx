@@ -12,7 +12,6 @@ import { ExtensionsSettings } from "../components/ExtensionsSettings";
 import { GitSettings } from "../components/GitSettings";
 import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ModeleAutrePc } from "../components/ModeleAutrePc";
-import { NpuSettings } from "../components/NpuSettings";
 import { PairingCodes } from "../components/PairingCodes";
 import { PerformancePanel } from "../components/PerformancePanel";
 import {
@@ -544,7 +543,6 @@ export function SettingsView({
             <>
               <PerformancePanel />
               <CautionSettings />
-              <NpuSettings />
               <DecisionSettings />
             </>
           )}
@@ -573,7 +571,6 @@ export function SettingsView({
 
           {section === "secrets" && <SecretsSettings />}
           {section === "storage" && <StorageSettings onOpenMarketplace={onOpenMarketplace} />}
-
 
           {section === "about" && <AboutSettings />}
         </div>

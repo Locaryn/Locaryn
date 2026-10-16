@@ -110,6 +110,30 @@ pub struct PluginManifest {
     /// modèle de conversation si elle n'a pas la place, puis le recharge.
     #[serde(default)]
     pub gpu: GpuManifest,
+    /// Un programme qui remplace llama-server pour le moteur intégré, sur les
+    /// plateformes listées : une autre build de llama.cpp, ou un lanceur qui
+    /// choisit les périphériques d'une puce. L'application lui passe les
+    /// arguments qu'elle aurait passés à llama-server.
+    #[serde(
+        default,
+        rename = "llama_runtime",
+        alias = "llamaRuntime",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub llama_runtime: Option<LlamaRuntimeManifest>,
+}
+
+/// Section `llama_runtime` d'un manifeste.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LlamaRuntimeManifest {
+    /// Le programme, relatif au paquet ou avec `{{plugin_bin_dir}}` /
+    /// `{{plugin_root}}`. Le suffixe `.exe` est ajouté sous Windows.
+    #[serde(default)]
+    pub program: String,
+    /// Où il vaut quelque chose : `windows-aarch64`, `linux-x86_64`…
+    /// (système et architecture, au vocabulaire de Rust).
+    #[serde(default)]
+    pub platforms: Vec<String>,
 }
 
 /// Section `gpu` d'un manifeste.

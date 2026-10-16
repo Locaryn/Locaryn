@@ -30,7 +30,7 @@ use tokio::sync::Mutex;
 
 pub mod engine_manager;
 pub mod extension_engine;
-pub mod npu;
+pub mod llama_runtime;
 pub mod runtime_install;
 
 pub use extension_engine::ExtensionEngineSpec;
@@ -108,8 +108,8 @@ pub enum SupervisorError {
 // ============================================================================
 
 /// Le moteur llama.cpp lancé ici et qui tourne : son modèle, et s'il est sur
-/// le NPU ou le processeur. Sert à savoir quoi alléger s'il tombe.
-static EN_MARCHE: std::sync::Mutex<Option<(String, bool, bool)>> = std::sync::Mutex::new(None);
+/// le processeur. Sert à savoir quoi alléger s'il tombe.
+static EN_MARCHE: std::sync::Mutex<Option<(String, bool)>> = std::sync::Mutex::new(None);
 
 /// Plantages en pleine réponse depuis le lancement, par modèle.
 static PLANTAGES: std::sync::Mutex<Vec<(String, u8)>> = std::sync::Mutex::new(Vec::new());
@@ -337,6 +337,19 @@ impl Supervisor {
             let engine = ProviderEngine::Extension(id.clone());
             tracing::info!(moteur = %id, "moteur d'extension retiré — arrêt du runtime");
             self.kill_owned(&engine).await;
+        }
+    }
+
+    /// Le programme qu'une extension fournit à la place de llama-server (voir
+    /// `llama_runtime`). Un changement arrête le moteur intégré : le prochain
+    /// message le relance avec le bon programme.
+    pub async fn set_llama_runtime(&self, remplacant: Option<llama_runtime::LlamaRuntime>) {
+        if llama_runtime::retenir(remplacant) {
+            tracing::info!(
+                programme = ?llama_runtime::actif().map(|r| r.program),
+                "programme de llama-server changé — arrêt du moteur intégré"
+            );
+            self.kill_owned(&ProviderEngine::LlamaCpp).await;
         }
     }
 
@@ -593,11 +606,6 @@ impl Supervisor {
             .is_ok_and(|m| m.contains(&cle_gpu));
         // Rechargements pour tenir la marge de prudence (deux au plus).
         let mut corrections_de_marge = 0u8;
-        // Snapdragon : le NPU d'abord, tant qu'il n'a pas échoué.
-        let mut sur_npu = spec.is_none()
-            && matches!(engine, ProviderEngine::LlamaCpp)
-            && !cpu_only
-            && npu::a_essayer();
         'attempt: loop {
             // Spawn the runtime process: llama-server, the AirLLM Python server,
             // or le serveur décrit par une extension.
@@ -607,25 +615,13 @@ impl Supervisor {
                     spawn_airllm_server(&self.inner.cfg, active_model.as_deref()).await?
                 }
                 (None, _) => {
-                    match spawn_llama_server(
+                    spawn_llama_server(
                         &self.inner.cfg,
                         active_model.as_deref(),
                         &self.inner.http,
                         cpu_only,
-                        sur_npu,
                     )
-                    .await
-                    {
-                        Ok(c) => c,
-                        // Le moteur NPU ne se télécharge pas (hors ligne, release
-                        // absente) : le moteur habituel prend le relais.
-                        Err(e) if sur_npu => {
-                            npu::noter_echec(&format!("moteur NPU indisponible : {e}"));
-                            sur_npu = false;
-                            continue 'attempt;
-                        }
-                        Err(e) => return Err(e),
-                    }
+                    .await?
                 }
             };
 
@@ -677,49 +673,13 @@ impl Supervisor {
                         .providers
                         .set_status_by_engine(engine, ProviderStatus::Healthy)
                         .await;
-                    // Sur le NPU, llama.cpp démarre aussi quand le backend
-                    // Hexagon n'a pas pu se charger — tout part alors sur le
-                    // processeur. Le journal le dit ; on repasse à l'Adreno.
-                    if sur_npu {
-                        let journal = std::fs::read_to_string(
-                            locaryn_config::default_data_dir().join("llama-server.log"),
-                        )
-                        .unwrap_or_default();
-                        if !npu::journal_montre_le_npu(&journal) {
-                            let detail = journal
-                                .lines()
-                                .rfind(|l| l.contains("ggml-hex") || l.contains("HTP"))
-                                .unwrap_or("aucune session Hexagon ouverte")
-                                .trim()
-                                .to_string();
-                            npu::noter_echec(&format!("le NPU n'a pas pris le modèle ({detail})"));
-                            npu::oublier_actif();
-                            self.kill_owned(engine).await;
-                            sur_npu = false;
-                            continue 'attempt;
-                        }
-                        let taille = active_model
-                            .as_deref()
-                            .map(|m| locaryn_config::models_dir().join(m))
-                            .and_then(|p| std::fs::metadata(p).ok())
-                            .map(|m| m.len())
-                            .unwrap_or(0);
-                        npu::noter_actif(&npu::constater(
-                            &journal,
-                            npu::sessions_pour(taille),
-                            active_model.as_deref().unwrap_or_default(),
-                        ));
-                    } else if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) {
-                        npu::oublier_actif();
-                    }
-                    tracing::info!(%endpoint, moteur = %engine.as_token(), cpu_only, sur_npu, "moteur en marche");
+                    tracing::info!(%endpoint, moteur = %engine.as_token(), cpu_only, "moteur en marche");
                     // La prudence choisie, vérifiée sur la VRAM réellement
                     // libre : sinon le contexte est réduit et le modèle
                     // rechargé avec lui.
                     if spec.is_none()
                         && matches!(engine, ProviderEngine::LlamaCpp)
                         && !cpu_only
-                        && !sur_npu
                         && corrections_de_marge < 2
                     {
                         let n_ctx = llama_n_ctx(&self.inner.http, &endpoint).await;
@@ -751,7 +711,7 @@ impl Supervisor {
                     }
                     if spec.is_none() && matches!(engine, ProviderEngine::LlamaCpp) {
                         *EN_MARCHE.lock().unwrap_or_else(|e| e.into_inner()) =
-                            Some((cle_gpu.clone(), sur_npu, cpu_only));
+                            Some((cle_gpu.clone(), cpu_only));
                     }
                     return Ok(endpoint);
                 }
@@ -819,13 +779,6 @@ impl Supervisor {
                                         None => status.to_string(),
                                     };
 
-                                    // Le NPU a refusé (signature non approuvée,
-                                    // pilote absent) : le moteur Adreno reprend.
-                                    if sur_npu {
-                                        npu::noter_echec(&msg);
-                                        sur_npu = false;
-                                        continue 'attempt;
-                                    }
                                     // Un contexte mémorisé qui ne tient plus (la VRAM
                                     // a changé de main) : on l'oublie et on retente
                                     // sur le GPU, en laissant `--fit` choisir.
@@ -1265,16 +1218,12 @@ impl Supervisor {
     /// Kill a spawned child process (owned only). Removes the entry from the
     /// state map.
     /// Le moteur est tombé en pleine réponse (pilote réinitialisé par Windows,
-    /// mémoire, NPU). Le prochain lancement s'allège : NPU → Adreno ; sinon un
-    /// micro-lot plus petit, puis le processeur au troisième plantage.
+    /// mémoire). Le prochain lancement s'allège : un micro-lot plus petit, puis
+    /// le processeur au troisième plantage.
     fn noter_plantage(&self) {
-        let Some((modele, npu, cpu)) = EN_MARCHE.lock().ok().and_then(|mut e| e.take()) else {
+        let Some((modele, cpu)) = EN_MARCHE.lock().ok().and_then(|mut e| e.take()) else {
             return;
         };
-        if npu {
-            npu::noter_echec("le moteur NPU s'est arrêté en pleine réponse");
-            return;
-        }
         let n = {
             let mut v = PLANTAGES.lock().unwrap_or_else(|e| e.into_inner());
             match v.iter_mut().find(|(m, _)| *m == modele) {
@@ -2116,7 +2065,6 @@ async fn spawn_llama_server(
     active_model: Option<&str>,
     http: &reqwest::Client,
     cpu_only: bool,
-    npu: bool,
 ) -> Result<Child, SupervisorError> {
     let data_dir = locaryn_config::default_data_dir();
 
@@ -2146,13 +2094,15 @@ async fn spawn_llama_server(
     // Absent : on l'installe, plutôt que d'échouer en demandant à quelqu'un
     // d'aller le chercher. C'est une dépendance de l'application, pas une
     // option.
-    // Sur Snapdragon, le moteur NPU d'abord (voir `npu`), le moteur Adreno
-    // géré en repli.
-    let bin = if npu {
-        runtime_install::install_npu_runtime().await?
-    } else {
-        provision_llama_server(http).await?
-    };
+    // Une extension active peut fournir le programme à lancer à la place
+    // (voir `llama_runtime`) : il reçoit les mêmes arguments, et le chemin du
+    // moteur géré pour s'y replier. Le moteur géré est donc toujours posé.
+    let geree = provision_llama_server(http).await?;
+    let remplacant = llama_runtime::actif();
+    let bin = remplacant
+        .as_ref()
+        .map(|r| r.program.clone())
+        .unwrap_or_else(|| geree.clone());
 
     let model_name = active_model.unwrap_or("model.gguf");
     let model_file = if model_name.starts_with("http") {
@@ -2229,6 +2179,11 @@ async fn spawn_llama_server(
     // 16/09/2026): unknown flags are a
     // FATAL error for llama-server, so only pass documented ones.
     let mut cmd = Command::new(&bin);
+    if let Some(r) = &remplacant {
+        cmd.env(llama_runtime::ENV_MOTEUR_GERE, &geree);
+        cmd.env(llama_runtime::ENV_DONNEES, &r.extension_data_dir);
+        tracing::info!(programme = %bin.display(), extension = %r.extension_name, "llama-server remplacé par une extension");
+    }
     cmd.arg("--host")
         .arg("127.0.0.1")
         .arg("--port")
@@ -2398,9 +2353,6 @@ async fn spawn_llama_server(
         })
     };
 
-    let cle_fit_taille = std::fs::metadata(&full_model_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
     let cle_fit = FitCle {
         model: full_model_path.to_string_lossy().into_owned(),
         taille: std::fs::metadata(&full_model_path)
@@ -2412,10 +2364,11 @@ async fn spawn_llama_server(
         ubatch,
         marge_mib: marge_mib.unwrap_or(0),
         slots,
-        build: if npu {
-            format!("{LLAMA_BUILD}-npu")
-        } else {
-            LLAMA_BUILD.to_string()
+        // Un programme de remplacement calcule ailleurs : ce qu'il a trouvé
+        // ne vaut pas pour le moteur géré, et inversement.
+        build: match &remplacant {
+            Some(r) => format!("{LLAMA_BUILD}+{}", r.extension_name),
+            None => LLAMA_BUILD.to_string(),
         },
     };
     let ctx_memorise = if auto && !cpu_only {
@@ -2459,14 +2412,6 @@ async fn spawn_llama_server(
     // n'initialise aucun périphérique — vérifié sur le `--help` de b11003.
     if cpu_only {
         cmd.arg("--device").arg("none");
-    } else if npu {
-        // Le modèle sur le NPU, réparti en autant de sessions Hexagon que sa
-        // taille l'exige (environ 2 Go chacune) ; l'Adreno n'est pas utilisé.
-        let sessions = npu::sessions_pour(cle_fit_taille);
-        cmd.env("GGML_HEXAGON_DEVICES", sessions.to_string());
-        cmd.arg("--device").arg(npu::appareils(sessions));
-        cmd.arg("-ngl").arg("999");
-        tracing::info!(sessions, "moteur lancé sur le NPU Hexagon");
     } else if gpu_layers >= 0 {
         cmd.arg("-ngl").arg(gpu_layers.to_string());
     } else {

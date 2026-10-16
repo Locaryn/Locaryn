@@ -33,7 +33,6 @@ mod model_abilities;
 mod model_recommendations;
 mod model_residency;
 mod notifications;
-mod npu_cmd;
 mod presse_papiers;
 mod project_context;
 mod rapports;
@@ -7354,16 +7353,11 @@ pub fn run() {
             configure_provider,
             airllm::airllm_status,
             laya_runtime::laya_etat,
-            npu_cmd::npu_etat,
-            npu_cmd::npu_regler,
-            npu_cmd::npu_reessayer,
-            npu_cmd::npu_diagnostic,
             journaux::journaux_rassembler,
             journaux::journaux_dossier,
             rapports::rapports_etat,
             rapports::rapports_regler,
             rapports::rapports_envoyer,
-            npu_cmd::npu_convertir,
             laya_runtime::laya_installer,
             airllm::airllm_setup,
             airllm::airllm_install,

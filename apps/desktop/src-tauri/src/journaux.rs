@@ -5,7 +5,7 @@
 //! rien à envoyer. Le journal va désormais dans `logs/desktop.log` (l'ancien
 //! gardé en `desktop.old.log`), et « À propos → Journaux » rassemble en un
 //! bloc ce qui sert à comprendre un problème : la machine, la fin de chaque
-//! journal, les plantages, l'état du NPU. Le dossier personnel et tout ce qui
+//! journal, les plantages. Le dossier personnel et tout ce qui
 //! ressemble à une clé ou un jeton sont masqués avant.
 
 use std::path::{Path, PathBuf};
@@ -91,7 +91,7 @@ fn section(out: &mut String, titre: &str, chemin: &Path, lignes: usize) {
 pub fn resume_machine() -> String {
     let p = locaryn_llmfit::profile();
     format!(
-        "Locaryn {} — {} {} ({})\nProcesseur : {} cœurs — RAM {:.1} Go ({:.1} libres){}\nGPU : {} — VRAM {:.1} Go ({:.1} libres), {}\nNPU : {}\n",
+        "Locaryn {} — {} {} ({})\nProcesseur : {} cœurs — RAM {:.1} Go ({:.1} libres){}\nGPU : {} — VRAM {:.1} Go ({:.1} libres), {}\n",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::consts::ARCH,
@@ -104,15 +104,6 @@ pub fn resume_machine() -> String {
         p.total_vram_gb,
         p.free_vram_gb,
         p.backend.label(),
-        if locaryn_provider_supervisor::npu::machine_snapdragon() {
-            format!(
-                "Snapdragon — voulu {}, échec : {}",
-                locaryn_provider_supervisor::npu::voulu(),
-                locaryn_provider_supervisor::npu::echec().unwrap_or_else(|| "aucun".into())
-            )
-        } else {
-            "aucun".into()
-        },
     )
 }
 

@@ -237,6 +237,11 @@ pub async fn reload(core: &Core) -> Result<(), String> {
         );
     }
     core.supervisor.set_extension_engines(moteurs).await;
+    core.supervisor
+        .set_llama_runtime(locaryn_provider_supervisor::llama_runtime::collect(
+            &sources,
+        ))
+        .await;
 
     *core.extensions.write().await = next;
     Ok(())

@@ -20,31 +20,7 @@ export const EN_EXACT: Record<string, string> = {
   "Envoyer automatiquement les rapports d'erreur": "Send error reports automatically",
   "Un plantage, un moteur qui ne démarre pas ou une conversation qui échoue envoient le résumé de l'erreur et les journaux (masqués) à l'équipe Locaryn, pour corriger plus vite. Jamais vos conversations ni vos fichiers.":
     "A crash, an engine that won't start or a failed conversation sends the error summary and the (masked) logs to the Locaryn team so it can be fixed faster. Never your conversations or files.",
-  "Compatible NPU": "NPU compatible",
-  "Les formats que le NPU calcule lui-même": "Formats the NPU computes itself",
-  "Copier le diagnostic": "Copy diagnostics",
-  "Diagnostic copié : collez-le dans votre message.":
-    "Diagnostics copied: paste them into your message.",
-  "Conversion en Q4_0… (une à quelques minutes)": "Converting to Q4_0… (one to a few minutes)",
-  "Version Q4_0 créée : chargement sur le NPU…": "Q4_0 version created: loading on the NPU…",
-  "Créer une version Q4_0 et la charger": "Create a Q4_0 version and load it",
-  "Conversion…": "Converting…",
-  "Prêt : le prochain chargement d'un modèle se fera sur le NPU.":
-    "Ready: the next model load will use the NPU.",
   "Distribution par défaut": "Default distribution",
-  "NPU Snapdragon (Hexagon)": "Snapdragon NPU (Hexagon)",
-  "Le NPU lit les prompts bien plus vite que le processeur, sans occuper le GPU. Il accélère les modèles en Q4_0, Q8_0, IQ4_NL ou MXFP4 : choisissez de préférence ces versions.":
-    "The NPU reads prompts much faster than the CPU, without tying up the GPU. It accelerates models in Q4_0, Q8_0, IQ4_NL or MXFP4: prefer those versions.",
-  "Coupé : le GPU Adreno est utilisé.": "Off: the Adreno GPU is used.",
-  "Le NPU n'a pas démarré : le GPU Adreno est utilisé à la place.":
-    "The NPU did not start: the Adreno GPU is used instead.",
-  "Actif : les modèles se chargent sur le NPU.": "Active: models load on the NPU.",
-  "Prêt : le moteur NPU se télécharge au prochain chargement d'un modèle.":
-    "Ready: the NPU engine downloads the next time a model loads.",
-  "Couper le NPU": "Turn off the NPU",
-  "Utiliser le NPU": "Use the NPU",
-  "Ouvrir le dossier du moteur": "Open the engine folder",
-  "Réessayer le NPU": "Retry the NPU",
   "Décisions rapides des morphs": "Fast decisions for morphs",
   "Un petit modèle local aide le contrôle du bureau et du navigateur à choisir où cliquer et à vérifier le résultat, en une fraction de seconde, sans occuper le modèle de conversation. Il s'installe tout seul avec ces morphs (environ 1,3 Go, sur le disque de vos modèles).":
     "A small local model helps desktop and browser control choose where to click and check the result in a fraction of a second, without tying up the chat model. It installs itself with those morphs (about 1.3 GB, on your models drive).",
@@ -2516,20 +2492,27 @@ export const EN_EXACT: Record<string, string> = {
     "When loading, Locaryn looks at the VRAM free at that moment — not the card's total VRAM — and the reserve is computed from it: it grows with free memory, but more and more slowly. The model must fit in it while leaving that reserve free; otherwise it is not loaded, at every level, and a window explains why (a game running, for example). The context then adjusts to the VRAM left.",
   "Au moment du chargement, Locaryn regarde la VRAM libre à cet instant — pas la VRAM totale de la carte. Le modèle doit y tenir en laissant libre la réserve du niveau choisi ; sinon il n'est pas chargé, à tous les niveaux, et une fenêtre explique pourquoi (un jeu ouvert, par exemple). Le contexte s'ajuste ensuite à la VRAM qui reste.":
     "When loading, Locaryn looks at the VRAM free at that moment — not the card's total VRAM. The model must fit in it while leaving the chosen level's reserve free; otherwise it is not loaded, at every level, and a window explains why (a game running, for example). The context then adjusts to the VRAM left.",
-  "Texte": "Text",
-  "taille": "size",
-  "tailles": "sizes",
-  "Licence": "License",
-  "famille": "family",
-  "familles": "families",
-  "Multimodal encoder-free (texte, image, audio) avec function calling natif.": "Encoder-free multimodal (text, image, audio) with native function calling.",
-  "Modèles légers ultra-performants (2B, 9B, 27B).": "Ultra-efficient lightweight models (2B, 9B, 27B).",
-  "Génération d'août 2026 : agentique, appels d'outils, vision (images), contexte de 262 144 jetons. GGUF llama.cpp (unsloth) ; le projecteur d'images est proposé à part.": "August 2026 generation: agentic, tool calls, vision (images), 262,144-token context. llama.cpp GGUF (unsloth); the image projector is offered separately.",
-  "Génération d'avril 2026 : agentique, appels d'outils fiables, vision (images), contexte de 262 144 jetons. Architecture hybride (une couche d'attention pleine sur quatre) : le cache de contexte reste petit.": "April 2026 generation: agentic, reliable tool calls, vision (images), 262,144-token context. Hybrid architecture (one full attention layer out of four): the context cache stays small.",
-  "Génération de février 2026, multimodale (texte et images), contexte de 262 144 jetons, appels d'outils. Le 9B tient entièrement dans une carte de 6 Go en IQ4.": "February 2026 generation, multimodal (text and images), 262,144-token context, tool calls. The 9B fits entirely on a 6GB card in IQ4.",
-  "Flagship multilingue (119+ langues), mode thinking hybride, dense et MoE.": "Multilingual flagship (119+ languages), hybrid thinking mode, dense and MoE.",
+  Texte: "Text",
+  taille: "size",
+  tailles: "sizes",
+  Licence: "License",
+  famille: "family",
+  familles: "families",
+  "Multimodal encoder-free (texte, image, audio) avec function calling natif.":
+    "Encoder-free multimodal (text, image, audio) with native function calling.",
+  "Modèles légers ultra-performants (2B, 9B, 27B).":
+    "Ultra-efficient lightweight models (2B, 9B, 27B).",
+  "Génération d'août 2026 : agentique, appels d'outils, vision (images), contexte de 262 144 jetons. GGUF llama.cpp (unsloth) ; le projecteur d'images est proposé à part.":
+    "August 2026 generation: agentic, tool calls, vision (images), 262,144-token context. llama.cpp GGUF (unsloth); the image projector is offered separately.",
+  "Génération d'avril 2026 : agentique, appels d'outils fiables, vision (images), contexte de 262 144 jetons. Architecture hybride (une couche d'attention pleine sur quatre) : le cache de contexte reste petit.":
+    "April 2026 generation: agentic, reliable tool calls, vision (images), 262,144-token context. Hybrid architecture (one full attention layer out of four): the context cache stays small.",
+  "Génération de février 2026, multimodale (texte et images), contexte de 262 144 jetons, appels d'outils. Le 9B tient entièrement dans une carte de 6 Go en IQ4.":
+    "February 2026 generation, multimodal (text and images), 262,144-token context, tool calls. The 9B fits entirely on a 6GB card in IQ4.",
+  "Flagship multilingue (119+ langues), mode thinking hybride, dense et MoE.":
+    "Multilingual flagship (119+ languages), hybrid thinking mode, dense and MoE.",
   "MoE agentic-coding 256k contexte.": "Agentic-coding MoE, 256k context.",
-  "Raisonnement profond : maths, logique, problèmes complexes.": "Deep reasoning: maths, logic, complex problems.",
+  "Raisonnement profond : maths, logique, problèmes complexes.":
+    "Deep reasoning: maths, logic, complex problems.",
   "Spécialiste code et refactoring (0.5B à 32B).": "Code and refactoring specialist (0.5B to 32B).",
   "Raisonnement étape par étape (1.5B à 671B).": "Step-by-step reasoning (1.5B to 671B).",
   "MoE code (16B Lite & 236B Full).": "Code MoE (16B Lite & 236B Full).",
@@ -2540,17 +2523,23 @@ export const EN_EXACT: Record<string, string> = {
   "14B raisonnement exceptionnel.": "14B with outstanding reasoning.",
   "SLM 3.8B edge-ready avec function calling.": "Edge-ready 3.8B SLM with function calling.",
   "9B conversationnel chinois/anglais 128k.": "9B Chinese/English conversational model, 128k.",
-  "Famille MoE ultra-rapide pour raisonnement et agents autonomes.": "Ultra-fast MoE family for reasoning and autonomous agents.",
-  "Hybrid MoE 30B (3.6B actifs) pour workflows agentiques 1M tokens.": "Hybrid 30B MoE (3.6B active) for 1M-token agentic workflows.",
-  "Versions GGUF vérifiées de Qwen3 pour llama.cpp. Le 4B privilégie la vitesse, le 8B est le meilleur compromis sur un GPU 6 Go et le 14B utilise aussi la RAM pour gagner en qualité.": "Verified Qwen3 GGUF builds for llama.cpp. The 4B favours speed, the 8B is the sweet spot on a 6GB GPU, and the 14B also uses RAM for extra quality.",
-  "Modèles multimodaux GGUF avec projecteur vision installé automatiquement. Le 4B tient confortablement sur une configuration 6 Go, le 12B fonctionne en mode hybride RAM + GPU.": "Multimodal GGUF models with the vision projector installed automatically. The 4B fits comfortably on a 6GB setup, the 12B runs in hybrid RAM + GPU mode.",
-  "Qwen3.8 27B multimodal et raisonnant, proposé dans le format GGUF compatible avec le moteur local llama.cpp. Le projecteur vision adapté est installé automatiquement.": "Multimodal, reasoning Qwen3.8 27B in GGUF format compatible with the local llama.cpp engine. The matching vision projector is installed automatically.",
-  "Raisonnement étape par étape dans un distillat Llama 70B prêt pour GPU haut de gamme. Format GGUF local.": "Step-by-step reasoning in a Llama 70B distillate ready for high-end GPUs. Local GGUF format.",
-  "Le plus grand modèle de la famille Qwen2.5 Instruct, optimisé pour le dialogue et le travail long en GGUF local.": "The largest model in the Qwen2.5 Instruct family, optimised for dialogue and long-form work in local GGUF.",
+  "Famille MoE ultra-rapide pour raisonnement et agents autonomes.":
+    "Ultra-fast MoE family for reasoning and autonomous agents.",
+  "Hybrid MoE 30B (3.6B actifs) pour workflows agentiques 1M tokens.":
+    "Hybrid 30B MoE (3.6B active) for 1M-token agentic workflows.",
+  "Versions GGUF vérifiées de Qwen3 pour llama.cpp. Le 4B privilégie la vitesse, le 8B est le meilleur compromis sur un GPU 6 Go et le 14B utilise aussi la RAM pour gagner en qualité.":
+    "Verified Qwen3 GGUF builds for llama.cpp. The 4B favours speed, the 8B is the sweet spot on a 6GB GPU, and the 14B also uses RAM for extra quality.",
+  "Modèles multimodaux GGUF avec projecteur vision installé automatiquement. Le 4B tient confortablement sur une configuration 6 Go, le 12B fonctionne en mode hybride RAM + GPU.":
+    "Multimodal GGUF models with the vision projector installed automatically. The 4B fits comfortably on a 6GB setup, the 12B runs in hybrid RAM + GPU mode.",
+  "Qwen3.8 27B multimodal et raisonnant, proposé dans le format GGUF compatible avec le moteur local llama.cpp. Le projecteur vision adapté est installé automatiquement.":
+    "Multimodal, reasoning Qwen3.8 27B in GGUF format compatible with the local llama.cpp engine. The matching vision projector is installed automatically.",
+  "Raisonnement étape par étape dans un distillat Llama 70B prêt pour GPU haut de gamme. Format GGUF local.":
+    "Step-by-step reasoning in a Llama 70B distillate ready for high-end GPUs. Local GGUF format.",
+  "Le plus grand modèle de la famille Qwen2.5 Instruct, optimisé pour le dialogue et le travail long en GGUF local.":
+    "The largest model in the Qwen2.5 Instruct family, optimised for dialogue and long-form work in local GGUF.",
 };
 
 export const EN_PATTERNS: Record<string, string> = {
-  "NPU ({})": "NPU ({})",
   "Chargé : {}": "Loaded: {}",
   "WSL · {}": "WSL · {}",
   "Distribution par défaut · {}": "Default distribution · {}",

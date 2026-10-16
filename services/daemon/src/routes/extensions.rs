@@ -421,6 +421,12 @@ pub async fn sync_extension_engines(state: &DaemonState) {
         );
     }
     state.supervisor.set_extension_engines(specs).await;
+    state
+        .supervisor
+        .set_llama_runtime(locaryn_provider_supervisor::llama_runtime::collect(
+            &sources,
+        ))
+        .await;
 }
 
 pub async fn sync_mcp_servers(state: &DaemonState) {

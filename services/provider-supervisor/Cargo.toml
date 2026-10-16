@@ -16,7 +16,6 @@ name = "locaryn-supervisor"
 path = "src/main.rs"
 
 [dependencies]
-sha2 = "0.10"
 locaryn-shared-types = { workspace = true }
 locaryn-config = { workspace = true }
 locaryn-llmfit = { workspace = true }

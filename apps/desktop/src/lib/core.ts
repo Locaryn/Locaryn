@@ -1409,26 +1409,6 @@ export interface HardwareSpec {
 /** Jusqu'où l'application accepte de remplir la mémoire avant de charger. */
 export type CautionLevel = "prudent" | "equilibre" | "risque";
 
-/** Le NPU Hexagon d'un PC Snapdragon. */
-export type EtatNpu = {
-  snapdragon: boolean;
-  voulu: boolean;
-  installe: boolean;
-  echec: string | null;
-  dossier: string;
-  /** Le dernier chargement réussi sur le NPU. */
-  actif: {
-    arch: string | null;
-    npu_mib: number;
-    cpu_mib: number;
-    sessions: number;
-    modele: string;
-  } | null;
-  modele: string | null;
-  format_accelere: boolean;
-  processeur: string | null;
-};
-
 /** Le modèle de décision local partagé par les morphs de contrôle. */
 export type EtatDecisions = {
   installe: boolean;
@@ -1897,7 +1877,7 @@ export interface CoreApi {
    *  connecteurs partent au modèle. */
   outilsAlleges(): Promise<boolean>;
   definirOutilsAlleges(actif: boolean): Promise<boolean>;
-  /** Signe les commits du modèle « Co-Authored-By: Locaryn ». 
+  /** Signe les commits du modèle « Co-Authored-By: Locaryn ».
    *  Coché par défaut. */
   commitContributeur(): Promise<boolean>;
   definirCommitContributeur(actif: boolean): Promise<boolean>;
@@ -2436,17 +2416,12 @@ export interface CoreApi {
   /** Les réserves de mémoire de chaque niveau, sur cette machine. */
   cautionReserves(): Promise<CautionReserves>;
   decisionsEtat(): Promise<EtatDecisions>;
-  npuEtat(): Promise<EtatNpu>;
-  npuRegler(actif: boolean): Promise<EtatNpu>;
-  npuReessayer(): Promise<EtatNpu>;
-  npuDiagnostic(): Promise<string>;
   /** Les journaux rassemblés (machine, fin de chaque journal), masqués. */
   journauxRassembler(): Promise<string>;
   journauxDossier(): Promise<string>;
   rapportsEtat(): Promise<{ disponible: boolean; actif: boolean }>;
   rapportsRegler(actif: boolean): Promise<{ disponible: boolean; actif: boolean }>;
   rapportsEnvoyer(message: string | null): Promise<void>;
-  npuConvertir(modele: string): Promise<string>;
   ouvrirChemin(chemin: string, action: "explorer" | "terminal" | "vscode"): Promise<void>;
   decisionsInstaller(): Promise<EtatDecisions>;
   /** Les limites de l'abonnement du modèle actif, `null` s'il n'en a pas. */
@@ -2985,17 +2960,12 @@ const tauriCore: CoreApi = {
   cautionLevel: () => invoke<CautionLevel>("caution_level"),
   cautionReserves: () => invoke<CautionReserves>("caution_reserves"),
   decisionsEtat: () => invoke<EtatDecisions>("laya_etat"),
-  npuEtat: () => invoke<EtatNpu>("npu_etat"),
-  npuRegler: (actif) => invoke<EtatNpu>("npu_regler", { actif }),
-  npuReessayer: () => invoke<EtatNpu>("npu_reessayer"),
-  npuDiagnostic: () => invoke<string>("npu_diagnostic"),
   journauxRassembler: () => invoke<string>("journaux_rassembler"),
   journauxDossier: () => invoke<string>("journaux_dossier"),
   rapportsEtat: () => invoke<{ disponible: boolean; actif: boolean }>("rapports_etat"),
   rapportsRegler: (actif) =>
     invoke<{ disponible: boolean; actif: boolean }>("rapports_regler", { actif }),
   rapportsEnvoyer: (message) => invoke<void>("rapports_envoyer", { message }),
-  npuConvertir: (modele) => invoke<string>("npu_convertir", { modele }),
   ouvrirChemin: (chemin, action) => invoke<void>("open_path_with", { chemin, action }),
   decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
   cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
@@ -5625,49 +5595,7 @@ Contenu de démonstration, avec **du gras** et une liste :
   async cloudUsage() {
     return null;
   },
-  async npuEtat() {
-    return {
-      snapdragon: false,
-      voulu: true,
-      installe: false,
-      echec: null,
-      dossier: "",
-      actif: null,
-      modele: null,
-      format_accelere: false,
-      processeur: null,
-    };
-  },
-  async npuRegler() {
-    return {
-      snapdragon: false,
-      voulu: true,
-      installe: false,
-      echec: null,
-      dossier: "",
-      actif: null,
-      modele: null,
-      format_accelere: false,
-      processeur: null,
-    };
-  },
-  async npuReessayer() {
-    return {
-      snapdragon: false,
-      voulu: true,
-      installe: false,
-      echec: null,
-      dossier: "",
-      actif: null,
-      modele: null,
-      format_accelere: false,
-      processeur: null,
-    };
-  },
   async ouvrirChemin() {},
-  async npuDiagnostic() {
-    return "";
-  },
   async journauxRassembler() {
     return "Locaryn (démo) — aucun journal dans l'aperçu web.";
   },
@@ -5681,9 +5609,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     return { disponible: false, actif };
   },
   async rapportsEnvoyer() {},
-  async npuConvertir(modele) {
-    return modele;
-  },
   async decisionsEtat() {
     return { installe: false, en_cours: false, dossier: "", appareil: null, version: null };
   },
