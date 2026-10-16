@@ -1141,22 +1141,66 @@ async fn reinstall_from_source(
     scope: ExtensionScope,
     source: &str,
 ) -> Result<InstalledExtension, String> {
+    // Pas pendant une réponse : arrêter le serveur d'un morph couperait un
+    // outil en plein travail. On attend qu'elle finisse (deux minutes au plus).
+    let debut = std::time::Instant::now();
+    while core.supervisor.utilisateur_occupe() {
+        if debut.elapsed() > std::time::Duration::from_secs(120) {
+            return Err(
+                "Une réponse est en cours : la mise à jour attend qu'elle soit finie. Réessayez \
+                 une fois la réponse terminée (ou arrêtez-la)."
+                    .into(),
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
     // Libérer les fichiers avant de les remplacer : le serveur du plugin tient
-    // son propre exécutable ouvert, et Windows refuse alors de l'écraser.
+    // son propre exécutable ouvert, et Windows refuse alors de l'écraser. Actif
+    // ou désactivé, une copie peut tourner (celle du service, en mode
+    // serveur) : tout ce qui s'exécute depuis son dossier est arrêté.
     stop_plugin_mcp(core, name).await;
-    if let Some(root) = core
+    let racine = core
         .storage
         .extensions
         .get(_id)
         .await
         .ok()
         .flatten()
-        .and_then(|r| plugin_root(&r.manifest_path))
-    {
-        liberer_dossier(&root);
+        .and_then(|r| plugin_root(&r.manifest_path));
+    if let Some(root) = &racine {
+        liberer_dossier(root);
     }
 
-    let outcome = match locaryn_extensions::install(&core.http, source.trim(), scope, None).await {
+    // Le service peut relancer sa copie entre-temps : on libère de nouveau
+    // et on réessaie, deux fois au plus, avant de renoncer.
+    let mut essai = 0;
+    let installe = loop {
+        let r = locaryn_extensions::install(&core.http, source.trim(), scope, None).await;
+        let verrou = r.as_ref().err().is_some_and(|e| {
+            let t = e.to_string().to_lowercase();
+            t.contains("denied")
+                || t.contains("accès refusé")
+                || t.contains("os error 5")
+                || t.contains("os error 32")
+        });
+        if verrou && essai < 2 {
+            essai += 1;
+            tracing::warn!(
+                essai,
+                extension = name,
+                "fichiers du morph encore verrouillés : nouvelle libération"
+            );
+            if let Some(root) = &racine {
+                liberer_dossier(root);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            continue;
+        }
+        break r;
+    };
+
+    let outcome = match installe {
         Ok(outcome) => outcome,
         Err(error) => {
             // L'extension reste celle d'avant : lui rendre son serveur plutôt
