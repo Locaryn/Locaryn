@@ -190,7 +190,13 @@ export function SupportDialog() {
                 type="button"
                 className="locaryn-soutien-non"
                 disabled={occupe}
-                onClick={() => setVue("sur")}
+                onClick={() => {
+                  // Le premier « Non » est déjà une réponse : retenue tout de
+                  // suite, même si la fenêtre se ferme avant la seconde
+                  // question. « Bon, d'accord » la remplace.
+                  void core.soutienRepondre("non").catch(() => {});
+                  setVue("sur");
+                }}
               >
                 Non
               </button>
