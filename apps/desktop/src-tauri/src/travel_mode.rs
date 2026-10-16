@@ -79,7 +79,7 @@ pub fn travel_relays() -> Vec<RelayChoice> {
 async fn daemon(path: &str) -> Result<reqwest::RequestBuilder, String> {
     let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
     let port = cfg.daemon.port;
-    let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(90))?;
+    let client = crate::server_mode::client_local(std::time::Duration::from_secs(90))?;
     Ok(client.get(format!("https://127.0.0.1:{port}{path}")))
 }
 
@@ -114,7 +114,7 @@ pub struct SetTravel {
 pub async fn set_travel_mode(args: SetTravel) -> Result<TravelStatus, String> {
     let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
     let port = cfg.daemon.port;
-    let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(90))?;
+    let client = crate::server_mode::client_local(std::time::Duration::from_secs(90))?;
     let resp = client
         .post(format!("https://127.0.0.1:{port}/v1/travel"))
         .json(&serde_json::json!({ "provider": args.provider }))
@@ -334,8 +334,7 @@ pub async fn set_micro_model(model: Option<String>) -> Result<MicroModel, String
     // Si un démon tourne, le notifier sans bloquer en cas d'erreur
     if let Ok(cfg) = locaryn_config::load(None) {
         let port = cfg.daemon.port;
-        if let Ok(client) =
-            crate::secure_client::build(None, None, None, std::time::Duration::from_millis(500))
+        if let Ok(client) = crate::server_mode::client_local(std::time::Duration::from_millis(500))
         {
             let _ = client
                 .post(format!(
@@ -488,7 +487,7 @@ pub async fn pairing_state() -> Result<PairingState, String> {
 pub async fn reject_pairing() -> Result<bool, String> {
     let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
     let port = cfg.daemon.port;
-    let client = crate::secure_client::build(None, None, None, std::time::Duration::from_secs(30))?;
+    let client = crate::server_mode::client_local(std::time::Duration::from_secs(30))?;
     let resp = client
         .post(format!("https://127.0.0.1:{port}/v1/pairing/reject"))
         .send()
@@ -607,8 +606,7 @@ pub async fn suggest_project(session_id: String) -> Result<SuggestionDeProjet, S
 pub async fn merge_sessions(session_id: String, source_id: String) -> Result<(), String> {
     let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
     let port = cfg.daemon.port;
-    let client =
-        crate::secure_client::build(None, None, None, std::time::Duration::from_secs(180))?;
+    let client = crate::server_mode::client_local(std::time::Duration::from_secs(180))?;
     let resp = client
         .post(format!(
             "https://127.0.0.1:{port}/v1/sessions/{session_id}/merge"
@@ -638,8 +636,7 @@ pub async fn merge_sessions(session_id: String, source_id: String) -> Result<(),
 pub async fn run_composer_tool(tool: String, text: String) -> Result<String, String> {
     let cfg = locaryn_config::load(None).map_err(|e| e.to_string())?;
     let port = cfg.daemon.port;
-    let client =
-        crate::secure_client::build(None, None, None, std::time::Duration::from_secs(180))?;
+    let client = crate::server_mode::client_local(std::time::Duration::from_secs(180))?;
     let resp = client
         .post(format!("https://127.0.0.1:{port}/v1/tools/{tool}"))
         .json(&serde_json::json!({ "text": text }))

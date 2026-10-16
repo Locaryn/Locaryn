@@ -1793,6 +1793,26 @@ ${d.texte}`
       setGoalNext(false);
       setLoopCount(null);
       void core.appendChatMessage(sid, "user", brut);
+      // Une tâche longue s'arrêtait au premier fichier écrit, sur une demande
+      // d'accord que personne ne voyait : on propose l'autonomie au départ,
+      // pendant que la personne est encore là.
+      if (objectif || planifie) {
+        try {
+          const confiance = await core.sessionTrust(sid);
+          if (
+            confiance.effective !== "autonomous" &&
+            confiance.effective !== "unrestricted" &&
+            window.confirm(
+              "Cette tâche va enchaîner fichiers et commandes pendant longtemps. Passer cette conversation en Autonome, pour qu'elle ne s'arrête pas à chaque outil en attendant votre accord ?\n\n(Installer quelque chose demandera toujours votre accord.)",
+            )
+          ) {
+            await core.setSessionTrust(sid, "autonomous");
+            window.dispatchEvent(new Event(SESSION_TRUST_CHANGED));
+          }
+        } catch (e) {
+          console.warn("permission de la conversation illisible :", e);
+        }
+      }
       try {
         const ran = await runWorkflow(
           sid,

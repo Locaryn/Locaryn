@@ -175,7 +175,14 @@ pub fn build(
         tracing::warn!("empreinte de déploiement illisible : le serveur ne sera pas vérifié");
     }
     if pinned.is_none() && authority.is_none() {
-        tracing::warn!("aucune empreinte ni autorité : l'identité du serveur n'est pas vérifiée");
+        // Une fois par processus : un client construit à chaque requête
+        // répétait l'avertissement toutes les trois secondes dans le journal.
+        static DIT: std::sync::Once = std::sync::Once::new();
+        DIT.call_once(|| {
+            tracing::warn!(
+                "aucune empreinte ni autorité : l'identité du serveur n'est pas vérifiée"
+            )
+        });
     }
 
     let verifier = Arc::new(DeploymentVerifier {

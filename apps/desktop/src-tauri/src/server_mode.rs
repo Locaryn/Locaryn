@@ -158,6 +158,14 @@ pub fn local_address() -> String {
 /// L'empreinte du certificat que le service présente vraiment : celui signé
 /// par l'autorité locale (celle que le QR transmet), ou à défaut l'ancien
 /// auto-signé d'une installation qui n'en a pas encore émis.
+/// Un client vers le service local de cette machine, qui vérifie son
+/// certificat (son empreinte est connue : c'est celle que l'écran affiche).
+/// Sans elle, chaque appel acceptait n'importe quel certificat — et le
+/// journal le rappelait toutes les trois secondes.
+pub fn client_local(delai: std::time::Duration) -> Result<reqwest::Client, String> {
+    crate::secure_client::build(None, None, read_fingerprint().as_deref(), delai)
+}
+
 fn read_fingerprint() -> Option<String> {
     let data = locaryn_config::default_data_dir();
     let (emis, _) = locaryn_config::mtls::server_cert_paths(&data);

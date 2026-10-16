@@ -23,7 +23,7 @@ pub async fn watch_live_session(
     let port = locaryn_config::load(None)
         .map(|c| c.daemon.port)
         .map_err(|e| e.to_string())?;
-    let client = crate::secure_client::build(None, None, None, DUREE_MAX)?;
+    let client = crate::server_mode::client_local(DUREE_MAX)?;
     let reponse = match client
         .get(format!(
             "https://127.0.0.1:{port}/v1/sessions/{session_id}/live"
