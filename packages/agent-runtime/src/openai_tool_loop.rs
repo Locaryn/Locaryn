@@ -40,6 +40,23 @@ const RELANCE_ANNONCE: &str = "Tu as annoncé ce que tu allais faire, sans appel
 /// La réponse se termine-t-elle sur une action annoncée et pas faite
 /// (« Laissez-moi commencer par trouver des images… ») ? Un petit modèle
 /// s'arrêtait là, et la personne attendait un travail qui ne venait pas.
+/// La relance quand le modèle a écrit son appel d'outil au lieu de le faire.
+const RELANCE_APPEL_EN_TEXTE: &str = "Tu as écrit l'appel d'outil dans ta réponse, en texte : il n'a pas été exécuté. Fais un vrai appel d'outil (pas de texte « [Outil appelé : …] » ni « outil({…}) » dans la réponse).";
+
+/// Le modèle a-t-il écrit un appel d'outil en texte au lieu de le faire ?
+/// « [Outil appelé : wsl_run({…})] », ou le nom d'un outil offert suivi de
+/// `({` — ce qu'un petit modèle finit par imiter.
+fn appel_ecrit_en_texte(texte: &str, outils: &[crate::tools::ToolSpec]) -> bool {
+    let t = texte.trim();
+    if t.contains("[Outil appelé :") || t.contains("[Outil appelé:") {
+        return true;
+    }
+    outils.iter().any(|o| {
+        let court = o.name.rsplit("__").next().unwrap_or(&o.name);
+        t.contains(&format!("{court}({{")) || t.contains(&format!("{}({{", o.name))
+    })
+}
+
 fn annonce_sans_agir(texte: &str) -> bool {
     let t = texte.trim();
     if t.is_empty() || t.ends_with('?') {
@@ -216,8 +233,13 @@ pub async fn run_openai_tool_loop(
     let demande: String = input
         .history
         .iter()
-        .map(|turn| turn.content.as_str())
-        .chain(std::iter::once(input.message.as_str()))
+        // Les outils appelés comptent aussi : « continue » après un wsl_run
+        // doit garder les outils WSL offerts.
+        .map(|turn| {
+            let noms: Vec<&str> = turn.tool_calls.iter().map(|a| a.name.as_str()).collect();
+            format!("{} {}", turn.content, noms.join(" "))
+        })
+        .chain(std::iter::once(input.message.clone()))
         .collect::<Vec<_>>()
         .join("\n");
     // Le navigateur intégré et le contrôle du bureau ne sont offerts que si la
@@ -421,12 +443,7 @@ pub async fn run_openai_tool_loop(
     };
     {
         let arr = messages.as_array_mut().expect("messages is an array");
-        for turn in &input.history {
-            if turn.content.trim().is_empty() {
-                continue;
-            }
-            arr.push(serde_json::json!({ "role": turn.role, "content": turn.content }));
-        }
+        arr.extend(crate::compaction::messages_api(&input.history));
         arr.push(serde_json::json!({ "role": "user", "content": user_content }));
     }
 
@@ -952,6 +969,25 @@ pub async fn run_openai_tool_loop(
                         messages.as_array_mut().unwrap().push(serde_json::json!({
                             "role": "user",
                             "content": RELANCE_REFLEXION_SEULE,
+                        }));
+                        continue;
+                    }
+                    // L'appel écrit en texte au lieu d'être fait : on le dit au
+                    // modèle tout de suite, qui le refait pour de vrai.
+                    if !relance_faite
+                        && !tools_for_dispatch.is_empty()
+                        && appel_ecrit_en_texte(&round_result.content, &tools_for_dispatch)
+                        && round + 1 < MAX_TOOL_ROUNDS
+                    {
+                        relance_faite = true;
+                        let liste = messages.as_array_mut().unwrap();
+                        liste.push(serde_json::json!({
+                            "role": "assistant",
+                            "content": round_result.content,
+                        }));
+                        liste.push(serde_json::json!({
+                            "role": "user",
+                            "content": RELANCE_APPEL_EN_TEXTE,
                         }));
                         continue;
                     }
@@ -1712,6 +1748,25 @@ async fn stream_one_round(
 mod tests_annonce {
     #[test]
     fn une_action_annoncee_sans_appel_est_reconnue() {
+        let outils = vec![crate::tools::ToolSpec {
+            name: "wsl__wsl_run".into(),
+            description: String::new(),
+            input_schema: serde_json::json!({}),
+            risk: crate::tools::Risk::High,
+            required_permissions: Vec::new(),
+        }];
+        assert!(super::appel_ecrit_en_texte(
+            "[Outil appelé : wsl_run({\"command\":\"tshark -r capture.pcap\"})]",
+            &outils
+        ));
+        assert!(super::appel_ecrit_en_texte(
+            "Je lance wsl_run({\"command\":\"ls\"})",
+            &outils
+        ));
+        assert!(!super::appel_ecrit_en_texte(
+            "La commande wsl_run a listé trois fichiers.",
+            &outils
+        ));
         assert!(super::annonce_sans_agir(
             "Vous avez tout à fait raison ! Je vais utiliser le navigateur intégré. Laissez-moi commencer par trouver des images de haute qualité sur Internet pour enrichir le site."
         ));

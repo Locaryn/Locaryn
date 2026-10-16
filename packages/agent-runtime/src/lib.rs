@@ -326,11 +326,27 @@ mod prompt_tests {
 }
 
 /// One prior turn replayed to the model.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ChatTurn {
-    /// "user" | "assistant" | "system"
+    /// "user" | "assistant" | "system" | "tool"
     pub role: String,
     pub content: String,
+    /// Les appels d'outils de cette réponse, rejoués dans le format natif du
+    /// modèle (`tool_calls`). Rejoués en texte (« [Outil appelé : …] »), un
+    /// petit modèle finissait par écrire ses appels en texte au lieu de les
+    /// faire.
+    pub tool_calls: Vec<AppelRejoue>,
+    /// Pour un tour `tool` : l'appel auquel il répond.
+    pub tool_call_id: Option<String>,
+}
+
+/// Un appel d'outil passé, tel qu'on le rend au modèle.
+#[derive(Debug, Clone, Default)]
+pub struct AppelRejoue {
+    pub id: String,
+    pub name: String,
+    /// Les arguments en JSON (texte), longues chaînes abrégées.
+    pub arguments: String,
 }
 
 /// An agent run produces a stream of `StreamEvent`s (tokens, tool calls,

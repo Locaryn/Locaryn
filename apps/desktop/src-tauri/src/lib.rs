@@ -1096,6 +1096,7 @@ async fn compact_history(
 {}",
                     sum.trim()
                 ),
+                ..Default::default()
             });
         }
         // Summarisation failed: drop the oldest turns rather than blow the window.
