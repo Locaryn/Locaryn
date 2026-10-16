@@ -1024,6 +1024,9 @@ async fn install_locally(
 ) -> Result<InstalledExtension, String> {
     let scope = parse_scope(scope.as_deref());
     let workspace_root = workspace.as_deref().map(Path::new);
+    // Une désinstallation passée a pu laisser un dossier verrouillé : on le
+    // libère avant d'écrire au même endroit.
+    nettoyer_restes(core).await;
 
     let outcome = locaryn_extensions::install(&core.http, source.trim(), scope, workspace_root)
         .await
@@ -1141,6 +1144,17 @@ async fn reinstall_from_source(
     // Libérer les fichiers avant de les remplacer : le serveur du plugin tient
     // son propre exécutable ouvert, et Windows refuse alors de l'écraser.
     stop_plugin_mcp(core, name).await;
+    if let Some(root) = core
+        .storage
+        .extensions
+        .get(_id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| plugin_root(&r.manifest_path))
+    {
+        liberer_dossier(&root);
+    }
 
     let outcome = match locaryn_extensions::install(&core.http, source.trim(), scope, None).await {
         Ok(outcome) => outcome,
@@ -1461,6 +1475,9 @@ pub async fn remove_extension(
     // Windows garde son exécutable verrouillé et la suppression échoue sur
     // « Accès refusé », en laissant l'extension à moitié désinstallée.
     stop_plugin_mcp(&core, &record.name).await;
+    if let Some(root) = plugin_root(&record.manifest_path) {
+        liberer_dossier(&root);
+    }
 
     // Et la passerelle qu'elle avait installée : plusieurs centaines de
     // mégaoctets n'ont pas à survivre au morph qui les a posés. Ses données
@@ -1775,6 +1792,84 @@ async fn stop_plugin_mcp(core: &Core, plugin_name: &str) {
     for name in names {
         if let Some(client) = core.mcp.running.write().await.remove(&name) {
             let _ = client.shutdown().await;
+        }
+    }
+}
+
+/// Arrêter tout processus dont l'exécutable est dans `dossier`, qui que ce
+/// soit qui l'ait lancé.
+///
+/// `stop_plugin_mcp` n'arrête que la copie de l'application : le service
+/// (mode serveur) lance la sienne, qui garde l'exécutable du morph ouvert.
+/// Windows refusait alors de supprimer ou de remplacer ses fichiers —
+/// « Accès refusé (os error 5) » — et le morph restait à moitié désinstallé,
+/// impossible à réinstaller.
+fn liberer_dossier(dossier: &Path) -> usize {
+    use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+    let Ok(base) = dossier.canonicalize() else {
+        return 0;
+    };
+    let sys = System::new_with_specifics(
+        RefreshKind::new()
+            .with_processes(ProcessRefreshKind::new().with_exe(sysinfo::UpdateKind::Always)),
+    );
+    let mut arretes = 0;
+    for (pid, proc_) in sys.processes() {
+        let Some(exe) = proc_.exe() else { continue };
+        let dedans = exe
+            .canonicalize()
+            .map(|e| e.starts_with(&base))
+            .unwrap_or_else(|_| exe.starts_with(dossier));
+        if dedans && proc_.kill() {
+            tracing::info!(pid = pid.as_u32(), exe = %exe.display(), "processus du morph arrêté pour libérer ses fichiers");
+            arretes += 1;
+        }
+    }
+    if arretes > 0 {
+        // Le temps que Windows relâche les fichiers.
+        std::thread::sleep(std::time::Duration::from_millis(600));
+    }
+    arretes
+}
+
+/// Les dossiers de morphs qui ne correspondent plus à aucune extension
+/// installée : ce que laisse une désinstallation qui n'a pas pu tout effacer.
+/// Leurs processus sont arrêtés et leurs fichiers retirés, pour qu'une
+/// réinstallation reparte de zéro.
+async fn nettoyer_restes(core: &Core) {
+    let dossier = locaryn_config::global_dir().join("plugins");
+    let Ok(entrees) = std::fs::read_dir(&dossier) else {
+        return;
+    };
+    let installes: Vec<std::path::PathBuf> = core
+        .storage
+        .extensions
+        .list()
+        .await
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|e| plugin_root(&e.manifest_path))
+        .filter_map(|r| r.canonicalize().ok())
+        .collect();
+    for e in entrees.flatten() {
+        let chemin = e.path();
+        if !chemin.is_dir() {
+            continue;
+        }
+        let Ok(c) = chemin.canonicalize() else {
+            continue;
+        };
+        if installes.contains(&c) {
+            continue;
+        }
+        liberer_dossier(&chemin);
+        match std::fs::remove_dir_all(&chemin) {
+            Ok(()) => {
+                tracing::info!(path = %chemin.display(), "reste d'une désinstallation retiré")
+            }
+            Err(err) => {
+                tracing::warn!(path = %chemin.display(), error = %err, "reste d'une désinstallation non retiré")
+            }
         }
     }
 }

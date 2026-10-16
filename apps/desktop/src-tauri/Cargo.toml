@@ -68,5 +68,5 @@ tauri-plugin-notification = "2"
 url = "2"
 base64 = "0.22"
 # Disk capacity reporting for the storage settings (free space per volume).
-sysinfo = { version = "0.32", default-features = false, features = ["disk"] }
+sysinfo = { version = "0.32", default-features = false, features = ["disk", "system"] }
 tauri-plugin-single-instance = "2"
