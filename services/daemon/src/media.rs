@@ -1263,7 +1263,7 @@ async fn download_to(
     if offset > 0 {
         req = req.header("Range", format!("bytes={offset}-"));
     }
-    let mut resp = req
+    let resp = req
         .send()
         .await
         .map_err(|e| format!("téléchargement impossible : {e}"))?;
