@@ -935,31 +935,26 @@ export function App() {
   }
 
   async function handleDeleteModel(tag: string) {
-    const p = await core.listProviders();
+    // Le fichier se supprime sur le disque, fournisseur actif ou non : sans
+    // fournisseur configuré, la suppression ne faisait rien, sans un mot.
+    const p = await core.listProviders().catch(() => []);
     const active = p.find((pr) => pr.is_active) ?? p[0];
-    if (active) {
-      let deleted = false;
-      try {
-        await core.deleteModel(active.endpoint, tag);
-        deleted = true;
-      } catch (e) {
-        const message = String(e).replace(/^Error:\s*/, "");
-        console.error("Delete failed", e);
-        window.alert(`Suppression impossible : ${message}`);
-      }
-
-      if (!deleted) {
-        await refreshHealth();
-        return;
-      }
-
-      if (health?.active_provider?.model === tag) {
-        const remaining = installedModels.filter((m) => m !== tag);
-        await core.configureProvider(active.endpoint, remaining[0] ?? null);
-      }
-
+    try {
+      await core.deleteModel(active?.endpoint ?? "", tag);
+    } catch (e) {
+      const message = String(e).replace(/^Error:\s*/, "");
+      console.error("Delete failed", e);
+      window.alert(`Suppression impossible : ${message}`);
       await refreshHealth();
+      return;
     }
+
+    if (active && health?.active_provider?.model === tag) {
+      const remaining = installedModels.filter((m) => m !== tag);
+      await core.configureProvider(active.endpoint, remaining[0] ?? null);
+    }
+
+    await refreshHealth();
   }
 
   async function handleDeleteSession(s: Session) {

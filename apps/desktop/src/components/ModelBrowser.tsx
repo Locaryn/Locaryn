@@ -467,12 +467,24 @@ function fmtTokPerSec(t: number): string {
   return t >= 10 ? `${Math.round(t)} tok/s` : `${t.toFixed(1)} tok/s`;
 }
 
-function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?: string): boolean {
-  if (!tag) return false;
-  if (installedSet.has(tag)) return true;
-  if (installedSet.has(`${tag}:latest`)) return true;
-  const fileName = tag.startsWith("http") ? tag.split("/").pop()! : tag;
-  if (installedSet.has(fileName)) return true;
+/**
+ * L'entrée installée qui correspond à cette variante du catalogue, ou `null`.
+ *
+ * Le catalogue nomme une variante (`qwen3.5:4b`, une adresse Hugging Face) ;
+ * le disque la range sous un autre nom (`unsloth__Qwen3.5-4B-GGUF/…gguf`).
+ * C'est cette entrée-là qu'il faut supprimer : envoyer le nom du catalogue
+ * ne trouvait aucun fichier, et « Supprimer » ne faisait rien.
+ */
+function installedEntry(
+  tag: string,
+  installedSet: Set<string>,
+  variantHint?: string,
+): string | null {
+  if (!tag) return null;
+  if (installedSet.has(tag)) return tag;
+  if (installedSet.has(`${tag}:latest`)) return `${tag}:latest`;
+  const fileName = tag.startsWith("http") ? (tag.split("/").pop() ?? tag) : tag;
+  if (installedSet.has(fileName)) return fileName;
 
   // Étiquette du registre Ollama (`qwen3:8b`, `ollama/llama3.2:3b`) : le
   // pull l'écrit sous `{name}_{tag}.gguf`.
@@ -480,10 +492,10 @@ function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?
     const bare = tag.replace(/^ollama\//, "");
     if (bare.includes(":") && !bare.includes("/")) {
       const asFile = `${bare.replace(":", "_")}.gguf`;
-      if (installedSet.has(asFile)) return true;
+      if (installedSet.has(asFile)) return asFile;
       const asFileLower = asFile.toLowerCase();
       for (const inst of installedSet) {
-        if (inst.toLowerCase() === asFileLower) return true;
+        if (inst.toLowerCase() === asFileLower) return inst;
       }
     }
   }
@@ -492,7 +504,7 @@ function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?
   if (tag.startsWith("https://huggingface.co/")) {
     const repoPart = tag.replace("https://huggingface.co/", "").replace(/\/+$/, "");
     const dirName = repoPart.replace("/", "__");
-    if (installedSet.has(dirName)) return true;
+    if (installedSet.has(dirName)) return dirName;
     const hint = variantHint?.toLowerCase().replace(/[^a-z0-9]+/g, "");
     if (hint) {
       for (const inst of installedSet) {
@@ -501,7 +513,7 @@ function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?
           inst.toLowerCase().startsWith(`${dirName.toLowerCase()}/`) &&
           normalized.includes(hint)
         ) {
-          return true;
+          return inst;
         }
       }
     }
@@ -513,10 +525,14 @@ function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?
   for (const inst of installedSet) {
     const instLower = inst.toLowerCase();
     if (instLower === fileLower || instLower === tagLower) {
-      return true;
+      return inst;
     }
   }
-  return false;
+  return null;
+}
+
+function isVariantInstalled(tag: string, installedSet: Set<string>, variantHint?: string): boolean {
+  return installedEntry(tag, installedSet, variantHint) !== null;
 }
 
 /** La carte ne quitte l'état qu'au bout de ce délai, pour que la grille ne
@@ -2775,7 +2791,12 @@ export function ModelBrowser({
                         isVariantInstalled(v.tag, installedSet, activeQuant);
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
-                      const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
+                      const isDeleting =
+                        deletingTag !== null &&
+                        (deletingTag === targetTag ||
+                          deletingTag === v.tag ||
+                          deletingTag === installedEntry(targetTag, installedSet, activeQuant) ||
+                          deletingTag === installedEntry(v.tag, installedSet, activeQuant));
                       const fitV =
                         fits[fitKey(v.params, activeQuant, targetStorageGb, v.attention)];
                       const compatV = variantCompat(
@@ -2845,7 +2866,13 @@ export function ModelBrowser({
                                       padding: "3px 8px",
                                       fontSize: "11px",
                                     }}
-                                    onClick={() => handleDeleteModel(targetTag)}
+                                    onClick={() =>
+                                      handleDeleteModel(
+                                        installedEntry(targetTag, installedSet, activeQuant) ??
+                                          installedEntry(v.tag, installedSet, activeQuant) ??
+                                          targetTag,
+                                      )
+                                    }
                                     disabled={isDeleting}
                                     title="Supprimer ce modèle du disque dur local"
                                   >
@@ -3843,7 +3870,12 @@ export function ModelBrowser({
                         isVariantInstalled(v.tag, installedSet, activeQuant);
                       const progress = installProgress[targetTag] ?? installProgress[v.tag];
                       const isInstalling = progress !== undefined;
-                      const isDeleting = deletingTag === targetTag || deletingTag === v.tag;
+                      const isDeleting =
+                        deletingTag !== null &&
+                        (deletingTag === targetTag ||
+                          deletingTag === v.tag ||
+                          deletingTag === installedEntry(targetTag, installedSet, activeQuant) ||
+                          deletingTag === installedEntry(v.tag, installedSet, activeQuant));
                       const fitV =
                         fits[fitKey(v.params, activeQuant, targetStorageGb, v.attention)];
                       const compatV = variantCompat(
@@ -3920,7 +3952,13 @@ export function ModelBrowser({
                                       padding: "3px 8px",
                                       fontSize: "11px",
                                     }}
-                                    onClick={() => handleDeleteModel(targetTag)}
+                                    onClick={() =>
+                                      handleDeleteModel(
+                                        installedEntry(targetTag, installedSet, activeQuant) ??
+                                          installedEntry(v.tag, installedSet, activeQuant) ??
+                                          targetTag,
+                                      )
+                                    }
                                     disabled={isDeleting}
                                     title="Supprimer ce modèle du disque dur local"
                                   >
