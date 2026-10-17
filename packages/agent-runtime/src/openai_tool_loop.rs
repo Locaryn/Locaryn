@@ -22,7 +22,7 @@ use std::time::Instant;
 
 /// Dix tours ne suffisaient pas à une tâche menée par étapes : construire six
 /// éléments, plus lire l'état et vérifier, en prend déjà huit.
-const MAX_TOOL_ROUNDS: u32 = 20;
+const MAX_TOOL_ROUNDS: u32 = 60;
 
 /// Nombre de tours d'affilée où le modèle renvoie exactement le même appel
 /// (même outil, mêmes arguments) avant d'arrêter la tâche. Un modèle bloqué
