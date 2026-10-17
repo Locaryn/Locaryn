@@ -488,3 +488,55 @@ async fn un_appel_identique_repete_arrete_la_boucle() {
         "3 appels identiques, une correction, 3 appels identiques de nouveau, puis arrêt"
     );
 }
+
+/// Un modèle qui enchaîne des appels différents (arguments distincts à chaque
+/// tour, donc la garde de répétition ne se déclenche pas) doit être arrêté à
+/// la limite de 60 actions, avec le message qui annonce cette limite.
+#[tokio::test]
+async fn la_limite_de_60_actions_arrete_la_tache() {
+    let compte: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+    let app = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(|State(compte): State<Arc<Mutex<u32>>>| async move {
+                let n = {
+                    let mut a = compte.lock().expect("verrou");
+                    *a += 1;
+                    *a
+                };
+                let corps = format!(
+                    "data: {{\"choices\":[{{\"delta\":{{\"tool_calls\":[{{\"index\":0,\"id\":\"c{n}\",\"function\":{{\"name\":\"outil_inexistant\",\"arguments\":\"{{\\\"n\\\":{n}}}\"}}}}]}},\"finish_reason\":null}}]}}\n\n\
+                     data: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\n\
+                     data: [DONE]\n\n"
+                );
+                axum::response::Response::builder()
+                    .header("content-type", "text/event-stream")
+                    .body(axum::body::Body::from(corps))
+                    .expect("réponse")
+            }),
+        )
+        .with_state(compte.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("port libre");
+    let addr = listener.local_addr().expect("adresse");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let client = reqwest::Client::new();
+    let mut flux = run_openai_tool_loop(&format!("http://{addr}"), &client, &entree("qwen3-4b.gguf"))
+        .await
+        .expect("le flux doit s'ouvrir");
+    let mut logs = Vec::new();
+    while let Some(ev) = flux.next().await {
+        if let StreamEvent::Log { msg, .. } = ev {
+            logs.push(msg);
+        }
+    }
+    assert!(
+        logs.iter().any(|m| m.contains("Limite de 60 actions")),
+        "message de limite attendu, reçu : {logs:?}"
+    );
+    assert_eq!(*compte.lock().expect("verrou"), 60, "exactement 60 envois au modèle");
+}
