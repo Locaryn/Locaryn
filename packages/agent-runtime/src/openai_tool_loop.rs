@@ -24,6 +24,18 @@ use std::time::Instant;
 /// éléments, plus lire l'état et vérifier, en prend déjà huit.
 const MAX_TOOL_ROUNDS: u32 = 20;
 
+/// Nombre de tours d'affilée où le modèle renvoie exactement le même appel
+/// (même outil, mêmes arguments) avant d'arrêter la tâche. Un modèle bloqué
+/// rejoue ainsi le même appel jusqu'à la limite de tours sans rien changer.
+const APPELS_IDENTIQUES_MAX: u32 = 3;
+
+/// Message interne envoyé au modèle quand il rejoue le même appel d'outil :
+/// il doit changer de méthode plutôt que de répéter la même action.
+const CORRECTION_APPEL_IDENTIQUE: &str = "Tu viens de refaire exactement le même appel d'outil \
+    avec les mêmes arguments, sans effet. Ne le répète pas. Analyse pourquoi il ne \
+    donne rien, puis essaie une autre approche : un autre outil, d'autres arguments, \
+    ou une réponse directe à l'utilisateur avec ce que tu sais déjà.";
+
 /// Source de l'avis émis quand un tour finit sans réponse finale (limite
 /// d'actions atteinte, ou modèle arrêté). L'interface la reconnaît.
 pub const SOURCE_TOUR_INACHEVE: &str = "tour_inacheve";
@@ -774,6 +786,10 @@ pub async fn run_openai_tool_loop(
             let mut got_final = false;
             let mut relance_faite = false;
             let mut limite_atteinte = false;
+            let mut derniere_signature: Option<String> = None;
+            let mut repetitions_identiques: u32 = 0;
+            let mut boucle_detectee = false;
+            let mut correction_identique = false;
             // Une seule nouvelle tentative par tour après un refus pour fenêtre
             // pleine : l'estimation a pu être trop optimiste.
             let mut serre = false;
@@ -1033,6 +1049,45 @@ pub async fn run_openai_tool_loop(
                     break;
                 }
 
+                // Même appel (outil et arguments) que le tour précédent : on
+                // compte, et on arrête avant de le rejouer une fois de plus.
+                let signature = round_result
+                    .calls
+                    .iter()
+                    .map(|c| format!("{}\u{1f}{}", c.name, c.arguments_raw))
+                    .collect::<Vec<_>>()
+                    .join("\u{1e}");
+                if derniere_signature.as_deref() == Some(signature.as_str()) {
+                    repetitions_identiques += 1;
+                } else {
+                    derniere_signature = Some(signature);
+                    repetitions_identiques = 1;
+                }
+                if repetitions_identiques >= APPELS_IDENTIQUES_MAX {
+                    if !correction_identique {
+                        // Première fois : on ne rejoue pas l'appel, on dit au
+                        // modèle de changer d'approche, puis on lui laisse un tour.
+                        tracing::warn!(
+                            repetitions = repetitions_identiques,
+                            "appel d'outil identique répété : correction envoyée au modèle"
+                        );
+                        correction_identique = true;
+                        derniere_signature = None;
+                        repetitions_identiques = 0;
+                        messages.as_array_mut().unwrap().push(serde_json::json!({
+                            "role": "user",
+                            "content": CORRECTION_APPEL_IDENTIQUE,
+                        }));
+                        continue;
+                    }
+                    tracing::warn!(
+                        repetitions = repetitions_identiques,
+                        "appel d'outil identique répété après correction : la tâche s'arrête"
+                    );
+                    boucle_detectee = true;
+                    break;
+                }
+
                 relance_faite = false;
 
                 // Echo the assistant tool-call message back into the transcript.
@@ -1167,7 +1222,12 @@ pub async fn run_openai_tool_loop(
             // quoi faire. `source` reste stable : /goal s'en sert pour
             // relancer le travail au lieu de juger un tour coupé.
             if !got_final {
-                let msg = if limite_atteinte {
+                let msg = if boucle_detectee {
+                    format!(
+                        "Le modèle a répété {APPELS_IDENTIQUES_MAX} fois de suite le même appel d'outil \
+                         sans progrès : la tâche s'arrête ici. Reformulez la demande ou changez d'approche."
+                    )
+                } else if limite_atteinte {
                     format!(
                         "Limite de {MAX_TOOL_ROUNDS} actions atteinte pour ce message : la tâche \
                          s'arrête ici, sans réponse finale. Écrivez « continue » pour reprendre."

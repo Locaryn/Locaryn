@@ -438,3 +438,53 @@ async fn une_grammaire_refusee_est_retentee_une_fois() {
     assert_eq!(vider(flux).await, "salut");
     assert_eq!(*appels.lock().expect("verrou"), 2, "un seul nouvel essai");
 }
+
+/// Un modèle qui rejoue le même appel d'outil à l'identique doit être arrêté
+/// après `APPELS_IDENTIQUES_MAX` tours, et non après la limite générale.
+#[tokio::test]
+async fn un_appel_identique_repete_arrete_la_boucle() {
+    let compte: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+    let app = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(|State(compte): State<Arc<Mutex<u32>>>| async move {
+                *compte.lock().expect("verrou") += 1;
+                let corps = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"outil_inexistant\",\"arguments\":\"{}\"}}]},\"finish_reason\":null}]}\n\n\
+                             data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n\
+                             data: [DONE]\n\n";
+                axum::response::Response::builder()
+                    .header("content-type", "text/event-stream")
+                    .body(axum::body::Body::from(corps))
+                    .expect("réponse")
+            }),
+        )
+        .with_state(compte.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("port libre");
+    let addr = listener.local_addr().expect("adresse");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let client = reqwest::Client::new();
+    let flux = run_openai_tool_loop(&format!("http://{addr}"), &client, &entree("qwen3-4b.gguf"))
+        .await
+        .expect("le flux doit s'ouvrir");
+    let mut flux = flux;
+    let mut logs = Vec::new();
+    while let Some(ev) = flux.next().await {
+        if let StreamEvent::Log { msg, .. } = ev {
+            logs.push(msg);
+        }
+    }
+    assert!(
+        logs.iter().any(|m| m.contains("répété")),
+        "message d'arrêt attendu, reçu : {logs:?}"
+    );
+    assert_eq!(
+        *compte.lock().expect("verrou"),
+        6,
+        "3 appels identiques, une correction, 3 appels identiques de nouveau, puis arrêt"
+    );
+}
