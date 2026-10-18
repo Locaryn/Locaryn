@@ -27,7 +27,9 @@ pub use loader::{load, AgentDef, LoadError, LoadedHook, LoadedPlugin, RuleDoc};
 pub use manifest::{PermissionRequest, PluginManifest};
 pub use preview::{preview_source, SourcePreview};
 pub use registry::{ExtensionRegistry, RegistryError};
-pub use source::{latest_github_version, version_gt, InstallSource, SourceError};
+pub use source::{
+    latest_github_version, source_with_latest_release, version_gt, InstallSource, SourceError,
+};
 
 use locaryn_shared_types::{ExtensionKind, ExtensionScope, Permission};
 

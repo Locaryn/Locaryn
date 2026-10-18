@@ -648,7 +648,8 @@ export function ExtensionsSettings() {
     }
   }
 
-  /** Re-installe depuis la source enregistrée (github:…, chemin ou zip).
+  /** Re-installe depuis la source enregistrée (github:…, chemin ou zip),
+   *  remontée à la dernière release GitHub publiée (bêta comprise).
    *  L'upsert garde l'id, l'état actif et les permissions accordées. */
   async function update(e: InstalledExtension) {
     setBusy(e.id);
@@ -1351,7 +1352,7 @@ export function ExtensionsSettings() {
                             <span
                               className="locaryn-tag"
                               style={{ color: "var(--accent)" }}
-                              title={`v${updates[e.id]?.latest_version ?? ""} disponible sur la branche par défaut du dépôt`}
+                              title={`v${updates[e.id]?.latest_version ?? ""} disponible sur GitHub (dernière release — bêta comprise — ou branche par défaut)`}
                             >
                               Mise à jour dispo · v{updates[e.id]?.latest_version}
                             </span>
@@ -1427,7 +1428,7 @@ export function ExtensionsSettings() {
                               disabled={updatingAll || busy === e.id || !e.source}
                               title={
                                 e.source
-                                  ? "Réinstalle depuis la même source (github:…, dossier ou zip)"
+                                  ? "Réinstalle depuis la source enregistrée, remontée à la dernière release GitHub (bêta comprise)"
                                   : "Aucune source enregistrée — impossible de mettre à jour."
                               }
                               onClick={() => update(e)}

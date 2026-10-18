@@ -476,7 +476,17 @@ async fn download_github_release_bundle(
                     "API GitHub indisponible pour la release, téléchargement direct"
                 );
             }
-            return download_release_asset_directly(http, owner, repo, tag?).await;
+            // Without a pinned tag the fallback used to stop here, leaving an
+            // unpinned install of a beta-only repository on the source archive
+            // — no binary. `releases/latest` hides prereleases (404 when that is
+            // all a repository publishes); the Atom feed names the real newest.
+            return match tag {
+                Some(t) => download_release_asset_directly(http, owner, repo, t).await,
+                None => match latest_github_release_tag(http, owner, repo).await {
+                    Some(t) => download_release_asset_directly(http, owner, repo, &t).await,
+                    None => None,
+                },
+            };
         }
     };
     let body = resp.json::<serde_json::Value>().await.ok()?;
@@ -634,13 +644,15 @@ async fn download_github_zip(
     }))
 }
 
-/// Latest `version` declared by a GitHub-hosted plugin, read from its manifest
-/// at the repository's default branch (`HEAD`). Powers the "mise à jour dispo"
-/// badge.
+/// Latest `version` a GitHub-hosted plugin declares, powering the "mise à jour
+/// dispo" badge. An unpinned source is read from its manifest at the
+/// repository's default branch (`HEAD`); a source pinned to a version tag is
+/// compared against the latest published release (betas included — the feed
+/// that GitHub's `releases/latest` endpoint hides).
 ///
-/// `None` when the source is not a GitHub repo, pins an explicit ref (a pinned
-/// version is a target, not a moving branch), or exposes no manifest carrying
-/// a version.
+/// `None` when the source is not a GitHub repo, pins a branch (a branch pin
+/// follows that branch, it is its own target), or the version cannot be
+/// determined.
 pub async fn latest_github_version(
     http: &reqwest::Client,
     spec: &str,
@@ -657,7 +669,14 @@ pub async fn latest_github_version(
     else {
         return Ok(None);
     };
-    if git_ref.is_some() {
+    // A pinned version tag follows the release feed: the badge must name the
+    // newest published release (beta included), not stay silent on the
+    // already-installed pin. Branch pins keep reporting `None`.
+    if let Some(pinned) = git_ref.as_deref() {
+        if is_version_tag(pinned) {
+            let tag = latest_github_release_tag(http, &owner, &repo).await;
+            return Ok(tag.map(|t| t.trim_start_matches('v').to_string()));
+        }
         return Ok(None);
     }
     let prefix = subdir
@@ -685,6 +704,79 @@ pub async fn latest_github_version(
         }
     }
     Ok(None)
+}
+
+/// The tag of a repository's latest published release (`v0.1.0-beta.5`), betas
+/// included. Read from the releases Atom feed: public, and outside the API's
+/// 60-requests-per-hour quota that a badge check would otherwise burn — GitHub's
+/// `releases/latest` endpoint deliberately hides prereleases, and answers 404 on
+/// a repository that only publishes them.
+///
+/// `None` when the feed is unreachable or carries no entry.
+pub async fn latest_github_release_tag(
+    http: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+) -> Option<String> {
+    let url = format!("https://github.com/{owner}/{repo}/releases.atom");
+    let resp = github_get(http, &url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let xml = resp.text().await.ok()?;
+    let full_name = format!("{owner}/{repo}");
+    crate::catalog::releases_from_atom(&xml, &full_name)
+        .first()
+        .map(|r| r.tag.clone().unwrap_or_else(|| format!("v{}", r.version)))
+}
+
+/// `spec` rewritten onto the release tag `tag`, or `None` when there is nothing
+/// to rewrite: the spec is not a GitHub source pinned to a version tag, or is
+/// already on that tag.
+fn retag_spec(spec: &str, tag: &str) -> Option<String> {
+    let InstallSource::GitHub {
+        owner,
+        repo,
+        git_ref,
+        subdir,
+    } = parse(spec).ok()?
+    else {
+        return None;
+    };
+    let pinned = git_ref.filter(|r| is_version_tag(r))?;
+    if pinned == tag {
+        return None;
+    }
+    let sub = subdir.map(|d| format!("#{d}")).unwrap_or_default();
+    Some(format!("github:{owner}/{repo}@{tag}{sub}"))
+}
+
+/// The source rewritten onto the repository's latest published release (betas
+/// included) when it is pinned to a version tag: "Mettre à jour" then installs
+/// the newest version instead of reinstalling the one already installed.
+/// Local sources, branch pins, and an unreachable feed leave the spec
+/// unchanged — a failed lookup must not send an install somewhere else.
+pub async fn source_with_latest_release(http: &reqwest::Client, spec: &str) -> String {
+    let parsed = match parse(spec) {
+        Ok(p) => p,
+        Err(_) => return spec.to_string(),
+    };
+    let InstallSource::GitHub {
+        owner,
+        repo,
+        git_ref,
+        ..
+    } = parsed
+    else {
+        return spec.to_string();
+    };
+    if !git_ref.as_deref().is_some_and(is_version_tag) {
+        return spec.to_string();
+    }
+    match latest_github_release_tag(http, &owner, &repo).await {
+        Some(tag) => retag_spec(spec, &tag).unwrap_or_else(|| spec.to_string()),
+        None => spec.to_string(),
+    }
 }
 
 /// True when `a` is a newer version than `b`. Compares dot-separated numeric
@@ -946,8 +1038,10 @@ mod tests {
     }
 
     #[test]
-    fn latest_github_version_ignores_local_and_pinned_sources() {
-        // Local paths and explicit refs are not checkable: no error, just None.
+    fn latest_github_version_ignores_local_and_branch_pinned_sources() {
+        // Local paths and branch pins are not checkable: no error, just None,
+        // and no network round-trip. Version pins are checkable — they follow
+        // the releases feed (covered by `retag_spec` tests below).
         let http = reqwest::Client::new();
         let local = tokio::runtime::Runtime::new()
             .unwrap()
@@ -955,8 +1049,38 @@ mod tests {
         assert!(matches!(local, Ok(None)));
         let pinned = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(latest_github_version(&http, "github:acme/tools@v1.2.0"));
+            .block_on(latest_github_version(&http, "github:acme/tools@main"));
         assert!(matches!(pinned, Ok(None)));
+    }
+
+    #[test]
+    fn retag_spec_moves_a_pinned_version_to_the_new_release() {
+        assert_eq!(
+            retag_spec("github:Locaryn/morph-wsl@v0.1.0-beta.4", "v0.1.0-beta.5").as_deref(),
+            Some("github:Locaryn/morph-wsl@v0.1.0-beta.5")
+        );
+        // The bare `owner/repo@tag` shorthand is rebuilt in canonical form.
+        assert_eq!(
+            retag_spec("Locaryn/morph-wsl@v0.1.0-beta.4", "v0.1.0-beta.5").as_deref(),
+            Some("github:Locaryn/morph-wsl@v0.1.0-beta.5")
+        );
+        // A pinned subdir survives the rewrite.
+        assert_eq!(
+            retag_spec("github:acme/tools@v1.0.0#plugins/fmt", "v1.1.0").as_deref(),
+            Some("github:acme/tools@v1.1.0#plugins/fmt")
+        );
+    }
+
+    #[test]
+    fn retag_spec_leaves_everything_else_alone() {
+        // Already on the latest release: nothing to change.
+        assert_eq!(retag_spec("github:acme/tools@v1.2.0", "v1.2.0"), None);
+        // A branch pin follows its branch, it is not a release.
+        assert_eq!(retag_spec("github:acme/tools@main", "v1.2.0"), None);
+        // An unpinned source tracks HEAD, nothing to retag.
+        assert_eq!(retag_spec("github:acme/tools", "v1.2.0"), None);
+        // A local directory is not a GitHub source.
+        assert_eq!(retag_spec("C:/tmp/plugin", "v1.2.0"), None);
     }
 
     #[tokio::test]

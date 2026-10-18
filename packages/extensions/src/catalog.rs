@@ -1010,7 +1010,7 @@ const MORPH_RELEASES_PER_REPO: usize = 10;
 /// Les releases d'un flux Atom GitHub (`…/releases.atom`), plus récentes
 /// d'abord. Le flux ne dit pas « pre-release » : une version à suffixe
 /// (`-beta.1`) en est une, comme partout ailleurs dans ce catalogue.
-fn releases_from_atom(
+pub(crate) fn releases_from_atom(
     xml: &str,
     full_name: &str,
 ) -> Vec<locaryn_shared_types::MorphVersionRelease> {

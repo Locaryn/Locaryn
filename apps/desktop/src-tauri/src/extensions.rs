@@ -1113,6 +1113,12 @@ pub async fn update_extension(
     let source = record.source.clone().ok_or_else(|| {
         "impossible de mettre à jour : aucune source enregistrée pour cette extension".to_string()
     })?;
+    // La source enregistrée est souvent épinglée sur la version installée :
+    // réinstaller telle quelle remettrait l'ancienne. On remonte à la dernière
+    // release publiée (bêta comprise, flux Atom hors quota de l'API) ; source
+    // locale, pin de branche ou flux injoignable restent inchangés.
+    let source = locaryn_extensions::source_with_latest_release(&core.http, &source).await;
+    tracing::info!(%source, "mise à jour depuis la dernière release connue");
     reinstall_from_source(&core, uid, &record.name, record.scope, &source).await
 }
 
