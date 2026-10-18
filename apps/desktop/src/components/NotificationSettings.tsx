@@ -1,7 +1,7 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type NotificationGroup, type NotificationPrefs, core } from "../lib/core";
-import { oublierPreferences } from "../lib/osNotify";
+import { jouerSon, oublierPreferences } from "../lib/osNotify";
 
 /**
  * Ce pour quoi l'application accepte de déranger.
@@ -240,6 +240,24 @@ export function NotificationSettings() {
               suivre un téléchargement sans rouvrir la fenêtre. Indépendant des bannières.
             </span>
           </span>
+        </label>
+
+        <label className="locaryn-notif-groupe">
+          <input
+            type="checkbox"
+            checked={prefs.sounds}
+            onChange={(e) => void appliquer({ ...prefs, sounds: e.target.checked })}
+          />
+          <span className="locaryn-notif-groupe-texte">
+            <strong>Sons</strong>
+            <span className="locaryn-field-hint">
+              Un petit son quand une réponse du modèle s'achève, qu'il pose une question ou demande
+              un accord. Indépendant des bannières : il part même si la fenêtre est devant vous.
+            </span>
+          </span>
+          <button type="button" className="locaryn-btn-ghost" onClick={() => void jouerSon()}>
+            Essayer
+          </button>
         </label>
       </div>
     </div>

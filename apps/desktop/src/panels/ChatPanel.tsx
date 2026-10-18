@@ -55,7 +55,7 @@ import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { runGoal } from "../lib/goal";
 import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
-import { notifierSysteme } from "../lib/osNotify";
+import { jouerSon, notifierSysteme } from "../lib/osNotify";
 import { pluginBridge } from "../lib/pluginBridge";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
@@ -818,6 +818,25 @@ export function ChatPanel({
   }, [sessionId]);
   const fileVisible = messageQueue.filter((m) => m.sessionId === sessionId);
 
+  // Une question du modèle arrive : un son, parce que la bannière ne part pas
+  // quand la fenêtre est devant vous — et qu'une question qui attend sans
+  // bruit est une question qu'on finit par oublier. La première lecture ne
+  // sonne pas : à l'ouverture, ce qui attendait déjà ne doit pas réveiller.
+  const questionsVuesRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const items = attention ?? [];
+    if (!questionsVuesRef.current) {
+      questionsVuesRef.current = new Set(items.map((a) => a.id));
+      return;
+    }
+    for (const a of items) {
+      if (!questionsVuesRef.current.has(a.id) && a.urgency === "question") {
+        void jouerSon();
+      }
+      questionsVuesRef.current.add(a.id);
+    }
+  }, [attention]);
+
   // La file se vide d'elle-même, dans l'ordre, dès que le modèle est libre.
   // Un effet plutôt qu'un appel à la fin de `send` : celui-ci relisait un
   // `streaming` figé à `true` et ressortait sans rien envoyer — les messages
@@ -922,6 +941,9 @@ export function ChatPanel({
           runSessionRef.current = null;
           setStreaming(false);
           setAttente(null);
+          // Une réponse finie pendant qu'on regardait ailleurs : le son dit
+          // qu'elle est là, la relecture met le fil à jour.
+          if (fullTextRef.current.trim()) void jouerSon();
           // La version enregistrée remplace ce qui a été reçu au vol.
           await relire();
         }
@@ -1354,6 +1376,9 @@ ${d.texte}`
         `L'outil « ${ev.tool} » ne s'exécutera pas sans votre réponse.`,
         "approvals",
       );
+      // Le son, lui, part même si la fenêtre est devant vous : l'agent est
+      // garé, et personne ne le verrait sans la carte.
+      void jouerSon();
     } else if (ev.type === "media_pending") {
       // La place du média, avant le média : on voit où il va apparaître, et
       // qu'il se fabrique.
@@ -2024,6 +2049,8 @@ ${d.texte}`
 
       // Invisible side call: ask the model what to do next, shown as chips.
       if (lastAnswer && toujoursIci) {
+        // La réponse est finie : le son le dit à qui était ailleurs.
+        void jouerSon();
         setFollowupsLoading(true);
         core
           .suggestFollowups(lastAnswer, text)

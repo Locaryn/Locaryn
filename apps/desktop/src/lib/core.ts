@@ -1728,6 +1728,11 @@ export interface NotificationPrefs {
   /** En dessous, une tache se termine sans banniere. */
   min_duration_seconds: number;
   taskbar_progress: boolean;
+  /**
+   * Un petit son quand une reponse s'acheve, qu'une question arrive ou qu'un
+   * accord est demande. Indépendant des bannières.
+   */
+  sounds: boolean;
 }
 
 /** Les groupes, tels que l'interface les nomme. */
@@ -4319,6 +4324,7 @@ Contenu de démonstration, avec **du gras** et une liste :
       only_when_hidden: true,
       min_duration_seconds: 20,
       taskbar_progress: true,
+      sounds: true,
     };
   },
   async setNotificationPrefs() {},

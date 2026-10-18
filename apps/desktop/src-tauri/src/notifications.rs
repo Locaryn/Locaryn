@@ -78,6 +78,15 @@ pub struct NotificationPrefs {
     /// Montrer l'avancement dans la barre des tâches du système.
     #[serde(default = "vrai")]
     pub taskbar_progress: bool,
+
+    /// Jouer un petit son quand une réponse s'achève, quand le modèle pose une
+    /// question ou demande un accord.
+    ///
+    /// La bannière ne dit rien à qui regarde déjà l'écran ; le son, lui,
+    /// porte au-delà de la fenêtre. Indépendant des bannières : il obéit à sa
+    /// seule case, pas au maître général.
+    #[serde(default = "vrai")]
+    pub sounds: bool,
 }
 
 fn vrai() -> bool {
@@ -102,6 +111,7 @@ impl Default for NotificationPrefs {
             only_when_hidden: true,
             min_duration_seconds: seuil_par_defaut(),
             taskbar_progress: true,
+            sounds: true,
         }
     }
 }
@@ -209,6 +219,10 @@ mod tests {
         );
         assert!(p.only_when_hidden, "ne pas doubler ce qu'on regarde deja");
         assert_eq!(p.min_duration_seconds, 20);
+        assert!(
+            p.sounds,
+            "le son se regle par sa case, il n'est pas un defaut cache"
+        );
     }
 
     /// Un fichier ecrit par une version anterieure n'a pas tous les champs :
@@ -220,6 +234,7 @@ mod tests {
         assert!(p.approvals);
         assert!(p.enabled);
         assert_eq!(p.min_duration_seconds, 20);
+        assert!(p.sounds);
     }
 
     #[test]

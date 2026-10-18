@@ -93,6 +93,7 @@ async function lirePreferences(): Promise<NotificationPrefs> {
       only_when_hidden: true,
       min_duration_seconds: 20,
       taskbar_progress: true,
+      sounds: true,
     }));
   }
   return preferences;
@@ -118,6 +119,87 @@ export async function notificationAutorisee(
   // ce qui bloque le travail.
   if (dureeMs !== undefined && dureeMs < p.min_duration_seconds * 1000) return false;
   return true;
+}
+
+/**
+ * Le petit son d'une fin de réponse, d'une question ou d'un accord demandé.
+ *
+ * La bannière ne dit rien à qui regarde déjà l'écran : le son, lui, porte au
+ * -delà de la fenêtre sans déranger personne d'autre — deux notes courtes,
+ * produites par le synthétiseur du navigateur, sans fichier audio à livrer
+ * ni à télécharger.
+ *
+ * Indépendant des bannières : il obéit à sa seule case, « Sons », dans les
+ * réglages des notifications. Comme les autres, il ne rejette jamais — un son
+ * qui ne sort pas ne doit pas faire échouer ce qu'il annonçait.
+ */
+export async function jouerSon(): Promise<void> {
+  try {
+    if (typeof window === "undefined") return;
+    const p = await lirePreferences();
+    if (!p.sounds) return;
+    const ctx = contexteAudio();
+    if (!ctx) return;
+    // Une politique d'autoplay peut tenir le contexte en veille : la reprise
+    // ne marche que depuis un geste, d'où le réveilleur posé au premier.
+    if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+    // Sol puis do — une montée, « c'est prêt » — au lieu d'un carillon ou
+    // d'un cliquetis. Assez bas pour ne pas sursauter, assez net pour percer.
+    const t = ctx.currentTime;
+    for (const [frequence, decalage] of [
+      [784, 0],
+      [1046.5, 0.09],
+    ] as const) {
+      const onde = ctx.createOscillator();
+      const volume = ctx.createGain();
+      onde.type = "sine";
+      onde.frequency.value = frequence;
+      volume.gain.setValueAtTime(0.0001, t + decalage);
+      volume.gain.exponentialRampToValueAtTime(0.12, t + decalage + 0.02);
+      volume.gain.exponentialRampToValueAtTime(0.0001, t + decalage + 0.22);
+      onde.connect(volume).connect(ctx.destination);
+      onde.start(t + decalage);
+      onde.stop(t + decalage + 0.25);
+    }
+  } catch (error) {
+    console.warn("[Locaryn] son de notification impossible :", error);
+  }
+}
+
+/** Le contexte audio de la session, créé à la première demande. */
+let audio: AudioContext | null = null;
+
+function contexteAudio(): AudioContext | null {
+  if (audio && audio.state !== "closed") return audio;
+  try {
+    const Fabrique = window.AudioContext;
+    if (!Fabrique) return null;
+    audio = new Fabrique();
+  } catch {
+    // Pas de périphérique, ou contexte refusé : le silence n'est pas une panne.
+    return null;
+  }
+  reveillerAudio();
+  return audio;
+}
+
+/**
+ * Le premier geste de la session débloque l'audio gelé.
+ *
+ * Une politique d'autoplay peut refuser de démarrer un contexte créé en
+ * dehors d'un geste. Le premier clic ou la première frappe de la session fait
+ * foi pour tout le reste — y compris les sons qui arriveront bien plus tard.
+ */
+let reveille = false;
+
+function reveillerAudio(): void {
+  if (reveille || typeof window === "undefined") return;
+  reveille = true;
+  const reprise = () => {
+    if (audio && audio.state === "suspended") void audio.resume().catch(() => {});
+  };
+  window.addEventListener("pointerdown", reprise, { once: true });
+  window.addEventListener("keydown", reprise, { once: true });
 }
 
 /**
