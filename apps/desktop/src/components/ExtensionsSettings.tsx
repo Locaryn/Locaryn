@@ -19,10 +19,10 @@ import {
 } from "../lib/core";
 import { consumePendingInstall, getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { pickAnyFile } from "../lib/dialog";
+import { useI18n } from "../lib/i18n";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
-import { useI18n } from "../lib/i18n";
 
 /**
  * The extension store, wired to the real registry.
@@ -779,7 +779,7 @@ export function ExtensionsSettings() {
       return (
         entry.name.toLowerCase().includes(q) ||
         entry.display_name.toLowerCase().includes(q) ||
-        ((entry.description ?? "") + " " + (entry.descriptionEn ?? "")).toLowerCase().includes(q) ||
+        `${entry.description ?? ""} ${entry.descriptionEn ?? ""}`.toLowerCase().includes(q) ||
         entry.keywords.some((k) => k.toLowerCase().includes(q))
       );
     });
@@ -1168,7 +1168,9 @@ export function ExtensionsSettings() {
                         <div key={e.id} className="locaryn-box-card">
                           <div className="locaryn-box-head">
                             <div style={{ minWidth: 0 }}>
-                              <h3 className="locaryn-box-name" data-no-translate>{e.name}</h3>
+                              <h3 className="locaryn-box-name" data-no-translate>
+                                {e.name}
+                              </h3>
                               <span className="locaryn-box-brand">
                                 v{e.version} · driver {e.core?.driver}
                               </span>
@@ -1283,7 +1285,9 @@ export function ExtensionsSettings() {
                                       }}
                                     >
                                       <div style={{ minWidth: 0 }}>
-                                        <strong style={{ fontSize: 13 }} data-no-translate>{sk.name}</strong>
+                                        <strong style={{ fontSize: 13 }} data-no-translate>
+                                          {sk.name}
+                                        </strong>
                                         {!sk.verified && (
                                           <span className="locaryn-tag" style={{ marginLeft: 6 }}>
                                             non vérifié
@@ -1336,7 +1340,9 @@ export function ExtensionsSettings() {
                       <div key={e.id} className="locaryn-box-card">
                         <div className="locaryn-box-head">
                           <div>
-                            <h3 className="locaryn-box-name" data-no-translate>{e.name}</h3>
+                            <h3 className="locaryn-box-name" data-no-translate>
+                              {e.name}
+                            </h3>
                             <span className="locaryn-box-brand">
                               v{e.version}
                               {e.author ? ` · ${e.author}` : ""}
@@ -1715,7 +1721,9 @@ export function ExtensionsSettings() {
                         {c.author ? `${c.author} · ` : ""}
                         {c.catalog_label}
                       </span>
-                      <h2 className="locaryn-drawer-name" data-no-translate>{c.display_name}</h2>
+                      <h2 className="locaryn-drawer-name" data-no-translate>
+                        {c.display_name}
+                      </h2>
                     </div>
                     <button
                       type="button"

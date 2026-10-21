@@ -1360,6 +1360,14 @@ export type StreamEvent =
     }
   | { type: "log"; level: string; msg: string; source: string }
   | {
+      /** La conversation est comprimée pour tenir dans la fenêtre : les
+       *  anciens échanges deviennent un résumé. `started` pendant le calcul
+       *  (animation dans le fil), `done` / `failed` à la fin. */
+      type: "context_compaction";
+      phase: "started" | "done" | "failed";
+      detail: string;
+    }
+  | {
       /** Vitesse mesurée par le moteur, envoyée juste avant `message_end`. */
       type: "timings";
       prompt_tokens: number;
@@ -1735,6 +1743,17 @@ export interface NotificationPrefs {
   sounds: boolean;
 }
 
+/** Ce que la croix de la fenêtre principale fait de l'application. */
+export interface WindowPreferences {
+  /**
+   * `true` : la fermeture ferme vraiment, processus compris — équivalent à
+   * « Quitter » dans le menu de l'icône de la zone de notification.
+   * `false` (défaut) : la fenêtre se range dans la zone de notification et
+   * l'application continue de tourner en arrière-plan.
+   */
+  quit_on_close: boolean;
+}
+
 /** Les groupes, tels que l'interface les nomme. */
 export type NotificationGroup =
   | "approvals"
@@ -1878,8 +1897,9 @@ export interface CoreApi {
   freeChatProject(): Promise<Project>;
   /** Workspace directory for a session (project path, or temp folder for free chats). */
   sessionWorkspace(sessionId: string): Promise<string>;
-  /** « Alléger les outils » : faux par défaut, tous les outils des
-   *  connecteurs partent au modèle. */
+  /** Catalogue des connecteurs : faux par défaut, le modèle reçoit toutes
+   *  les commandes des connecteurs. Vrai : il reçoit un connecteur par ligne
+   *  et charge ses commandes à la demande. */
   outilsAlleges(): Promise<boolean>;
   definirOutilsAlleges(actif: boolean): Promise<boolean>;
   /** Signe les commits du modèle « Co-Authored-By: Locaryn ».
@@ -2021,6 +2041,9 @@ export interface CoreApi {
   forgetContext(id: string): Promise<void>;
   notificationPrefs(): Promise<NotificationPrefs>;
   setNotificationPrefs(prefs: NotificationPrefs): Promise<void>;
+  /** Ce que la croix de la fenêtre fait de l'application. */
+  windowPreferences(): Promise<WindowPreferences>;
+  setWindowPreferences(prefs: WindowPreferences): Promise<void>;
   /** Pose l'avancement sur l'icone de la barre des taches. */
   setTaskbarProgress(status: TaskbarStatus, progress?: number): Promise<void>;
   /** Arrete la generation en cours de la session (sans decharger le modele). */
@@ -2594,6 +2617,8 @@ const tauriCore: CoreApi = {
   forgetContext: (id) => invoke<void>("forget_context", { id }),
   notificationPrefs: () => invoke<NotificationPrefs>("get_notification_prefs"),
   setNotificationPrefs: (prefs) => invoke<void>("set_notification_prefs", { prefs }),
+  windowPreferences: () => invoke<WindowPreferences>("get_window_preferences"),
+  setWindowPreferences: (prefs) => invoke<void>("set_window_preferences", { prefs }),
   setTaskbarProgress: (status, progress) =>
     invoke<void>("set_taskbar_progress", { state: { status, progress: progress ?? null } }),
 
@@ -4328,6 +4353,12 @@ Contenu de démonstration, avec **du gras** et une liste :
     };
   },
   async setNotificationPrefs() {},
+  async windowPreferences() {
+    // Dans la démo navigateur, la fenêtre est un onglet : la question ne se
+    // pose pas, et le défaut (rester en arrière-plan) est le sens de la lecture.
+    return { quit_on_close: false };
+  },
+  async setWindowPreferences() {},
   // Un navigateur n'a pas d'icone dans la barre des taches : ne rien faire est
   // la reponse juste, pas un echec.
   async setTaskbarProgress() {},

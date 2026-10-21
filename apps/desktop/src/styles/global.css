@@ -13116,9 +13116,11 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   align-items: center;
   box-sizing: border-box;
   min-height: 28px;
+  font: inherit;
+  /* Doit suivre le raccourci `font`, qui remet line-height : placé avant, il
+     était annulé et ne s'appliquait plus. */
   line-height: 1.2;
   padding: 0 var(--space-1);
-  font: inherit;
   color: var(--text-dim);
   background: none;
   border: none;
@@ -13317,7 +13319,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   color: var(--text-faint);
 }
 
-/* Réglage « Alléger les outils » de l'écran Connecteurs. */
+/* Réglage « Catalogue des connecteurs » de l'écran Connecteurs. */
 .locaryn-conn-budget {
   display: flex;
   align-items: flex-start;

@@ -19,9 +19,9 @@ import {
   type ResidencyStatus,
   core,
 } from "../lib/core";
-import { findMetric, formatRate, formatSpeed } from "./SpeedBadge";
-import { type ModelFit as FitType } from "../lib/core";
+import type { ModelFit as FitType } from "../lib/core";
 import { useI18n } from "../lib/i18n";
+import { findMetric, formatRate, formatSpeed } from "./SpeedBadge";
 type Lang = "fr" | "en";
 
 /** Le point de l'indicateur : couleur et libellé disent la même chose, pour
@@ -67,8 +67,7 @@ function fitMessage(fit: FitType | null, lang: Lang): string | null {
   if (lang !== "en") return fit.message;
   const n = (v: number | undefined, d = 1) =>
     v === undefined ? "" : v.toLocaleString("en-US", { maximumFractionDigits: d });
-  const tok = (v: number | undefined) =>
-    v === undefined ? "" : v.toLocaleString("en-US");
+  const tok = (v: number | undefined) => (v === undefined ? "" : v.toLocaleString("en-US"));
   const speed =
     fit.tokens_per_second > 0
       ? `About ${
@@ -431,7 +430,9 @@ export function ModelResidency() {
           </div>
 
           {busy === "fit" && (
-            <div className="locaryn-res-checking">{lang === "en" ? "Checking memory…" : "Vérification de la mémoire…"}</div>
+            <div className="locaryn-res-checking">
+              {lang === "en" ? "Checking memory…" : "Vérification de la mémoire…"}
+            </div>
           )}
 
           {fit && (
@@ -472,7 +473,11 @@ export function ModelResidency() {
                   vérifiable : elles sont là, repliées. */}
               {fit.assumptions.length > 0 && (
                 <details className="locaryn-res-fit-why">
-                  <summary>{lang === "en" ? "What this estimate relies on" : "Sur quoi repose cette estimation"}</summary>
+                  <summary>
+                    {lang === "en"
+                      ? "What this estimate relies on"
+                      : "Sur quoi repose cette estimation"}
+                  </summary>
                   <ul>
                     {fit.assumptions.map((line) => (
                       <li key={line}>{line}</li>
@@ -499,7 +504,13 @@ export function ModelResidency() {
                     onClick={() => void confirmLoad(false)}
                     disabled={busy !== null}
                   >
-                    {lang === "en" ? (busy === "load" ? "Loading…" : "Load and keep in memory") : (busy === "load" ? "Chargement…" : "Charger et garder en mémoire")}
+                    {lang === "en"
+                      ? busy === "load"
+                        ? "Loading…"
+                        : "Load and keep in memory"
+                      : busy === "load"
+                        ? "Chargement…"
+                        : "Charger et garder en mémoire"}
                   </button>
                 )}
               </div>

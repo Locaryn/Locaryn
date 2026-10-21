@@ -6,12 +6,12 @@ import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
 import { NotificationSettings } from "../components/NotificationSettings";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
-import { type UseThemeReturn } from "../hooks/useTheme";
+import type { UseThemeReturn } from "../hooks/useTheme";
 import { type LocalProfile, type Project, type Session, core } from "../lib/core";
 import { pickImageFile } from "../lib/dialog";
 import { toMediaUrl } from "../lib/media";
-import { ArchivesView } from "./ArchivesView";
 import { AppearancePane } from "./AppearancePane";
+import { ArchivesView } from "./ArchivesView";
 import { LanguagePane } from "./LanguagePane";
 
 type Props = {
@@ -412,28 +412,28 @@ export function AccountView({
 
               {profileError && <div className="locaryn-vp-error">{profileError}</div>}
 
-            <div className="locaryn-conn-budget">
-              <div className="locaryn-conn-budget-text">
-                <strong>Signer les commits « Co-Authored-By: Locaryn »</strong>
-                <p>
-                  Coché : quand le modèle pose un commit dans un projet versionné, un bandeau
-                  vient dire qu'une partie du travail a été faite avec Locaryn, l'application
-                  s'en reconnaît co-auteure. Décoché : les commits partent comme si la personne
-                  les avait écrits seuls.
-                </p>
+              <div className="locaryn-conn-budget">
+                <div className="locaryn-conn-budget-text">
+                  <strong>Signer les commits « Co-Authored-By: Locaryn »</strong>
+                  <p>
+                    Coché : quand le modèle pose un commit dans un projet versionné, un bandeau
+                    vient dire qu'une partie du travail a été faite avec Locaryn, l'application s'en
+                    reconnaît co-auteure. Décoché : les commits partent comme si la personne les
+                    avait écrits seuls.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={commitSig === true}
+                  aria-label="Signer les commits Co-Authored-By Locaryn"
+                  className={`locaryn-switch${commitSig ? " locaryn-switch-on" : ""}`}
+                  disabled={commitSig === null}
+                  onClick={() => void basculerSignature()}
+                >
+                  <span className="locaryn-switch-knob" aria-hidden="true" />
+                </button>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={commitSig === true}
-                aria-label="Signer les commits Co-Authored-By Locaryn"
-                className={`locaryn-switch${commitSig ? " locaryn-switch-on" : ""}`}
-                disabled={commitSig === null}
-                onClick={() => void basculerSignature()}
-              >
-                <span className="locaryn-switch-knob" aria-hidden="true" />
-              </button>
-            </div>
             </div>
 
             <div className="locaryn-card locaryn-account-remote-card">

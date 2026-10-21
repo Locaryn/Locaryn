@@ -183,7 +183,6 @@ export const EN_EXACT: Record<string, string> = {
   "Ajoutez ce qu'il faut savoir pour y travailler.": "Add what one needs to know to work on it.",
   "Ajustez vos composants matériels pour identifier les modèles utilisables sur votre ordinateur.":
     "Adjust your hardware to find the models usable on your computer.",
-  "Alléger les outils quand le contexte est petit": "Trim tools when the context is small",
   "Alternative 5-bit équilibrée.": "Balanced 5-bit alternative.",
   "Analyse PC requise pour estimer": "PC scan required to estimate",
   "Analyse de la source…": "Analyzing source…",
@@ -368,6 +367,7 @@ export const EN_EXACT: Record<string, string> = {
   "Capacités du moteur": "Engine capabilities",
   "Caractère du modèle": "Model personality",
   "Catalogue de modèles": "Model catalog",
+  "Catalogue des connecteurs": "Connector catalog",
   "Ce LoRA/embedding est classé NSFW / sans garde-fous. Je prends la responsabilité de son usage.":
     "This LoRA/embedding is classified NSFW / unguarded. I take responsibility for its use.",
   "Ce certificat prouve à quelle machine appartient cette installation.":
@@ -659,7 +659,7 @@ export const EN_EXACT: Record<string, string> = {
   "Déposez vos fichiers": "Drop your files",
   "Dépôt GitHub contenant": "GitHub repository containing",
   Désactiver: "Disable",
-  "Désactivé : le modèle reçoit tous les outils des connecteurs actifs et sait ce qu'il a à disposition. Activé : quand les outils pèsent trop dans sa fenêtre, leurs descriptions sont raccourcies et ceux sans rapport avec la demande sont laissés de côté — utile aux petits modèles. Dans tous les cas, des outils plus gros que la fenêtre elle-même sont allégés, et l'application le dit. Pour retirer un outil précis, utilisez « Configurer » sur son connecteur.":
+  "Désactivé : le modèle reçoit d'un coup toutes les commandes des connecteurs actifs. Activé : il reçoit d'abord une ligne par connecteur — son nom, ce qu'il fait, combien de commandes — et charge un connecteur entier quand la demande le désigne. Les connecteurs cités avec « @ » restent toujours chargés, et les outils intégrés aussi. Utile avec les petits modèles, qui se perdent dans des listes de commandes. Pour retirer un outil précis, utilisez « Configurer » sur son connecteur.":
     "Off: the model receives every tool of the active connectors and knows what it has. On: when tools weigh too much in its window, their descriptions are shortened and those unrelated to the request are set aside — useful for small models. In every case, tools bigger than the window itself are trimmed, and the app says so. To remove a specific tool, use “Configure” on its connector.",
   Désinstaller: "Uninstall",
   Détail: "Detail",

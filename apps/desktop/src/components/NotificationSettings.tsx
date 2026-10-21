@@ -1,6 +1,11 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
-import { type NotificationGroup, type NotificationPrefs, core } from "../lib/core";
+import {
+  type NotificationGroup,
+  type NotificationPrefs,
+  type WindowPreferences,
+  core,
+} from "../lib/core";
 import { jouerSon, oublierPreferences } from "../lib/osNotify";
 
 /**
@@ -77,6 +82,9 @@ export function NotificationSettings() {
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enregistre, setEnregistre] = useState(false);
+  // La croix range la fenêtre dans la zone de notification par défaut ; ce
+  // réglage décide si elle ferme vraiment. Vit dans le cœur Rust, pas ici.
+  const [fermeture, setFermeture] = useState<WindowPreferences | null>(null);
 
   useEffect(() => {
     let vivant = true;
@@ -91,6 +99,33 @@ export function NotificationSettings() {
     return () => {
       vivant = false;
     };
+  }, []);
+
+  useEffect(() => {
+    let vivant = true;
+    core
+      .windowPreferences()
+      .then((p) => {
+        if (vivant) setFermeture(p);
+      })
+      .catch(() => {
+        // Sans le cœur Rust (démonstration navigateur), le défaut convient.
+      });
+    return () => {
+      vivant = false;
+    };
+  }, []);
+
+  const changerFermeture = useCallback(async (quit_on_close: boolean) => {
+    // L'écran suit tout de suite, comme pour les bannières : attendre le
+    // disque donne l'impression que le clic n'a pas porté.
+    const suivant = { quit_on_close };
+    setFermeture(suivant);
+    try {
+      await core.setWindowPreferences(suivant);
+    } catch (e) {
+      setErreur(String(e).replace(/^Error:\s*/, ""));
+    }
   }, []);
 
   const appliquer = useCallback(async (suivant: NotificationPrefs) => {
@@ -258,6 +293,27 @@ export function NotificationSettings() {
           <button type="button" className="locaryn-btn-ghost" onClick={() => void jouerSon()}>
             Essayer
           </button>
+        </label>
+      </div>
+
+      <div className="locaryn-notif-quand">
+        <div className="locaryn-field-label">Fermeture de la fenêtre</div>
+
+        <label className="locaryn-notif-groupe">
+          <input
+            type="checkbox"
+            checked={fermeture?.quit_on_close ?? false}
+            disabled={fermeture === null}
+            onChange={(e) => void changerFermeture(e.target.checked)}
+          />
+          <span className="locaryn-notif-groupe-texte">
+            <strong>Fermer totalement l'application</strong>
+            <span className="locaryn-field-hint">
+              Par défaut, la croix range la fenêtre dans la zone de notification et Locaryn continue
+              de tourner : les tâches en cours et les notifications survivent. Coché, la croix
+              arrête le processus, comme « Quitter » dans le menu de l'icône.
+            </span>
+          </span>
         </label>
       </div>
     </div>

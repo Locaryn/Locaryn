@@ -641,6 +641,9 @@ export function ChatPanel({
    * curseur suffit. `null` : le texte coule, il se montre tout seul.
    */
   const [attente, setAttente] = useState<"charge" | "lit" | "attend" | null>(null);
+  /** La conversation est en cours de compression (résumé par le modèle) :
+   *  une onde dans le fil, en attendant que le résumé soit écrit. */
+  const [compactage, setCompactage] = useState(false);
   // Une fois le modèle en mémoire, l'attente qui reste est la lecture de la
   // conversation (outils, historique) : la dire, plutôt que d'annoncer un
   // chargement déjà fini. Une attente sans premier mot au-delà de trois
@@ -1518,6 +1521,14 @@ ${d.texte}`
       // paragraphe qu'on doit lire.
       const texte = ev.level === "error" || ev.level === "warn" ? ev.msg : `[Log: ${ev.msg}]`;
       setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: texte }]);
+    } else if (ev.type === "context_compaction") {
+      // L'animation pendant l'appel au modèle, puis la trace dans le fil.
+      if (ev.phase === "started") {
+        setCompactage(true);
+      } else {
+        setCompactage(false);
+        setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: ev.detail }]);
+      }
     }
   }
 
@@ -1831,6 +1842,7 @@ ${d.texte}`
     // pendant l'attente. La residence est demandee sans etre attendue : une
     // sonde lente ne doit pas retarder l'envoi.
     setAttente("attend");
+    setCompactage(false);
     void core
       .modelResidency()
       .then((r) => setAttente((prev) => (prev === "attend" && !r.loaded ? "charge" : prev)))
@@ -3064,6 +3076,16 @@ ${preview}`,
                     ? "Chargement du modèle en mémoire…"
                     : "Lecture de la conversation…"}
                 </span>
+              </div>
+            )}
+            {/* La conversation déborde : le modèle écrit un résumé des
+                anciens échanges. Quelques secondes de calcul local, rendues
+                visibles — un contexte qui s'amincit en silence passe pour un
+                modèle qui oublie. */}
+            {compactage && (
+              <div className="locaryn-chargement" aria-live="polite">
+                <LoProgress value={null} />
+                <span className="locaryn-chargement-label">Contexte en cours de compression…</span>
               </div>
             )}
             {attente === "attend" && (
