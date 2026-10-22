@@ -1323,6 +1323,18 @@ body.locaryn-resizing .locaryn-resizer::after {
   flex: none;
   color: var(--danger);
 }
+/* Le globe d'une recherche web : le petit signe qui manquait quand le
+   modèle allait sur Google, Brave ou Yandex — il respire tant que la
+   requête est en vol. */
+.locaryn-toolrun-web {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent);
+}
+.locaryn-toolrun-live .locaryn-toolrun-web {
+  animation: lo-pulse 1.6s var(--ease) infinite;
+}
 .locaryn-toolrun-caret {
   flex: none;
   font-size: 12px;
@@ -1349,7 +1361,8 @@ body.locaryn-resizing .locaryn-resizer::after {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .locaryn-toolrun-live .locaryn-toolrun-label {
+  .locaryn-toolrun-live .locaryn-toolrun-label,
+  .locaryn-toolrun-live .locaryn-toolrun-web {
     animation: none;
   }
 }
