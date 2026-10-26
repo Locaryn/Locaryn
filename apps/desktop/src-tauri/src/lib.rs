@@ -5313,7 +5313,17 @@ fn broadcast(app: &tauri::AppHandle, event: &str, payload: serde_json::Value) {
 }
 
 #[tauri::command]
-async fn stop_generation(core: State<'_, Core>, session_id: Uuid) -> Result<(), String> {
+async fn stop_generation(
+    app: tauri::AppHandle,
+    core: State<'_, Core>,
+    session_id: Uuid,
+) -> Result<(), String> {
+    // Les sous-agents de la conversation s'arrêtent avec elle : ils
+    // continuaient seuls, l'un attendant une réponse que personne ne donnait.
+    let sous_agents = sous_agents::arreter(&app, session_id);
+    if sous_agents > 0 {
+        tracing::info!(session = %session_id, sous_agents, "sous-agents arrêtés avec la conversation");
+    }
     let jetons = core.chat_cancels.lock().await.remove(&session_id);
     match jetons {
         Some(jetons) if !jetons.is_empty() => {
@@ -5322,6 +5332,7 @@ async fn stop_generation(core: State<'_, Core>, session_id: Uuid) -> Result<(), 
             }
             Ok(())
         }
+        _ if sous_agents > 0 => Ok(()),
         _ => Err("aucune generation en cours pour cette session".into()),
     }
 }

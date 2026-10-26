@@ -102,7 +102,10 @@ pub async fn lister(core: &Core) -> String {
         // les gratuits. Trente suffisent pour choisir sans noyer la fenêtre.
         // Un modèle que la passerelle publie sans pouvoir le servir (son
         // fournisseur n'est pas connecté) échouerait : il n'est pas proposé.
-        let mut tries: Vec<_> = modeles.iter().filter(|m| m.available != Some(false)).collect();
+        let mut tries: Vec<_> = modeles
+            .iter()
+            .filter(|m| m.available != Some(false))
+            .collect();
         tries.sort_by_key(|m| {
             (
                 !m.supports_tools,
@@ -141,6 +144,117 @@ async fn compte_deconnecte(h: &cloud::Host<'_>, fournisseur: &str) -> bool {
         Ok(etat) => etat.get("logged_in").and_then(serde_json::Value::as_bool) == Some(false),
         Err(_) => false,
     }
+}
+
+/// Lire le fil d'un sous-agent jusqu'au bout, et dire comment il a fini.
+async fn suivre<F>(mut flux: locaryn_agent_runtime::EventStream, emettre: &F)
+where
+    F: Fn(&'static str, String, Option<serde_json::Value>),
+{
+    let mut texte = String::new();
+    let mut erreur: Option<String> = None;
+    while let Some(ev) = flux.next().await {
+        match ev {
+            StreamEvent::Token { text } => {
+                texte.push_str(&text);
+                emettre("jeton", text, None);
+            }
+            StreamEvent::ToolCall { tool, .. } => emettre("outil", tool, None),
+            StreamEvent::ToolApproval { .. } => {
+                emettre("accord", String::new(), serde_json::to_value(&ev).ok())
+            }
+            StreamEvent::Log {
+                level: locaryn_events::LogLevel::Error,
+                msg,
+                ..
+            } => erreur = Some(msg),
+            _ => {}
+        }
+    }
+    let compte_rendu = locaryn_agent_runtime::compaction::sans_marqueurs(&texte);
+    if compte_rendu.trim().is_empty() {
+        emettre("echec", raison_du_vide(erreur, &texte), None);
+    } else {
+        emettre("fin", compte_rendu, None);
+    }
+}
+
+/// Pourquoi un sous-agent n'a rien rendu. « N'a rien rendu », seul, ne
+/// disait pas qu'un modèle de raisonnement avait épuisé son budget à penser.
+fn raison_du_vide(erreur: Option<String>, texte_brut: &str) -> String {
+    if let Some(e) = erreur {
+        return e;
+    }
+    if texte_brut.trim().is_empty() {
+        "le sous-agent n'a rien rendu : le modèle n'a écrit aucun texte".into()
+    } else {
+        "le sous-agent n'a rendu que son raisonnement, sans réponse : le modèle a sans doute          épuisé son budget de jetons à réfléchir — confiez la tâche à un autre modèle"
+            .into()
+    }
+}
+
+/// Un sous-agent qui travaille, et de quoi l'arrêter.
+struct EnCours {
+    id: String,
+    nom: String,
+    modele: String,
+    arret: tokio::task::AbortHandle,
+}
+
+type Registre = std::sync::Mutex<std::collections::HashMap<uuid::Uuid, Vec<EnCours>>>;
+
+/// Les sous-agents en cours, par conversation qui les a lancés.
+fn registre() -> &'static Registre {
+    static REGISTRE: std::sync::OnceLock<Registre> = std::sync::OnceLock::new();
+    REGISTRE.get_or_init(Default::default)
+}
+
+fn verrou() -> std::sync::MutexGuard<'static, std::collections::HashMap<uuid::Uuid, Vec<EnCours>>> {
+    match registre().lock() {
+        Ok(g) => g,
+        Err(empoisonne) => empoisonne.into_inner(),
+    }
+}
+
+fn inscrire(parent: uuid::Uuid, agent: EnCours) {
+    let mut carte = verrou();
+    let liste = carte.entry(parent).or_default();
+    liste.retain(|a| !a.arret.is_finished());
+    liste.push(agent);
+}
+
+fn retirer(parent: uuid::Uuid, id: &str) {
+    let mut carte = verrou();
+    if let Some(liste) = carte.get_mut(&parent) {
+        liste.retain(|a| a.id != id);
+        if liste.is_empty() {
+            carte.remove(&parent);
+        }
+    }
+}
+
+/// Arrêter les sous-agents d'une conversation — ce que « Stop » doit faire :
+/// ils continuaient après l'arrêt de la conversation qui les avait lancés.
+pub fn arreter(app: &AppHandle, parent: uuid::Uuid) -> usize {
+    let agents = verrou().remove(&parent).unwrap_or_default();
+    let mut arretes = 0;
+    for a in agents.into_iter().filter(|a| !a.arret.is_finished()) {
+        a.arret.abort();
+        arretes += 1;
+        let ev = EvenementSousAgent {
+            id: a.id,
+            parent: parent.to_string(),
+            nom: a.nom,
+            modele: a.modele,
+            phase: "echec",
+            texte: "arrêté avec la conversation".into(),
+            accord: None,
+        };
+        if let Err(e) = app.emit("sous-agent", ev) {
+            tracing::warn!(error = %e, "arrêt de sous-agent non transmis");
+        }
+    }
+    arretes
 }
 
 /// `/equipe` : la consigne qui fait travailler la demande par plusieurs
@@ -266,9 +380,9 @@ pub async fn lancer(
         approval: Some(locaryn_agent_runtime::approval::ApprovalHandle(
             std::sync::Arc::new(core.approval_gate.clone()),
         )),
-        question: Some(locaryn_agent_runtime::question::QuestionHandle(
-            std::sync::Arc::new(core.attention.clone()),
-        )),
+        // Aucune question à la personne : elle n'a pas lancé ce travail, et un
+        // sous-agent resté sur `ask_user` attendait une réponse sans fin.
+        question: None,
         // Pas d'outils de l'application : un sous-agent ne relance pas
         // d'autres sous-agents, ni n'installe d'extension.
         host_tools: None,
@@ -315,39 +429,20 @@ pub async fn lancer(
     };
     emettre("debut", tache.clone(), None);
     let libelle = cible.libelle.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut flux = flux;
-        let mut texte = String::new();
-        let mut erreur: Option<String> = None;
-        while let Some(ev) = flux.next().await {
-            match ev {
-                StreamEvent::Token { text } => {
-                    texte.push_str(&text);
-                    emettre("jeton", text, None);
-                }
-                StreamEvent::ToolCall { tool, .. } => emettre("outil", tool, None),
-                StreamEvent::ToolApproval { .. } => {
-                    emettre("accord", String::new(), serde_json::to_value(&ev).ok())
-                }
-                StreamEvent::Log {
-                    level: locaryn_events::LogLevel::Error,
-                    msg,
-                    ..
-                } => erreur = Some(msg),
-                _ => {}
-            }
-        }
-        let compte_rendu = locaryn_agent_runtime::compaction::sans_marqueurs(&texte);
-        if compte_rendu.trim().is_empty() {
-            emettre(
-                "echec",
-                erreur.unwrap_or_else(|| "le sous-agent n'a rien rendu".into()),
-                None,
-            );
-        } else {
-            emettre("fin", compte_rendu, None);
-        }
+    let (id_fin, parent_fin) = (id.clone(), parent);
+    let tache_de_fond = tokio::spawn(async move {
+        suivre(flux, &emettre).await;
+        retirer(parent_fin, &id_fin);
     });
+    inscrire(
+        parent,
+        EnCours {
+            id: id.clone(),
+            nom: nom.clone(),
+            modele: libelle.clone(),
+            arret: tache_de_fond.abort_handle(),
+        },
+    );
 
     Ok(format!(
         "Sous-agent « {nom} » lancé (id {id}) avec {libelle}. Il travaille en arrière-plan ; son \
@@ -384,4 +479,18 @@ async fn contexte_du_parent(
         Some(dossier),
         Some(session.trust_override.unwrap_or(projet.trust_level)),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Une erreur dit pourquoi ; sans elle, un texte fait de raisonnement seul
+    /// ne se confond pas avec un silence.
+    #[test]
+    fn la_raison_d_un_compte_rendu_vide_est_dite() {
+        assert_eq!(raison_du_vide(Some("HTTP 504".into()), "x"), "HTTP 504");
+        assert!(raison_du_vide(None, "").contains("aucun texte"));
+        assert!(raison_du_vide(None, "<think>je réfléchis</think>").contains("raisonnement"));
+    }
 }
