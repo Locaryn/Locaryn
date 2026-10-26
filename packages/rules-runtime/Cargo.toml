@@ -8,7 +8,5 @@ authors.workspace = true
 description = "Workspace rules aggregation (LOCARYN.md + rules/*.md by scope)."
 
 [dependencies]
-locaryn-shared-types = { workspace = true }
 locaryn-config = { workspace = true }
-serde = { workspace = true }
 thiserror = { workspace = true }

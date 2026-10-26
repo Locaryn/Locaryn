@@ -15,5 +15,4 @@ description = "Locaryn SSH connector: connect, run, and capability-probe remote 
 russh = { version = "=0.63.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 tokio = { workspace = true }
 anyhow = { workspace = true }
-tracing = { workspace = true }
 zeroize = "1"

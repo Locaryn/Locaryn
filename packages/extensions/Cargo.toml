@@ -22,7 +22,6 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }
-notify = "7"
 # Fetching plugins and catalogs over HTTP. `zip` reads GitHub codeload
 # archives; `toml` parses Gemini CLI command files.
 reqwest = { workspace = true }

@@ -29,7 +29,6 @@ tauri-plugin-notification = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
-tokio = { workspace = true }
 tracing = { workspace = true }
 # Le téléchargement d'une mise à jour arrive par morceaux : `StreamExt`
 # déroule le flux et écrit au fil de l'eau, pour que la barre de progression

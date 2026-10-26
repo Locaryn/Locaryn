@@ -13,12 +13,9 @@ name = "locaryn_enterprise"
 path = "src/lib.rs"
 
 [dependencies]
-locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }

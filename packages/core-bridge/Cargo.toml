@@ -12,14 +12,12 @@ locaryn-config = { workspace = true }
 locaryn-agent-runtime = { workspace = true }
 locaryn-events = { workspace = true }
 locaryn-extensions = { workspace = true }
-locaryn-mcp = { workspace = true }
 locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = "0.1"
 async-trait = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }

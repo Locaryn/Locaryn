@@ -44,7 +44,6 @@ locaryn-mcp = { workspace = true }
 locaryn-travel = { workspace = true }
 locaryn-sdk = { workspace = true }
 reqwest = { workspace = true }
-rustls = { workspace = true, features = ["std"] }
 tokio-util = { workspace = true }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 sha2 = "0.10"

@@ -31,7 +31,6 @@ assets = [
 
 [dependencies]
 locaryn-shared-types = { workspace = true }
-locaryn-sdk = { workspace = true }
 locaryn-config = { workspace = true }
 locaryn-cloud-providers = { workspace = true }
 locaryn-media = { workspace = true }
@@ -45,13 +44,10 @@ locaryn-core-bridge = { workspace = true }
 locaryn-extensions = { workspace = true }
 locaryn-mcp = { workspace = true }
 locaryn-travel = { workspace = true }
-locaryn-preview = { workspace = true }
 locaryn-auth = { workspace = true }
-locaryn-rules-runtime = { workspace = true }
 axum = { workspace = true }
 axum-server = { workspace = true }
 rcgen = { workspace = true }
-time = { workspace = true }
 rustls = { workspace = true }
 igd-next = { workspace = true }
 tokio = { workspace = true }
@@ -61,7 +57,6 @@ rand = { workspace = true }
 
 # Le catalogue arrive en archive : une extension installée depuis un
 # téléphone ne peut pas désigner un dossier du serveur.
-zip = "9"
 reqwest = { workspace = true }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "fs", "trace", "catch-panic"] }

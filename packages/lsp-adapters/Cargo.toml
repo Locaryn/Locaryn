@@ -8,10 +8,6 @@ authors.workspace = true
 description = "LSP adapters for Locaryn (register language servers per project, expose as agent tool)."
 
 [dependencies]
-locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { workspace = true }
-async-trait = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }

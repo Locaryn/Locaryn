@@ -10,7 +10,3 @@ description = "Artifact model + sandboxed HTML preview generation (CSP, iframe o
 [dependencies]
 locaryn-shared-types = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }

@@ -12,15 +12,6 @@ name = "locaryn-remote-server"
 path = "src/main.rs"
 
 [dependencies]
-locaryn-shared-types = { workspace = true }
-locaryn-sdk = { workspace = true }
-locaryn-config = { workspace = true }
-locaryn-storage = { workspace = true }
-locaryn-events = { workspace = true }
-locaryn-auth = { workspace = true }
-locaryn-extensions = { workspace = true }
-locaryn-mcp = { workspace = true }
-locaryn-agent-runtime = { workspace = true }
 # Pas de version épinglée : la brique entreprise n'est pas publiée, elle vit
 # dans ce dépôt. L'épingle restait en arrière à chaque montée de version et ne
 # se voyait que le jour où la résolution passait sous elle.
@@ -33,14 +24,10 @@ axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
 
 [features]
 default = ["enterprise"]
