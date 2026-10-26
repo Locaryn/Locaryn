@@ -18,7 +18,7 @@ import {
   core,
 } from "../lib/core";
 import { consumePendingInstall, getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
-import { pickAnyFile } from "../lib/dialog";
+import { confirmer, pickAnyFile } from "../lib/dialog";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
@@ -499,14 +499,16 @@ export function ExtensionsSettings() {
   // Sur un poste neuf, aucun catalogue n'est en cache : la liste restait vide
   // tant qu'on ne pensait pas à « Actualiser », et l'on croyait les morphs
   // impossibles à installer. On lit les catalogues d'office à la première
-  // ouverture, puis une fois par jour.
+  // ouverture, puis dès que la copie a un quart d'heure : une actualisation
+  // tient en deux secondes (Locaryn/Locaryn#82), et une copie d'un jour
+  // proposait d'installer une version déjà remplacée.
   const autoRefreshDone = useRef(false);
   useEffect(() => {
     if (tab !== "browse" || autoRefreshDone.current || refreshing || snapshot === null) return;
     const age = snapshot.fetched_at
       ? Date.now() - Date.parse(snapshot.fetched_at)
       : Number.POSITIVE_INFINITY;
-    if (age > 24 * 3600_000) {
+    if (age > 15 * 60_000) {
       autoRefreshDone.current = true;
       void refreshCatalog();
     }
@@ -741,7 +743,7 @@ export function ExtensionsSettings() {
   }
 
   async function remove(e: InstalledExtension) {
-    if (!window.confirm(`Désinstaller « ${e.name} » et supprimer ses fichiers ?`)) return;
+    if (!(await confirmer(`Désinstaller « ${e.name} » et supprimer ses fichiers ?`))) return;
     setBusy(e.id);
     try {
       publishInstalled(await core.removeExtension(e.id));
@@ -1168,7 +1170,9 @@ export function ExtensionsSettings() {
                         <div key={e.id} className="locaryn-box-card">
                           <div className="locaryn-box-head">
                             <div style={{ minWidth: 0 }}>
-                              <h3 className="locaryn-box-name" data-no-translate>{e.name}</h3>
+                              <h3 className="locaryn-box-name" data-no-translate>
+                                {e.name}
+                              </h3>
                               <span className="locaryn-box-brand">
                                 v{e.version} · driver {e.core?.driver}
                               </span>
@@ -1283,7 +1287,9 @@ export function ExtensionsSettings() {
                                       }}
                                     >
                                       <div style={{ minWidth: 0 }}>
-                                        <strong style={{ fontSize: 13 }} data-no-translate>{sk.name}</strong>
+                                        <strong style={{ fontSize: 13 }} data-no-translate>
+                                          {sk.name}
+                                        </strong>
                                         {!sk.verified && (
                                           <span className="locaryn-tag" style={{ marginLeft: 6 }}>
                                             non vérifié
@@ -1336,7 +1342,9 @@ export function ExtensionsSettings() {
                       <div key={e.id} className="locaryn-box-card">
                         <div className="locaryn-box-head">
                           <div>
-                            <h3 className="locaryn-box-name" data-no-translate>{e.name}</h3>
+                            <h3 className="locaryn-box-name" data-no-translate>
+                              {e.name}
+                            </h3>
                             <span className="locaryn-box-brand">
                               v{e.version}
                               {e.author ? ` · ${e.author}` : ""}
@@ -1715,7 +1723,9 @@ export function ExtensionsSettings() {
                         {c.author ? `${c.author} · ` : ""}
                         {c.catalog_label}
                       </span>
-                      <h2 className="locaryn-drawer-name" data-no-translate>{c.display_name}</h2>
+                      <h2 className="locaryn-drawer-name" data-no-translate>
+                        {c.display_name}
+                      </h2>
                     </div>
                     <button
                       type="button"

@@ -2,6 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { type ApiKeyCreated, type ApiKeyInfo, type ProviderApiStatus, core } from "../lib/core";
 
+import { confirmer } from "../lib/dialog";
 const DUREES: { jours: number | null; libelle: string }[] = [
   { jours: 30, libelle: "30 jours" },
   { jours: 90, libelle: "90 jours" },
@@ -62,7 +63,7 @@ export function ApiKeysSettings() {
 
   async function revoquer(c: ApiKeyInfo) {
     const quoi = c.label ? `« ${c.label} »` : `${c.hint}…`;
-    if (!window.confirm(`Révoquer la clé ${quoi} ? L'application qui l'utilise perd l'accès.`)) {
+    if (!(await confirmer(`Révoquer la clé ${quoi} ? L'application qui l'utilise perd l'accès.`))) {
       return;
     }
     try {

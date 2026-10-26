@@ -1,4 +1,26 @@
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+
+/** Demander une confirmation, par la boîte native.
+ *
+ *  Sous Tauri, `window.confirm` ne rend pas un booléen : écrit
+ *  `if (!window.confirm(…)) return`, il ne retenait jamais rien, et une
+ *  désinstallation ou une suppression partait sans qu'aucune question ne
+ *  s'affiche. Hors de Tauri (aperçu web), la boîte du navigateur ; et si elle
+ *  rend autre chose qu'un booléen, la réponse est « non » : mieux vaut ne
+ *  rien supprimer. */
+export async function confirmer(message: string, titre = "Locaryn"): Promise<boolean> {
+  try {
+    return await confirm(message, {
+      title: titre,
+      kind: "warning",
+      okLabel: "Confirmer",
+      cancelLabel: "Annuler",
+    });
+  } catch (e) {
+    console.warn("[dialog] boîte de confirmation native indisponible :", e);
+    return window.confirm(message) === true;
+  }
+}
 
 /** Open the native folder picker. Falls back to a prompt when not running
  *  inside Tauri (e.g. browser dev). */

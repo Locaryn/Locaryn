@@ -3,6 +3,7 @@ import { type ServerStatus, type ServerUserSummary, core } from "../lib/core";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { UserLoginQr } from "./UserLoginQr";
 
+import { confirmer } from "../lib/dialog";
 /**
  * Share this machine's models with other people.
  *
@@ -130,7 +131,7 @@ export function ServerSettings() {
   }
 
   async function handleDeleteUser(userId: string, uName: string) {
-    if (!window.confirm(`Supprimer l'identifiant « ${uName} » ?`)) return;
+    if (!(await confirmer(`Supprimer l'identifiant « ${uName} » ?`))) return;
     try {
       const s = await core.deleteServerUser(userId);
       setStatus(s);

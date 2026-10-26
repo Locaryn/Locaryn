@@ -35,7 +35,7 @@ import {
   partagerJetonHf,
 } from "./lib/core";
 import { parseDeepLink, setPendingInstall } from "./lib/deepLink";
-import { pickFolder } from "./lib/dialog";
+import { confirmer, pickFolder } from "./lib/dialog";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { setRunReveal } from "./lib/runPanel";
 import { suivreSousAgents } from "./lib/sousAgents";
@@ -971,7 +971,7 @@ export function App() {
   }
 
   async function handleDeleteSession(s: Session) {
-    if (!window.confirm("Voulez-vous vraiment supprimer cette conversation ?")) return;
+    if (!(await confirmer("Voulez-vous vraiment supprimer cette conversation ?"))) return;
 
     try {
       await core.deleteSession(s.id);

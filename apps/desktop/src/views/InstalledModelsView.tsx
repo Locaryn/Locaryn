@@ -12,6 +12,7 @@ import { claimantOf, loadExtensionMarketplaces } from "../lib/extensionMarketpla
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { VUE_RECHOISIE } from "../lib/vues";
 
+import { confirmer } from "../lib/dialog";
 type Props = {
   installedModels: string[];
   onSelectModelForChat: (modelTag: string) => void;
@@ -360,7 +361,7 @@ export function InstalledModelsView({
         : entry.kind === "extension"
           ? "Ces poids seront supprimés définitivement. L'extension qui les utilise ne les retrouvera pas."
           : "Tous les shards de cette variante seront supprimés définitivement.";
-    if (!window.confirm(`Supprimer « ${entry.tag} » ?\n\n${detail}`)) return;
+    if (!(await confirmer(`Supprimer « ${entry.tag} » ?\n\n${detail}`))) return;
     await onDeleteModel(entry.tag);
     if (entry.kind === "incompatible") {
       setIncompatibleModels((current) => current.filter((item) => item !== entry.tag));

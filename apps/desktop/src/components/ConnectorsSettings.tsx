@@ -5,6 +5,7 @@ import { McpJsonImport } from "./McpJsonImport";
 import { McpToolsDialog } from "./McpToolsDialog";
 import { ModalShell } from "./ModalShell";
 
+import { confirmer } from "../lib/dialog";
 type ConnectorFilter = "all" | "connection" | "mcp";
 
 /** L'entrée « personnalisé » du service : décrite en phrase, jamais en carte. */
@@ -160,7 +161,7 @@ export function ConnectorsSettings() {
   }
 
   async function removeMcp(server: McpServerInfo) {
-    if (!window.confirm(`Retirer « ${server.name} » ?`)) return;
+    if (!(await confirmer(`Retirer « ${server.name} » ?`))) return;
     setMcpBusy(server.name);
     try {
       setMcpServers(await core.removeMcpServer(server.name));

@@ -1276,6 +1276,11 @@ async fn reinstall_from_source(
     // enregistrés. Un éventuel renommage dans la nouvelle version est rattrapé
     // par le reload que `restart_plugin_mcp` déclenche.
     restart_plugin_mcp(core, name).await?;
+    // Sa passerelle locale a été arrêtée pour libérer les fichiers : une
+    // extension active la retrouve, comme à l'activation.
+    if updated.enabled {
+        preparer_passerelle(core, updated.id).await;
+    }
 
     build_installed(core)
         .await?

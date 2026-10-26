@@ -40,6 +40,7 @@ import { ModelObliterator } from "./ModelObliterator";
 import { ResponsibilityGate } from "./ResponsibilityGate";
 import { SpeedBadge, findMetric } from "./SpeedBadge";
 
+import { confirmer } from "../lib/dialog";
 type Props = {
   /** Download / Install model to local storage. */
   onInstall: (
@@ -1788,9 +1789,9 @@ export function ModelBrowser({
 
   async function handleDeleteModel(tag: string) {
     if (
-      !window.confirm(
+      !(await confirmer(
         `Voulez-vous vraiment supprimer le modèle local "${tag}" pour libérer de l'espace disque ?`,
-      )
+      ))
     ) {
       return;
     }

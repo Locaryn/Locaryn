@@ -50,7 +50,7 @@ import {
   isTauri,
   reasoningPayload,
 } from "../lib/core";
-import { pickSaveFile } from "../lib/dialog";
+import { confirmer, pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { runGoal } from "../lib/goal";
 import { useI18n } from "../lib/i18n";
@@ -1902,9 +1902,9 @@ ${d.texte}`
           if (
             confiance.effective !== "autonomous" &&
             confiance.effective !== "unrestricted" &&
-            window.confirm(
+            (await confirmer(
               "Cette tâche va enchaîner fichiers et commandes pendant longtemps. Passer cette conversation en Autonome, pour qu'elle ne s'arrête pas à chaque outil en attendant votre accord ?\n\n(Installer quelque chose demandera toujours votre accord.)",
-            )
+            ))
           ) {
             await core.setSessionTrust(sid, "autonomous");
             window.dispatchEvent(new Event(SESSION_TRUST_CHANGED));
@@ -2289,11 +2289,11 @@ ${d.texte}`
     const ou =
       wsl === null ? "sur votre machine" : `dans WSL (${wsl || "distribution par défaut"})`;
     if (
-      !window.confirm(
+      !(await confirmer(
         `Exécuter ce code (${lang || "console"}) ${ou} ?
 
 ${preview}`,
-      )
+      ))
     )
       return;
 

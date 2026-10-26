@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { visibleNavItems } from "../components/NavDrawer";
 import { SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
-import { pickFolder } from "../lib/dialog";
+import { confirmer, pickFolder } from "../lib/dialog";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import {
   type CibleDepot,
@@ -374,14 +374,14 @@ export function LeftPanel({
     return allKnownSessions.filter((s) => selected.has(s.id));
   }
 
-  function archiveSelected() {
+  async function archiveSelected() {
     const list = selectedSessions();
     if (list.length === 0) return;
     if (
       list.length > 1 &&
-      !window.confirm(
+      !(await confirmer(
         `Archiver ${list.length} conversations ?\n\nElles quittent la liste mais restent dans les archives.`,
-      )
+      ))
     ) {
       return;
     }
@@ -470,7 +470,7 @@ export function LeftPanel({
 
   async function archive(p: Project) {
     setMenuFor(null);
-    const ok = window.confirm(
+    const ok = await confirmer(
       `Archiver « ${p.name} » ?\n\nLe projet disparaît de la liste. Ses conversations restent sur le disque.`,
     );
     if (!ok) return;

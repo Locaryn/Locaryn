@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { type Project, type RagStatus, core } from "../lib/core";
 import { trustInfo } from "../lib/trust";
 
+import { confirmer } from "../lib/dialog";
 type Props = {
   projects: Project[];
   /** Called after a project is archived so the caller can refresh its list. */
@@ -42,7 +43,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
 
   async function archive() {
     if (!selected) return;
-    const ok = window.confirm(
+    const ok = await confirmer(
       `Archiver « ${selected.name} » ?\n\nLe projet disparaît de la liste. Ses conversations restent sur le disque.`,
     );
     if (!ok) return;
@@ -136,7 +137,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
                   className="locaryn-btn-ghost"
                   disabled={busy}
                   onClick={async () => {
-                    if (!window.confirm("Effacer l'index de ce projet ?")) return;
+                    if (!(await confirmer("Effacer l'index de ce projet ?"))) return;
                     setBusy(true);
                     try {
                       await core.ragClear(selected.id);

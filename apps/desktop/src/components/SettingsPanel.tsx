@@ -12,6 +12,7 @@ import { TRUST_LEVELS, trustInfo } from "../lib/trust";
 import { PerformancePanel } from "./PerformancePanel";
 import { SessionTrustControl } from "./SessionTrustControl";
 
+import { confirmer } from "../lib/dialog";
 type Props = {
   theme: UseThemeReturn;
   /** Called after the active provider/model changes, so the app can refresh. */
@@ -46,7 +47,7 @@ export function SettingsPanel({
 
   async function archive() {
     if (!activeProject) return;
-    const ok = window.confirm(
+    const ok = await confirmer(
       `Archiver « ${activeProject.name} » ?\n\nLe projet disparaît de la liste. Ses conversations restent sur le disque.`,
     );
     if (!ok) return;
