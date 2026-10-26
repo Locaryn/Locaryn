@@ -3550,7 +3550,7 @@ ${preview}`,
               Entrée pour envoyer · Shift+Entrée pour saut de ligne
             </span>
 
-            {/* Slot avant envoi (ex: dictaphone / micro, actions rapides de validation) */}
+            {/* Slot avant envoi : boutons apportés par les extensions, à côté d'Envoyer */}
             <ExtensionSlot
               name="composer.before_send"
               context={{ input, setInput, send, canCompose }}

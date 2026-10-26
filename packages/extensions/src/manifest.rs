@@ -808,7 +808,7 @@ pub struct UiSlotContribution {
     /// Fichier d'entrée pour les scripts ou interfaces personnalisées (ex: `dist/ui.js`).
     #[serde(default)]
     pub entry: Option<String>,
-    /// Nom de balise custom-element (ex: `locaryn-dictaphone-btn`).
+    /// Nom de balise custom-element (ex: `mon-morph-bouton`).
     #[serde(default)]
     pub tag: Option<String>,
     /// Catégorie ou domaine (ex: `image`, `audio`, `video`).
