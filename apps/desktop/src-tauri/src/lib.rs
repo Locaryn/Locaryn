@@ -29,6 +29,7 @@ mod mcp_servers;
 mod memory;
 mod memory_gardener;
 mod mentions;
+mod mises_a_jour;
 mod model_abilities;
 mod model_recommendations;
 mod model_residency;
@@ -7249,6 +7250,8 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
         // (Locaryn/Locaryn#84).
         cloud_providers::demarrer_passerelles(&core).await;
     });
+    // Les extensions se tiennent à jour seules, au repos (Locaryn/Locaryn#88).
+    mises_a_jour::demarrer(app.clone());
     Ok(())
 }
 
@@ -7307,7 +7310,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // L'écran de lancement d'abord : rien de lourd avant qu'il existe.
-            startup::open_splash(app.handle())?;
+            // Sauf au retour d'une mise à jour silencieuse : rien ne paraît.
+            if !startup::lire_demarrage_silencieux() {
+                startup::open_splash(app.handle())?;
+            }
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("locaryn-boot".into())
@@ -7443,6 +7449,9 @@ pub fn run() {
             get_profile_preset,
             check_hardware,
             model_abilities::model_abilities,
+            mises_a_jour::get_update_prefs,
+            mises_a_jour::set_update_prefs,
+            mises_a_jour::app_au_repos,
             notifications::get_notification_prefs,
             notifications::set_notification_prefs,
             notifications::set_taskbar_progress,
@@ -7581,6 +7590,7 @@ pub fn run() {
             mcp_servers::commit_contributeur,
             mcp_servers::definir_commit_contributeur,
             startup::app_ready,
+            startup::preparer_redemarrage_silencieux,
             mcp_servers::add_mcp_server,
             mcp_servers::list_mcp_tools,
             mcp_servers::set_mcp_disabled_tools,

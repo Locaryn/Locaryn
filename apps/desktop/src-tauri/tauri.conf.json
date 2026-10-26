@@ -51,6 +51,7 @@
     },
     "updater": {
       "endpoints": ["https://github.com/Locaryn/Locaryn/releases/latest/download/latest.json"],
+      "windows": { "installMode": "quiet" },
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU5QkMwNjMzNTNFMDJFODIKUldTQ0x1QlRNd2E4NlVCYmNTKzY0Q3A2YmFvL29pbHdXejlFVWI1M3VYcWZEdlJLcWIxUkt0TzMK"
     }
   }

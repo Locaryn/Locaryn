@@ -32,6 +32,41 @@ function annoncerMiseAJour(version: string) {
   );
 }
 
+/** Le réglage « Mises à jour automatiques » vient de changer. */
+export const MAJ_AUTO_CHANGEE = "locaryn:maj-auto-changee";
+
+/** Entre deux tentatives d'installation silencieuse d'une version trouvée. */
+const ESSAI_SILENCIEUX_MS = 5 * 60 * 1000;
+
+/** « Plus tard » sur une version : elle ne se repropose pas d'elle-même avant un jour. */
+const VERSION_REPORTEE = "locaryn:maj-reportee";
+const REPORT_MS = 24 * 60 * 60 * 1000;
+
+function reporter(version: string) {
+  try {
+    localStorage.setItem(VERSION_REPORTEE, JSON.stringify({ version, le: Date.now() }));
+  } catch (e) {
+    console.warn("[mise à jour] report non retenu :", e);
+  }
+}
+
+/** La fenêtre revenait à chaque rechargement, « Plus tard » oublié. */
+function estReportee(version: string): boolean {
+  try {
+    const brut = localStorage.getItem(VERSION_REPORTEE);
+    if (!brut) return false;
+    const r = JSON.parse(brut) as { version?: string; le?: number };
+    return r.version === version && Date.now() - (r.le ?? 0) < REPORT_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** Personne ne regarde la fenêtre : cachée, réduite, ou une autre au premier plan. */
+function personneNeRegarde(): boolean {
+  return document.visibilityState === "hidden" || !document.hasFocus();
+}
+
 /** Demander une verification depuis n'importe quel ecran. */
 export function demanderVerification() {
   window.dispatchEvent(new CustomEvent(CHECK_UPDATE_EVENT));
@@ -160,46 +195,99 @@ export function UpdateDialog() {
   // l'application ARM64 native, plutôt que de reconduire l'émulation à
   // chaque version.
   const emuleRef = useRef(false);
+  // « Mises à jour automatiques » : une version trouvée sans qu'on l'ait
+  // demandée s'installe seule, au repos, sans ouvrir cette fenêtre.
+  const autoRef = useRef(true);
+  const enAttenteRef = useRef<Update | null>(null);
+  const installeRef = useRef(false);
 
   const fermer = useCallback(() => setEtat({ sorte: "ferme" }), []);
 
-  const verifier = useCallback(async (visible: boolean) => {
-    // Hors Tauri il n'y a pas de binaire a remplacer, et le plugin updater
-    // n'a pas de pont : l'appeler quand meme faisait remonter un
-    // « Cannot read properties of undefined » a l'ecran, qui ne dit rien a
-    // personne.
-    if (coreMode !== "tauri") {
-      if (visible) {
-        setEtat({
-          sorte: "erreur",
-          message: "Mode aperçu navigateur : la mise à jour automatique est désactivée.",
-        });
-      }
-      return;
-    }
-    if (visible) setEtat({ sorte: "recherche" });
+  const essayerSilencieux = useCallback(async () => {
+    const update = enAttenteRef.current;
+    if (!update || installeRef.current || !autoRef.current) return;
     try {
-      let update: Update | null = null;
-      if (emuleRef.current) {
-        try {
-          update = await check({ target: "windows-aarch64" });
-        } catch {
-          // Pas de version ARM64 publiée pour cette version : on reste sur
-          // la mise à jour habituelle.
-          update = null;
-        }
-      }
-      update ??= await check();
-      if (!update) {
-        setEtat(visible ? { sorte: "ajour", version: null } : { sorte: "ferme" });
-        return;
-      }
-      setEtat({ sorte: "trouvee", update });
-      if (!visible) annoncerMiseAJour(update.version);
+      if (!(await core.appAuRepos()) || !personneNeRegarde()) return;
+      installeRef.current = true;
+      // Fenêtre cachée : l'application relancée par l'installeur reste dans
+      // la zone de notification. Affichée mais délaissée, elle reparaît.
+      if (document.visibilityState === "hidden") await core.preparerRedemarrageSilencieux();
+      await update.downloadAndInstall();
+      enAttenteRef.current = null;
     } catch (e) {
-      setEtat(visible ? { sorte: "erreur", message: updateErrorMessage(e) } : { sorte: "ferme" });
+      // L'ancienne version reste : on réessaiera au prochain passage.
+      console.warn("[mise à jour] installation silencieuse impossible :", e);
+    } finally {
+      installeRef.current = false;
     }
   }, []);
+
+  const verifier = useCallback(
+    async (visible: boolean) => {
+      // Hors Tauri il n'y a pas de binaire a remplacer, et le plugin updater
+      // n'a pas de pont : l'appeler quand meme faisait remonter un
+      // « Cannot read properties of undefined » a l'ecran, qui ne dit rien a
+      // personne.
+      if (coreMode !== "tauri") {
+        if (visible) {
+          setEtat({
+            sorte: "erreur",
+            message: "Mode aperçu navigateur : la mise à jour automatique est désactivée.",
+          });
+        }
+        return;
+      }
+      if (visible) setEtat({ sorte: "recherche" });
+      try {
+        let update: Update | null = null;
+        if (emuleRef.current) {
+          try {
+            update = await check({ target: "windows-aarch64" });
+          } catch {
+            // Pas de version ARM64 publiée pour cette version : on reste sur
+            // la mise à jour habituelle.
+            update = null;
+          }
+        }
+        update ??= await check();
+        if (!update) {
+          setEtat(visible ? { sorte: "ajour", version: null } : { sorte: "ferme" });
+          return;
+        }
+        if (!visible && autoRef.current) {
+          enAttenteRef.current = update;
+          void essayerSilencieux();
+          return;
+        }
+        if (!visible && estReportee(update.version)) return;
+        setEtat({ sorte: "trouvee", update });
+        if (!visible) annoncerMiseAJour(update.version);
+      } catch (e) {
+        setEtat(visible ? { sorte: "erreur", message: updateErrorMessage(e) } : { sorte: "ferme" });
+      }
+    },
+    [essayerSilencieux],
+  );
+
+  // Le réglage, lu au démarrage et relu quand « À propos » le change.
+  useEffect(() => {
+    const lire = () =>
+      core
+        .getUpdatePrefs()
+        .then((p) => {
+          autoRef.current = p.automatic;
+        })
+        .catch((e) => console.warn("[mise à jour] réglage illisible :", e));
+    void lire();
+    window.addEventListener(MAJ_AUTO_CHANGEE, lire);
+    return () => window.removeEventListener(MAJ_AUTO_CHANGEE, lire);
+  }, []);
+
+  // Une version trouvée attend que l'application soit au repos.
+  useEffect(() => {
+    const t = setInterval(() => void essayerSilencieux(), ESSAI_SILENCIEUX_MS);
+    return () => clearInterval(t);
+  }, [essayerSilencieux]);
 
   // La plateforme decide si l'updater natif existe : Tauri ne le fournit que
   // sur Windows et macOS, et le mode navigateur n'a pas de binaire a remplacer.
@@ -400,7 +488,14 @@ export function UpdateDialog() {
         <footer className="locaryn-maj-foot">
           {etat.sorte === "trouvee" ? (
             <>
-              <button type="button" className="locaryn-btn-ghost" onClick={fermer}>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                onClick={() => {
+                  reporter(etat.update.version);
+                  fermer();
+                }}
+              >
                 <Icon name="clock" size={15} /> Plus tard
               </button>
               <button

@@ -1711,6 +1711,12 @@ export interface ModelAbilities {
  * notification aurait donne une page de trente interrupteurs que personne ne
  * lit.
  */
+/** Les mises à jour automatiques de l'application et des extensions. */
+export interface UpdatePrefs {
+  /** Cochée par défaut : tout se met à jour seul, au repos. */
+  automatic: boolean;
+}
+
 export interface NotificationPrefs {
   /** A `false`, aucune banniere du systeme ne part. */
   enabled: boolean;
@@ -2024,6 +2030,12 @@ export interface CoreApi {
   setContextSummary(id: string, summary: string): Promise<void>;
   removeContextDetail(id: string, detail: string): Promise<ContextEntry>;
   forgetContext(id: string): Promise<void>;
+  getUpdatePrefs(): Promise<UpdatePrefs>;
+  setUpdatePrefs(prefs: UpdatePrefs): Promise<void>;
+  /** Personne ne s'en sert et aucun modèle n'est chargé : l'application peut se remplacer. */
+  appAuRepos(): Promise<boolean>;
+  /** La mise à jour qui va s'installer relancera l'application sans fenêtre. */
+  preparerRedemarrageSilencieux(): Promise<void>;
   notificationPrefs(): Promise<NotificationPrefs>;
   setNotificationPrefs(prefs: NotificationPrefs): Promise<void>;
   /** Pose l'avancement sur l'icone de la barre des taches. */
@@ -2598,6 +2610,10 @@ const tauriCore: CoreApi = {
   removeContextDetail: (id, detail) =>
     invoke<ContextEntry>("remove_context_detail", { id, detail }),
   forgetContext: (id) => invoke<void>("forget_context", { id }),
+  getUpdatePrefs: () => invoke<UpdatePrefs>("get_update_prefs"),
+  setUpdatePrefs: (prefs) => invoke<void>("set_update_prefs", { prefs }),
+  appAuRepos: () => invoke<boolean>("app_au_repos"),
+  preparerRedemarrageSilencieux: () => invoke<void>("preparer_redemarrage_silencieux"),
   notificationPrefs: () => invoke<NotificationPrefs>("get_notification_prefs"),
   setNotificationPrefs: (prefs) => invoke<void>("set_notification_prefs", { prefs }),
   setTaskbarProgress: (status, progress) =>
@@ -4335,6 +4351,15 @@ Contenu de démonstration, avec **du gras** et une liste :
     };
   },
   async setNotificationPrefs() {},
+  async getUpdatePrefs() {
+    return { automatic: true };
+  },
+  async setUpdatePrefs() {},
+  // L'aperçu navigateur n'a pas de binaire à remplacer.
+  async appAuRepos() {
+    return false;
+  },
+  async preparerRedemarrageSilencieux() {},
   // Un navigateur n'a pas d'icone dans la barre des taches : ne rien faire est
   // la reponse juste, pas un echec.
   async setTaskbarProgress() {},

@@ -1102,7 +1102,13 @@ pub async fn update_extension(
     core: State<'_, Core>,
     id: String,
 ) -> Result<InstalledExtension, String> {
-    let uid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    mettre_a_jour_extension(&core, &id).await
+}
+
+/// Réinstaller une extension depuis la dernière release de sa source.
+/// Partagé par le bouton « Mettre à jour » et les mises à jour automatiques.
+pub async fn mettre_a_jour_extension(core: &Core, id: &str) -> Result<InstalledExtension, String> {
+    let uid = Uuid::parse_str(id).map_err(|e| e.to_string())?;
     let record = core
         .storage
         .extensions
@@ -1119,7 +1125,7 @@ pub async fn update_extension(
     // locale, pin de branche ou flux injoignable restent inchangés.
     let source = locaryn_extensions::source_with_latest_release(&core.http, &source).await;
     tracing::info!(%source, "mise à jour depuis la dernière release connue");
-    reinstall_from_source(&core, uid, &record.name, record.scope, &source).await
+    reinstall_from_source(core, uid, &record.name, record.scope, &source).await
 }
 
 /// Comme `update_extension`, mais avec une source explicite : la source
@@ -1344,6 +1350,12 @@ pub async fn preview_extension_source(
 pub async fn check_extension_updates(
     core: State<'_, Core>,
 ) -> Result<Vec<ExtensionUpdateCheck>, String> {
+    verifier_mises_a_jour(&core).await
+}
+
+/// Les extensions installées et la dernière version publiée de chacune.
+/// Partagé par l'écran des extensions et les mises à jour automatiques.
+pub async fn verifier_mises_a_jour(core: &Core) -> Result<Vec<ExtensionUpdateCheck>, String> {
     let rows = core
         .storage
         .extensions

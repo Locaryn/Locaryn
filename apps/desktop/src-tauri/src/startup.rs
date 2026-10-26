@@ -33,6 +33,54 @@ const BACKGROUND: tauri::window::Color = tauri::window::Color(23, 25, 26, 255);
 
 static REVEALED: AtomicBool = AtomicBool::new(false);
 
+/// Relancée par une mise à jour silencieuse alors que sa fenêtre était
+/// cachée : l'application revient dans la zone de notification, sans écran
+/// de lancement ni fenêtre. La personne ne doit rien voir d'une mise à jour
+/// faite pendant qu'elle ne s'en servait pas.
+static SILENCIEUX: AtomicBool = AtomicBool::new(false);
+
+/// Le marqueur que pose l'interface juste avant d'installer la mise à jour.
+const MARQUEUR_SILENCIEUX: &str = "redemarrage-silencieux";
+
+/// Au-delà, le marqueur est un reste : une installation qui n'a pas abouti ne
+/// doit pas faire démarrer cachée l'application du lendemain.
+const VALIDITE_MARQUEUR: Duration = Duration::from_secs(15 * 60);
+
+fn chemin_marqueur() -> std::path::PathBuf {
+    locaryn_config::global_dir().join(MARQUEUR_SILENCIEUX)
+}
+
+/// Lire, une seule fois au démarrage, si l'on revient d'une mise à jour
+/// silencieuse. Le marqueur est consommé dans tous les cas.
+pub fn lire_demarrage_silencieux() -> bool {
+    let chemin = chemin_marqueur();
+    let frais = std::fs::metadata(&chemin)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|date| date.elapsed().ok())
+        .is_some_and(|age| age < VALIDITE_MARQUEUR);
+    if chemin.exists() {
+        if let Err(e) = std::fs::remove_file(&chemin) {
+            tracing::warn!(error = %e, "marqueur de redémarrage silencieux non retiré");
+        }
+    }
+    SILENCIEUX.store(frais, Ordering::SeqCst);
+    if frais {
+        tracing::info!("redémarrage après une mise à jour silencieuse : fenêtre gardée cachée");
+    }
+    frais
+}
+
+/// L'interface va installer une mise à jour pendant que la fenêtre est cachée.
+#[tauri::command]
+pub fn preparer_redemarrage_silencieux() -> Result<(), String> {
+    let chemin = chemin_marqueur();
+    if let Some(parent) = chemin.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&chemin, b"1").map_err(|e| e.to_string())
+}
+
 /// Ouvrir l'écran de lancement. À appeler le plus tôt possible, depuis `setup`.
 pub fn open_splash(app: &AppHandle) -> tauri::Result<()> {
     WebviewWindowBuilder::new(app, SPLASH_LABEL, WebviewUrl::App("splash.html".into()))
@@ -87,6 +135,12 @@ fn arm_deadline(app: AppHandle) {
 /// Sans effet la seconde fois.
 pub fn reveal_main(app: &AppHandle) {
     if REVEALED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    // Revenue d'une mise à jour silencieuse : elle reste dans la zone de
+    // notification ; l'icône ou une seconde instance la feront paraître.
+    if SILENCIEUX.load(Ordering::SeqCst) {
+        close_splash(app);
         return;
     }
     if let Some(main) = app.get_webview_window(MAIN_LABEL) {

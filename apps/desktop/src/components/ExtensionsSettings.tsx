@@ -1,4 +1,5 @@
 import { Icon, capabilityLabel } from "@locaryn/ui-core";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -375,6 +376,21 @@ export function ExtensionsSettings() {
       setError(String(e));
     }
   }, [query, ecosystem]);
+
+  // Les mises à jour automatiques du cœur : la liste se relit, sans quoi elle
+  // annonçait encore « mise à jour disponible » pour ce qui venait d'être posé.
+  useEffect(() => {
+    const un = listen("locaryn://extensions-mises-a-jour", () => {
+      void loadInstalled();
+      void refreshUpdates(true);
+    }).catch((e) => {
+      console.warn("[extensions] écoute des mises à jour automatiques impossible :", e);
+      return null;
+    });
+    return () => {
+      void un.then((f) => f?.());
+    };
+  }, [loadInstalled, refreshUpdates]);
 
   useEffect(() => {
     loadInstalled();

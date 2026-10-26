@@ -11,7 +11,7 @@ import {
 import { PRESENTATION_REPLAY } from "../lib/presentation";
 import { CAPS } from "./EngineSettings";
 import { JournauxSettings } from "./JournauxSettings";
-import { demanderVerification } from "./UpdateDialog";
+import { MAJ_AUTO_CHANGEE, demanderVerification } from "./UpdateDialog";
 
 /** Page GitHub des versions — la référence pour l'installation manuelle. */
 const RELEASES_URL = "https://github.com/Locaryn/Locaryn/releases/latest";
@@ -27,6 +27,26 @@ export function AboutSettings() {
   const [showBetaMorphs, setShowBetaMorphs] = useState<boolean>(() => {
     return localStorage.getItem("locaryn_show_beta_morphs") !== "false";
   });
+  // Cochée par défaut : une installation neuve se tient à jour seule.
+  const [majAuto, setMajAuto] = useState(true);
+
+  useEffect(() => {
+    core
+      .getUpdatePrefs()
+      .then((p) => setMajAuto(p.automatic))
+      .catch((e) => console.warn("réglage des mises à jour illisible :", e));
+  }, []);
+
+  function changerMajAuto(automatic: boolean) {
+    setMajAuto(automatic);
+    core
+      .setUpdatePrefs({ automatic })
+      .then(() => window.dispatchEvent(new CustomEvent(MAJ_AUTO_CHANGEE)))
+      .catch((e) => {
+        console.warn("réglage des mises à jour non enregistré :", e);
+        setMajAuto(!automatic);
+      });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -146,6 +166,31 @@ export function AboutSettings() {
             gap: 16,
           }}
         >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: "var(--text)" }}>
+                Mises à jour automatiques
+              </div>
+              <p className="locaryn-field-hint" style={{ margin: 0, fontSize: 12 }}>
+                L'application et les Morphs se mettent à jour seuls, en arrière-plan, quand vous ne
+                vous en servez pas : aucune réponse en cours, aucun modèle chargé. Chaque Morph suit
+                ses propres versions, sans attendre une version de l'application.
+              </p>
+            </div>
+            <LoSwitch
+              checked={majAuto}
+              onChange={changerMajAuto}
+              label="Mettre à jour automatiquement l'application et les Morphs"
+            />
+          </div>
+
           <div
             style={{
               display: "flex",
