@@ -77,6 +77,15 @@ pub enum StreamEvent {
         model: Option<String>,
         reason: String,
     },
+    /// La conversation est comprimée pour tenir dans la fenêtre : les
+    /// anciens échanges cèdent la place à un résumé. `started` pendant
+    /// l'appel au modèle (assez long sur du matériel local pour mériter une
+    /// animation), `done` une fois fait — résumé écrit ou anciens échanges
+    /// resserrés —, `failed` quand le modèle n'a pas su résumer.
+    ContextCompaction {
+        phase: String,
+        detail: String,
+    },
     Log {
         level: LogLevel,
         msg: String,
@@ -277,6 +286,7 @@ pub fn sse_event_tag(event: &StreamEvent) -> &'static str {
         StreamEvent::TaskUpdate { .. } => "task.update",
         StreamEvent::PreviewUpdate { .. } => "preview.update",
         StreamEvent::ProviderChanged { .. } => "provider.changed",
+        StreamEvent::ContextCompaction { .. } => "context.compaction",
         StreamEvent::Log { .. } => "log",
         StreamEvent::Timings { .. } => "timings",
         StreamEvent::MediaPending { .. } => "media.pending",

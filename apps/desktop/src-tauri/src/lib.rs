@@ -913,6 +913,56 @@ fn set_model_preferences(
     preferences.save(&core.data_dir).map_err(|e| e.to_string())
 }
 
+// ============================================================================
+// Window preferences
+// ============================================================================
+
+/// Ce que la croix de la fenêtre principale fait de l'application.
+///
+/// Vit sur le disque et non dans le stockage web : c'est le cœur Rust qui en
+/// décide au moment de la fermeture, sans que la fenêtre ait voix au chapitre.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct WindowPreferences {
+    /// `false` (défaut) : la fenêtre se range dans la zone de notification et
+    /// l'application continue de tourner — les tâches en cours et les
+    /// notifications survivent à la fermeture de la fenêtre. `true` : la
+    /// fermeture est une vraie fermeture, équivalente à « Quitter » dans le
+    /// menu de l'icône — le processus s'arrête net.
+    #[serde(default)]
+    pub quit_on_close: bool,
+}
+
+impl WindowPreferences {
+    fn path(data_dir: &std::path::Path) -> std::path::PathBuf {
+        data_dir.join("window_preferences.json")
+    }
+
+    fn load(data_dir: &std::path::Path) -> Self {
+        std::fs::read_to_string(Self::path(data_dir))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    fn save(&self, data_dir: &std::path::Path) -> anyhow::Result<()> {
+        std::fs::write(Self::path(data_dir), serde_json::to_string_pretty(self)?)?;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn get_window_preferences(core: State<'_, Core>) -> WindowPreferences {
+    WindowPreferences::load(&core.data_dir)
+}
+
+#[tauri::command]
+fn set_window_preferences(
+    core: State<'_, Core>,
+    preferences: WindowPreferences,
+) -> Result<(), String> {
+    preferences.save(&core.data_dir).map_err(|e| e.to_string())
+}
+
 /// A plan produced by the model for a non-trivial request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TaskPlan {
@@ -1027,6 +1077,39 @@ fn approx_tokens(s: &str) -> usize {
     s.chars().count() / 4 + 1
 }
 
+/// Ce qu'un tour pèse : son texte, mais aussi les arguments de ses appels
+/// d'outils. Une session de code vit dans ces arguments — ne pas les compter
+/// déclenchait la compression des dizaines de tours trop tard, la requête
+/// débordait, et la fenêtre restait pleine.
+fn approx_tokens_tour(t: &locaryn_agent_runtime::ChatTurn) -> usize {
+    let appels: usize = t
+        .tool_calls
+        .iter()
+        .map(|a| approx_tokens(&a.arguments))
+        .sum();
+    approx_tokens(&t.content) + appels
+}
+
+/// Un résumé demandé au moteur : `None` si le serveur a refusé ou n'a rien
+/// rendu. Réutilisé pour la nouvelle tentative.
+async fn demande_resume(
+    http: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+) -> Option<String> {
+    let r = http.post(url).json(body).send().await.ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    let v: serde_json::Value = r.json().await.ok()?;
+    let s = v["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    (!s.is_empty()).then_some(s)
+}
+
 /// Summarise the oldest turns into one compact note so a long conversation keeps
 /// fitting in the context window. Mirrors what assistants do around 70-90% usage:
 /// old turns are replaced by a summary, recent ones are kept verbatim.
@@ -1036,13 +1119,20 @@ async fn compact_history(
     model: &str,
     turns: Vec<locaryn_agent_runtime::ChatTurn>,
     budget_tokens: usize,
+    on_event: &Channel<StreamEvent>,
 ) -> Vec<locaryn_agent_runtime::ChatTurn> {
-    let total: usize = turns.iter().map(|t| approx_tokens(&t.content)).sum();
+    let total: usize = turns.iter().map(approx_tokens_tour).sum();
     // Une conversation courte peut déborder aussi : deux longues réponses
     // suffisent. On garde alors le dernier échange et on résume le reste.
     if total <= budget_tokens || turns.len() < 3 {
         return turns;
     }
+    // Le résumé est écrit par le modèle : quelques secondes de calcul local.
+    // Le fil le montre (animation) plutôt que de laisser croire à un silence.
+    let _ = on_event.send(StreamEvent::ContextCompaction {
+        phase: "started".into(),
+        detail: "Contexte en cours de compression…".into(),
+    });
     // Keep the last few exchanges verbatim; summarise everything before them.
     let keep = if turns.len() >= 6 { 4 } else { 2 };
     let split = turns.len() - keep;
@@ -1074,21 +1164,30 @@ async fn compact_history(
         "reasoning_budget": 0,
         "chat_template_kwargs": { "enable_thinking": false }
     });
-    let summary = match core.http.post(&url).json(&body).send().await {
-        Ok(r) if r.status().is_success() => {
-            r.json::<serde_json::Value>().await.ok().and_then(|v| {
-                v["choices"][0]["message"]["content"]
-                    .as_str()
-                    .map(str::to_string)
-            })
-        }
-        _ => None,
-    };
+    let mut summary = demande_resume(&core.http, &url, &body).await;
+    if summary.is_none() {
+        // Un modèle local en mémoire serrée peut rater sa première passe : on
+        // retente une fois avant de retirer les échanges sans les résumer.
+        tracing::warn!("résumé de conversation raté — nouvelle tentative");
+        summary = demande_resume(&core.http, &url, &body).await;
+    }
 
     let mut out = Vec::with_capacity(keep + 1);
     match summary {
-        Some(sum) if !sum.trim().is_empty() => {
-            tracing::info!(turns = old.len(), "compacted conversation history");
+        Some(sum) => {
+            tracing::info!(
+                turns = old.len(),
+                total,
+                budget = budget_tokens,
+                "compacted conversation history"
+            );
+            let _ = on_event.send(StreamEvent::ContextCompaction {
+                phase: "done".into(),
+                detail: format!(
+                    "Contexte compressé : {} anciens échanges tiennent dans un résumé.",
+                    old.len()
+                ),
+            });
             out.push(locaryn_agent_runtime::ChatTurn {
                 role: "system".into(),
                 content: format!(
@@ -1099,8 +1198,19 @@ async fn compact_history(
                 ..Default::default()
             });
         }
-        // Summarisation failed: drop the oldest turns rather than blow the window.
-        _ => tracing::warn!("history compaction failed, truncating instead"),
+        // Summarisation failed: drop the oldest turns rather than blow the
+        // window — mais la personne le voit : un contexte qui s'amincit sans
+        // rien dire ressemble à un modèle qui oublie.
+        None => {
+            tracing::warn!("history compaction failed, truncating instead");
+            let _ = on_event.send(StreamEvent::ContextCompaction {
+                phase: "failed".into(),
+                detail: format!(
+                    "Le modèle n'a pas su résumer : {} anciens échanges retirés sans résumé.",
+                    old.len()
+                ),
+            });
+        }
     }
     out.extend(recent.iter().cloned());
     out
@@ -2199,7 +2309,7 @@ async fn envoyer_message(
                     liberer_annulation(&core.chat_cancels, session_id, generation).await;
                     return Ok(());
                 }
-                t = compact_history(&core, &endpoint, &m, turns, budget) => t,
+                t = compact_history(&core, &endpoint, &m, turns, budget, &on_event) => t,
             };
         }
         turns
@@ -7303,10 +7413,17 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Windows' X is a hide-to-tray action, not a process exit. The
                 // tray's explicit Quit action sets the flag first so its exit
-                // request is allowed through.
+                // request is allowed through, and so does the explicit
+                // « close for real » preference set in the settings.
                 if !TRAY_QUIT_REQUESTED.load(Ordering::SeqCst) {
-                    api.prevent_close();
-                    let _ = window.hide();
+                    let ferme_pour_de_vrai = window
+                        .try_state::<Core>()
+                        .map(|core| WindowPreferences::load(&core.data_dir).quit_on_close)
+                        .unwrap_or(false);
+                    if !ferme_pour_de_vrai {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
             }
         })
@@ -7619,6 +7736,8 @@ pub fn run() {
             set_image_defaults,
             get_model_preferences,
             set_model_preferences,
+            get_window_preferences,
+            set_window_preferences,
             bootstrap
         ])
         .build(tauri::generate_context!())

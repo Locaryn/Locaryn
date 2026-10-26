@@ -1323,6 +1323,18 @@ body.locaryn-resizing .locaryn-resizer::after {
   flex: none;
   color: var(--danger);
 }
+/* Le globe d'une recherche web : le petit signe qui manquait quand le
+   modèle allait sur Google, Brave ou Yandex — il respire tant que la
+   requête est en vol. */
+.locaryn-toolrun-web {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent);
+}
+.locaryn-toolrun-live .locaryn-toolrun-web {
+  animation: lo-pulse 1.6s var(--ease) infinite;
+}
 .locaryn-toolrun-caret {
   flex: none;
   font-size: 12px;
@@ -1349,7 +1361,8 @@ body.locaryn-resizing .locaryn-resizer::after {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .locaryn-toolrun-live .locaryn-toolrun-label {
+  .locaryn-toolrun-live .locaryn-toolrun-label,
+  .locaryn-toolrun-live .locaryn-toolrun-web {
     animation: none;
   }
 }
@@ -13116,9 +13129,11 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   align-items: center;
   box-sizing: border-box;
   min-height: 28px;
+  font: inherit;
+  /* Doit suivre le raccourci `font`, qui remet line-height : placé avant, il
+     était annulé et ne s'appliquait plus. */
   line-height: 1.2;
   padding: 0 var(--space-1);
-  font: inherit;
   color: var(--text-dim);
   background: none;
   border: none;
@@ -13317,7 +13332,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   color: var(--text-faint);
 }
 
-/* Réglage « Alléger les outils » de l'écran Connecteurs. */
+/* Réglage « Catalogue des connecteurs » de l'écran Connecteurs. */
 .locaryn-conn-budget {
   display: flex;
   align-items: flex-start;

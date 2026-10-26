@@ -42,7 +42,9 @@ export function AppearancePane({ theme }: { theme: UseThemeReturn }) {
       <div className="locaryn-field-label" style={{ marginTop: 32 }}>
         Couleur d'accentuation
       </div>
-      <p className="locaryn-field-hint">La teinte unique de l'interface. Sobre et naturelle par défaut.</p>
+      <p className="locaryn-field-hint">
+        La teinte unique de l'interface. Sobre et naturelle par défaut.
+      </p>
       <div className="locaryn-swatch-grid" style={{ marginTop: 12 }}>
         {ACCENT_PRESETS.map((p) => (
           <button
@@ -72,7 +74,12 @@ export function AppearancePane({ theme }: { theme: UseThemeReturn }) {
         />
         <span className="locaryn-color-value">{settings.accentHex}</span>
       </div>
-      <button type="button" className="locaryn-settings-reset" style={{ marginTop: 16 }} onClick={resetTheme}>
+      <button
+        type="button"
+        className="locaryn-settings-reset"
+        style={{ marginTop: 16 }}
+        onClick={resetTheme}
+      >
         Réinitialiser l'apparence
       </button>
     </div>

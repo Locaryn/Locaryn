@@ -13,12 +13,20 @@
 //! 3. seuls les outils qui ressemblent à la demande, les outils intégrés restant
 //!    toujours.
 //!
+//! La personne peut choisir un ordre mieux adapté aux petits modèles : le
+//! **catalogue** ([`catalogue_avec`], réglage « Alléger les outils »). Le
+//! modèle reçoit les outils intégrés, ceux déjà chargés au tour précédent,
+//! ceux que la personne désigne par `@`, et un connecteur par ligne — ce
+//! qu'il fait, combien de commandes — au lieu de des centaines de définitions.
+//! Il charge un connecteur entier (ou une commande nommée) par
+//! [`CHARGER_OUTILS`] quand la demande le désigne.
+//!
 //! La réduction est annoncée (journal et `StreamEvent::Log`), jamais silencieuse :
 //! un outil absent sans explication ressemble à un modèle qui refuse.
 
 use crate::mcp_tools::MCP_PREFIX;
 use crate::tools::ToolSpec;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Part du contexte que les définitions d'outils ont le droit d'occuper. Le reste
 /// sert à l'historique, à la demande et à la réponse.
@@ -343,7 +351,7 @@ pub fn fit_selon_avec(
     deja: &HashSet<String>,
 ) -> Fit {
     if alleger {
-        return fit_avec(specs, ctx, request, imposes, deja);
+        return catalogue_avec(specs, imposes, deja);
     }
     // `fit` reçoit la liste d'origine : c'est en voyant les doublons préfixés
     // (`mcp__serveur__outil`) qu'il sait quels noms courts viennent d'un
@@ -484,6 +492,62 @@ pub fn fit_avec(
         dropped: deferred.len(),
         deferred,
         compacted: true,
+        forced: false,
+    }
+}
+
+/// Le mode catalogue : plutôt que d'alléger une pile de définitions, on ne la
+/// montre pas. Le modèle reçoit les outils intégrés, ceux que la personne a
+/// désignés par `@` et ceux déjà offerts au tour précédent, plus un catalogue —
+/// un connecteur par ligne, ce qu'il fait, combien de commandes — d'où il
+/// charge un connecteur entier à la demande. C'est la demande de la personne
+/// (« liste les commandes du connecteur 2 ») qui déplie, pas la fenêtre.
+pub fn catalogue_avec(specs: Vec<ToolSpec>, imposes: &[String], deja: &HashSet<String>) -> Fit {
+    let (dedoublonnes, server_of) = one_name_per_tool(specs);
+    let mut gardes = Vec::new();
+    let mut deferred = Vec::new();
+    for mut spec in dedoublonnes {
+        if !is_mcp(&spec) && !is_mcp_alias(&spec) {
+            gardes.push(spec);
+            continue;
+        }
+        // La seule forme qui porte le nom du serveur est le nom préfixé : c'est
+        // elle que l'on met au catalogue, et celle par laquelle on recharge un
+        // outil déjà offert le tour précédent.
+        let canonique = is_mcp_alias(&spec)
+            .then(|| {
+                server_of
+                    .get(&spec.name)
+                    .map(|srv| format!("{MCP_PREFIX}{srv}__{}", spec.name))
+            })
+            .flatten();
+        let offert =
+            deja.contains(&spec.name) || canonique.as_deref().is_some_and(|c| deja.contains(c));
+        if offert || est_impose(&spec, &server_of, imposes) {
+            gardes.push(spec);
+            continue;
+        }
+        if let Some(c) = canonique {
+            spec.name = c;
+        }
+        deferred.push(spec);
+    }
+    if deferred.is_empty() {
+        return Fit {
+            specs: gardes,
+            dropped: 0,
+            deferred: Vec::new(),
+            compacted: false,
+            forced: false,
+        };
+    }
+    let catalogue = outil_de_chargement(&deferred);
+    gardes.push(catalogue);
+    Fit {
+        specs: gardes,
+        dropped: deferred.len(),
+        deferred,
+        compacted: false,
         forced: false,
     }
 }
@@ -690,26 +754,41 @@ fn cout_dans_l_index(spec: &ToolSpec) -> usize {
     (spec.name.len() as f64 / BYTES_PER_TOKEN).ceil() as usize + 1
 }
 
-/// L'outil de chargement, avec dans sa description le nom de chaque outil
-/// différé. Le modèle sait ainsi tout ce qui existe — comme les outils
-/// « différés » de Claude — et charge ce dont il a besoin au moment voulu.
+/// L'outil de chargement. Ce qui vient d'un connecteur est groupé par
+/// connecteur — un par ligne, ce qu'il fait, combien de commandes — et le
+/// modèle charge un connecteur entier par son nom ; le reste (les outils
+/// intégrés différés) est nommé à plat, comme les outils « différés » de
+/// Claude.
 pub fn outil_de_chargement(deferred: &[ToolSpec]) -> ToolSpec {
-    let noms: Vec<&str> = deferred.iter().map(|s| s.name.as_str()).collect();
-    ToolSpec {
-        name: CHARGER_OUTILS.to_string(),
-        description: format!(
+    let mcp: Vec<&ToolSpec> = deferred.iter().filter(|s| is_mcp(s)).collect();
+    let autres: Vec<&str> = deferred
+        .iter()
+        .filter(|s| !is_mcp(s))
+        .map(|s| s.name.as_str())
+        .collect();
+    let mut parties = Vec::new();
+    if !mcp.is_empty() {
+        parties.push(catalogue_des_serveurs(&mcp));
+    }
+    if !autres.is_empty() {
+        parties.push(format!(
             "D'autres outils sont disponibles mais pas encore chargés (la fenêtre du modèle \
              ne les porte pas tous à la fois). Pour en utiliser un, appelle d'abord cet outil \
              avec son nom ; il devient appelable au tour suivant. Disponibles : {}.",
-            noms.join(", ")
-        ),
+            autres.join(", ")
+        ));
+    }
+    let description = parties.join("\n");
+    ToolSpec {
+        name: CHARGER_OUTILS.to_string(),
+        description,
         input_schema: serde_json::json!({
             "type": "object",
             "properties": {
                 "noms": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Les noms exacts des outils à charger."
+                    "description": "Les noms exacts des outils à charger, ou le nom d'un connecteur pour charger toutes ses commandes."
                 }
             },
             "required": ["noms"]
@@ -719,8 +798,63 @@ pub fn outil_de_chargement(deferred: &[ToolSpec]) -> ToolSpec {
     }
 }
 
+/// Une ligne par connecteur : son nom, combien de commandes il porte, et ce
+/// qu'il fait — la description la plus explicite de ses outils, à sa première
+/// phrase. Le modèle voit ce que fait chaque connecteur sans recevoir des
+/// dizaines de définitions ; il charge celui que la demande désigne.
+fn catalogue_des_serveurs(deferred: &[&ToolSpec]) -> String {
+    let mut par_serveur: BTreeMap<String, Vec<&ToolSpec>> = BTreeMap::new();
+    for spec in deferred {
+        let serveur = spec
+            .name
+            .strip_prefix(MCP_PREFIX)
+            .and_then(|r| r.rsplit_once("__").map(|(s, _)| s))
+            .unwrap_or("connecteur");
+        par_serveur
+            .entry(serveur.to_string())
+            .or_default()
+            .push(spec);
+    }
+    let mut lignes: Vec<(usize, String)> = par_serveur
+        .into_iter()
+        .map(|(serveur, outils)| {
+            let resume = outils
+                .iter()
+                .filter_map(|s| {
+                    s.description
+                        .lines()
+                        .map(str::trim)
+                        .find(|l| !l.is_empty())
+                })
+                .max_by_key(|d| d.len())
+                .map(|d| short_text(d, 140))
+                .unwrap_or_default();
+            let n = outils.len();
+            let ligne = if resume.is_empty() {
+                format!("- {serveur} ({n} commandes)")
+            } else {
+                format!("- {serveur} ({n} commandes) : {resume}")
+            };
+            (n, ligne)
+        })
+        .collect();
+    lignes.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let corps: String = lignes
+        .iter()
+        .map(|(_, l)| l.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "D'autres connecteurs sont disponibles mais pas encore chargés (la fenêtre du modèle \
+         ne les porte pas tous à la fois). Ce qu'ils font :\n{corps}\nPour en utiliser un, \
+         appelle cet outil avec son nom — ou les noms de commandes exactes — ; ses commandes \
+         deviennent appelables au tour suivant."
+    )
+}
+
 /// Ce que le modèle a demandé à charger : retiré de `deferred`, rendu pour
-/// rejoindre les outils offerts. Les noms inconnus sont rendus à part.
+/// rejoindre les outils offerts. Un nom de connecteur charge toutes ses
+/// commandes ; les noms inconnus sont rendus à part.
 pub fn charger(
     deferred: &mut Vec<ToolSpec>,
     args: &serde_json::Value,
@@ -738,9 +872,25 @@ pub fn charger(
     let mut charges = Vec::new();
     let mut inconnus = Vec::new();
     for nom in demandes {
-        match deferred.iter().position(|s| s.name == nom) {
-            Some(i) => charges.push(deferred.remove(i)),
-            None => inconnus.push(nom),
+        // Une commande exacte d'abord.
+        if let Some(i) = deferred.iter().position(|s| s.name == nom) {
+            charges.push(deferred.remove(i));
+            continue;
+        }
+        // Puis un connecteur entier : `github` charge tout `mcp__github__…`.
+        let prefixe = format!("{MCP_PREFIX}{nom}__");
+        let mut i = 0;
+        let mut trouves = 0;
+        while i < deferred.len() {
+            if deferred[i].name.starts_with(&prefixe) {
+                charges.push(deferred.remove(i));
+                trouves += 1;
+            } else {
+                i += 1;
+            }
+        }
+        if trouves == 0 {
+            inconnus.push(nom);
         }
     }
     (charges, inconnus)
@@ -821,19 +971,24 @@ mod tests {
     }
 
     /// Les 28 outils d'un connecteur « Roblox_Studio », sous leurs deux noms, plus
-    /// ceux d'un autre connecteur et un outil intégré.
+    /// ceux d'un autre connecteur et un outil intégré. Les noms courts portent
+    /// la permission `Mcp`, comme les vrais alias de `mcp_tools.rs`.
     fn beaucoup_d_outils() -> Vec<ToolSpec> {
         let long = "Fait quelque chose de très utile dans le logiciel. ".repeat(12);
         let mut v = vec![spec("lire_fichier", "Lit un fichier.")];
         for i in 0..28 {
             let nom = format!("studio_outil_{i}");
             v.push(spec(&format!("mcp__Roblox_Studio__{nom}"), &long));
-            v.push(spec(&nom, &long));
+            let mut court = spec(&nom, &long);
+            court.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
+            v.push(court);
         }
         for i in 0..30 {
             let nom = format!("cluster_outil_{i}");
             v.push(spec(&format!("mcp__morph-grappe__{nom}"), &long));
-            v.push(spec(&nom, &long));
+            let mut court = spec(&nom, &long);
+            court.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
+            v.push(court);
         }
         v
     }
@@ -962,10 +1117,13 @@ mod tests {
             .iter()
             .find(|s| s.name == CHARGER_OUTILS)
             .expect("l'outil de chargement est offert dès qu'un outil est différé");
+        // Les connecteurs différés sont nommés dans le catalogue, et chaque
+        // outil différé reste chargeable par son nom exact.
         let premier = r.deferred[0].name.clone();
         assert!(
-            chargeur.description.contains(&premier),
-            "chaque différé est nommé"
+            chargeur.description.contains("Roblox_Studio")
+                || chargeur.description.contains(&premier),
+            "chaque connecteur différé est nommé"
         );
 
         let avant = r.deferred.len();
@@ -977,6 +1135,109 @@ mod tests {
         assert_eq!(charges[0].name, premier);
         assert_eq!(inconnus, vec!["n_existe_pas".to_string()]);
         assert_eq!(r.deferred.len(), avant - 1);
+    }
+
+    // ── Le catalogue (réglage « Alléger les outils ») ──────────────────────
+
+    /// En mode catalogue, le modèle reçoit un connecteur par ligne — son nom,
+    /// le nombre de commandes, ce qu'il fait — et jamais la liste des
+    /// commandes : c'est la demande qui déplie.
+    #[test]
+    fn le_catalogue_nomme_les_connecteurs_sans_leurs_commandes() {
+        let r = fit_selon(beaucoup_d_outils(), 8192, "x", true, &[]);
+        let catalogue = r
+            .specs
+            .iter()
+            .find(|s| s.name == CHARGER_OUTILS)
+            .expect("le catalogue est offert");
+        assert!(catalogue.description.contains("Roblox_Studio"));
+        assert!(catalogue.description.contains("morph-grappe"));
+        assert!(catalogue.description.contains("28 commandes"));
+        assert!(catalogue.description.contains("30 commandes"));
+        assert!(
+            !catalogue.description.contains("studio_outil_5"),
+            "aucune commande ne doit être nommée : {}",
+            catalogue.description
+        );
+        assert_eq!(r.deferred.len(), 58, "les commandes restent différées");
+        assert_eq!(r.dropped, 58);
+        // L'outil intégré, lui, reste offert.
+        assert!(r.specs.iter().any(|s| s.name == "lire_fichier"));
+        assert!(!r.forced && !r.compacted);
+    }
+
+    /// Un connecteur entier se charge par son nom ; une commande exacte aussi.
+    #[test]
+    fn le_catalogue_charge_un_connecteur_entier() {
+        let mut r = fit_selon(beaucoup_d_outils(), 8192, "x", true, &[]);
+        let (charges, inconnus) =
+            charger(&mut r.deferred, &serde_json::json!({ "noms": ["Roblox_Studio"] }));
+        assert_eq!(charges.len(), 28, "toutes les commandes du connecteur");
+        assert!(inconnus.is_empty());
+        assert!(charges
+            .iter()
+            .all(|s| s.name.starts_with("mcp__Roblox_Studio__")));
+        // Une commande exacte continue de fonctionner.
+        let reste = r.deferred[0].name.clone();
+        let (une, inconnus) =
+            charger(&mut r.deferred, &serde_json::json!({ "noms": [reste.clone()] }));
+        assert_eq!(une.len(), 1);
+        assert_eq!(une[0].name, reste);
+        assert!(inconnus.is_empty());
+    }
+
+    /// Les outils `@` de la personne ne passent jamais par le catalogue : le
+    /// modèle ne doit pas recharger ce qu'elle a déjà désigné.
+    #[test]
+    fn le_catalogue_garde_les_outils_imposes() {
+        let impose = "mcp__Roblox_Studio__studio_outil_3".to_string();
+        let r = fit_selon(
+            beaucoup_d_outils(),
+            8192,
+            "x",
+            true,
+            std::slice::from_ref(&impose),
+        );
+        assert!(r.specs.iter().any(|s| s.name == "lire_fichier"));
+        assert!(
+            r.specs.iter().any(|s| {
+                s.name == "studio_outil_3" || s.name == "mcp__Roblox_Studio__studio_outil_3"
+            }),
+            "l'outil imposé doit être offert"
+        );
+        assert!(
+            r.deferred.iter().all(|s| {
+                s.name != "studio_outil_3" && s.name != "mcp__Roblox_Studio__studio_outil_3"
+            }),
+            "l'outil imposé ne doit pas être au catalogue"
+        );
+    }
+
+    /// Un outil déjà offert au tour précédent reste offert, sous l'un ou
+    /// l'autre de ses noms : le modèle ne le recharge pas à chaque message.
+    #[test]
+    fn le_catalogue_garde_les_outils_deja_offerts() {
+        let mut specs = vec![spec("lire_fichier", "Lit un fichier.")];
+        for i in 0..10 {
+            let nom = format!("t{i}");
+            let long = "Fait quelque chose d'utile dans le connecteur. ".repeat(6);
+            specs.push(spec(&format!("mcp__s__{nom}"), &long));
+            let mut court = spec(&nom, &long);
+            court.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
+            specs.push(court);
+        }
+        // `t0` offert sous son nom préfixé (rechargé par le catalogue), `t1`
+        // sous son nom court.
+        let deja: HashSet<String> = ["mcp__s__t0".to_string(), "t1".to_string()]
+            .into_iter()
+            .collect();
+        let r = catalogue_avec(specs, &[], &deja);
+        assert!(
+            r.specs.iter().any(|s| s.name == "t0"),
+            "reconnu par son nom préfixé du tour précédent"
+        );
+        assert!(r.specs.iter().any(|s| s.name == "t1"));
+        assert_eq!(r.deferred.len(), 8);
     }
 
     #[test]

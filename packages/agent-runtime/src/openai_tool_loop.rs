@@ -535,11 +535,14 @@ pub async fn run_openai_tool_loop(
         crate::context_window::budget((ctx as f64 / echelle_connue()) as usize, outils)
     });
     let mut annonce_contexte: Option<String> = None;
+    // Ce qui vient d'une compression de conversation, annoncé au fil sous
+    // forme d'événement dédié (l'animation « compression en cours »).
+    let mut compression: Option<String> = None;
     if let Some(b) = budget_conversation {
         let fait = crate::context_window::fit(&mut messages, b);
         if !fait.rien() {
             tracing::warn!(budget = b, ?fait, "conversation ajustée à la fenêtre");
-            annonce_contexte = Some(fait.annonce());
+            compression = Some(fait.annonce());
         }
     }
 
@@ -630,7 +633,7 @@ pub async fn run_openai_tool_loop(
                         "fenêtre pleine au premier envoi : outils allégés selon la taille réelle"
                     );
                     if !fait.rien() {
-                        annonce_contexte = Some(fait.annonce());
+                        compression = Some(fait.annonce());
                     }
                     differes = refit.deferred;
                     all_tools = refit.specs;
@@ -647,7 +650,7 @@ pub async fn run_openai_tool_loop(
                         "fenêtre pleine au premier envoi : conversation resserrée"
                     );
                     if !fait.rien() {
-                        annonce_contexte = Some(fait.annonce());
+                        compression = Some(fait.annonce());
                     }
                 }
             }
@@ -728,6 +731,21 @@ pub async fn run_openai_tool_loop(
             task_id,
         })
         .await;
+    if let Some(msg) = compression {
+        let _ = tx
+            .send(StreamEvent::ContextCompaction {
+                phase: "done".into(),
+                detail: msg.clone(),
+            })
+            .await;
+        let _ = tx
+            .send(StreamEvent::Log {
+                level: locaryn_events::LogLevel::Warn,
+                msg,
+                source: "contexte".into(),
+            })
+            .await;
+    }
     if let Some(msg) = annonce_contexte {
         let _ = tx
             .send(StreamEvent::Log {
@@ -840,6 +858,12 @@ pub async fn run_openai_tool_loop(
                             // tour noyait la conversation sous le même avis.
                             if !fait.rien() && !contexte_annonce {
                                 contexte_annonce = true;
+                                let _ = tx
+                                    .send(StreamEvent::ContextCompaction {
+                                        phase: "done".into(),
+                                        detail: fait.annonce(),
+                                    })
+                                    .await;
                                 let _ = tx
                                     .send(StreamEvent::Log {
                                         level: LogLevel::Warn,

@@ -35,6 +35,7 @@ export const EN_EXACT: Record<string, string> = {
   "Installation de PyTorch (CUDA)…": "Installing PyTorch (CUDA)…",
   "Installation du modèle de décision…": "Installing the decision model…",
   "Téléchargement du modèle de décision…": "Downloading the decision model…",
+  "Téléchargement d'image": "Image download",
   "Charger quand même": "Load anyway",
   "Prudence actuelle :": "Current caution:",
   "Fichier créé ou modifié": "File created or modified",
@@ -183,7 +184,6 @@ export const EN_EXACT: Record<string, string> = {
   "Ajoutez ce qu'il faut savoir pour y travailler.": "Add what one needs to know to work on it.",
   "Ajustez vos composants matériels pour identifier les modèles utilisables sur votre ordinateur.":
     "Adjust your hardware to find the models usable on your computer.",
-  "Alléger les outils quand le contexte est petit": "Trim tools when the context is small",
   "Alternative 5-bit équilibrée.": "Balanced 5-bit alternative.",
   "Analyse PC requise pour estimer": "PC scan required to estimate",
   "Analyse de la source…": "Analyzing source…",
@@ -368,6 +368,7 @@ export const EN_EXACT: Record<string, string> = {
   "Capacités du moteur": "Engine capabilities",
   "Caractère du modèle": "Model personality",
   "Catalogue de modèles": "Model catalog",
+  "Catalogue des connecteurs": "Connector catalog",
   "Ce LoRA/embedding est classé NSFW / sans garde-fous. Je prends la responsabilité de son usage.":
     "This LoRA/embedding is classified NSFW / unguarded. I take responsibility for its use.",
   "Ce certificat prouve à quelle machine appartient cette installation.":
@@ -659,7 +660,7 @@ export const EN_EXACT: Record<string, string> = {
   "Déposez vos fichiers": "Drop your files",
   "Dépôt GitHub contenant": "GitHub repository containing",
   Désactiver: "Disable",
-  "Désactivé : le modèle reçoit tous les outils des connecteurs actifs et sait ce qu'il a à disposition. Activé : quand les outils pèsent trop dans sa fenêtre, leurs descriptions sont raccourcies et ceux sans rapport avec la demande sont laissés de côté — utile aux petits modèles. Dans tous les cas, des outils plus gros que la fenêtre elle-même sont allégés, et l'application le dit. Pour retirer un outil précis, utilisez « Configurer » sur son connecteur.":
+  "Désactivé : le modèle reçoit d'un coup toutes les commandes des connecteurs actifs. Activé : il reçoit d'abord une ligne par connecteur — son nom, ce qu'il fait, combien de commandes — et charge un connecteur entier quand la demande le désigne. Les connecteurs cités avec « @ » restent toujours chargés, et les outils intégrés aussi. Utile avec les petits modèles, qui se perdent dans des listes de commandes. Pour retirer un outil précis, utilisez « Configurer » sur son connecteur.":
     "Off: the model receives every tool of the active connectors and knows what it has. On: when tools weigh too much in its window, their descriptions are shortened and those unrelated to the request are set aside — useful for small models. In every case, tools bigger than the window itself are trimmed, and the app says so. To remove a specific tool, use “Configure” on its connector.",
   Désinstaller: "Uninstall",
   Détail: "Detail",
@@ -1333,6 +1334,7 @@ export const EN_EXACT: Record<string, string> = {
   "Pack de compétences agentiques et consignes procédurales":
     "Pack of agent skills and procedural instructions",
   "Page précédente": "Previous page",
+  "Page web": "Web page",
   "PagedAttention / vLLM (serveur GPU séparé)": "PagedAttention / vLLM (separate GPU server)",
   "Paire de clés": "Key pair",
   "Paquets installés (": "Installed packages (",
@@ -1444,9 +1446,13 @@ export const EN_EXACT: Record<string, string> = {
     "Receive experimental pre-releases of the Locaryn app to test new features before their official release.",
   "Recharger le modèle maintenant": "Reload the model now",
   "Recherche Web Brave & Scraper": "Brave Web Search & Scraper",
+  "Recherche d'images": "Image search",
   "Recherche en cours…": "Searching…",
   "Recherche sur le web et extraction de contenu.": "Web search and content extraction.",
   "Recherche web": "Web search",
+  "Recherche web en cours…": "Web search in progress…",
+  "Recherche web terminée": "Web search finished",
+  "Recherche web terminée (1 échec)": "Web search finished (1 failure)",
   "Rechercher dans les archives": "Search the archives",
   "Rechercher parmi les modèles (Gemma 4, Kimi K3, MiMo, GLM 5.2, DeepSeek-R1, Qwen2.5...)":
     "Search models (Gemma 4, Kimi K3, MiMo, GLM 5.2, DeepSeek-R1, Qwen2.5...)",
@@ -2707,4 +2713,23 @@ export const EN_PATTERNS: Record<string, string> = {
   "Sortie {}": "Released {}",
   "▼ {} variantes ({})": "▼ {} variants ({})",
   "Annuler ({}%)": "Cancel ({}%)",
+  // La ligne repliée des appels d'outils (ToolRun) : l'état « en cours » dit
+  // la recherche web quand le modèle est sur le net.
+  "Exécute {} commande…": "Running {} command…",
+  "Exécute {} commandes…": "Running {} commands…",
+  "Exécute {} commande… et {} recherche web": "Running {} command… and {} web search",
+  "Exécute {} commandes… et {} recherche web": "Running {} commands… and {} web search",
+  "Exécute {} commande… et {} recherches web": "Running {} command… and {} web searches",
+  "Exécute {} commandes… et {} recherches web": "Running {} commands… and {} web searches",
+  "{} recherches web en cours…": "{} web searches in progress…",
+  "Recherche web terminée ({} échecs)": "Web search finished ({} failures)",
+  "{} recherches web terminées": "{} web searches finished",
+  "{} recherches web terminées (1 échec)": "{} web searches finished (1 failure)",
+  "{} recherches web terminées ({} échecs)": "{} web searches finished ({} failures)",
+  "Exécuté {} commande": "Ran {} command",
+  "Exécuté {} commandes": "Ran {} commands",
+  "Exécuté {} commande (1 échec)": "Ran {} command (1 failure)",
+  "Exécuté {} commandes (1 échec)": "Ran {} commands (1 failure)",
+  "Exécuté {} commande ({} échecs)": "Ran {} command ({} failures)",
+  "Exécuté {} commandes ({} échecs)": "Ran {} commands ({} failures)",
 };

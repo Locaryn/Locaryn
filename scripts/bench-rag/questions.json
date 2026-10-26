@@ -1,0 +1,157 @@
+{
+  "_note": "Questions posées au modèle sur la documentation Locaryn. `needle` est une chaîne qui doit figurer dans le contexte fourni au modèle pour que la réponse soit possible : elle sert à mesurer le rappel de récupération sans passer par le juge. `reponse_ref` est ce qu'une réponse correcte doit contenir.",
+  "questions": [
+    {
+      "id": "F1",
+      "categorie": "fait",
+      "question": "Quel port le daemon local de Locaryn écoute-t-il par défaut ?",
+      "reponse_ref": "7474",
+      "source": "docs/architecture/02-architecture.md",
+      "needle": "7474"
+    },
+    {
+      "id": "F2",
+      "categorie": "fait",
+      "question": "Quels sont les trois niveaux de confiance qu'un projet Locaryn peut porter ?",
+      "reponse_ref": "Trusted, Untrusted, Sandbox",
+      "source": "docs/architecture/08-ux.md",
+      "needle": "Sandbox"
+    },
+    {
+      "id": "F3",
+      "categorie": "fait",
+      "question": "Quelle police de caractères l'interface de Locaryn utilise-t-elle ?",
+      "reponse_ref": "Sen",
+      "source": "contexte.md",
+      "needle": "Sen"
+    },
+    {
+      "id": "F4",
+      "categorie": "fait",
+      "question": "Quel nom de fichier de manifeste un morph Locaryn déclare-t-il, et quelles clés principales contient-il ?",
+      "reponse_ref": "morph.json, avec apiVersion, permissions et components",
+      "source": "docs/adr/ADR-0004-mcp-compatibility.md",
+      "needle": "morph.json"
+    },
+    {
+      "id": "F5",
+      "categorie": "fait",
+      "question": "Quel transport réseau, en plus de stdio, Locaryn implémente-t-il pour MCP ?",
+      "reponse_ref": "HTTP sans état (stateless HTTP)",
+      "source": "docs/adr/ADR-0004-mcp-compatibility.md",
+      "needle": "stateless HTTP"
+    },
+    {
+      "id": "F6",
+      "categorie": "fait",
+      "question": "Quel crate Locaryn utilise-t-il pour implémenter le standard MCP, et comment s'appelle la couche qui l'enveloppe ?",
+      "reponse_ref": "rmcp, enveloppé par locaryn-mcp",
+      "source": "docs/adr/ADR-0004-mcp-compatibility.md",
+      "needle": "locaryn-mcp"
+    },
+    {
+      "id": "F7",
+      "categorie": "fait",
+      "question": "Quelles sont les premières tables créées par la persistance SQLite de Locaryn ?",
+      "reponse_ref": "projects, sessions, messages, tasks, artifacts, providers…",
+      "source": "docs/architecture/07-persistence.md",
+      "needle": "CREATE TABLE projects"
+    },
+    {
+      "id": "R1",
+      "categorie": "relation",
+      "question": "Pourquoi l'ADR-0001 a-t-il choisi Rust et Tauri plutôt qu'Electron, et quel inconvénient précis l'ADR note-t-il pour la preview ?",
+      "reponse_ref": "Éviter de dupliquer le cœur métier et garder un shell léger (~15 Mo) ; inconvéniet preview : différences de webview (Edge WebView2 vs WebKit).",
+      "source": "docs/adr/ADR-0001-rust-tauri-core.md",
+      "needle": "Edge WebView2 vs WebKit"
+    },
+    {
+      "id": "R2",
+      "categorie": "relation",
+      "question": "Quel port le daemon local utilise-t-il, et quel composant décide de ce port à l'amorçage ?",
+      "reponse_ref": "7474 ; le daemon (Axum) le fixe au démarrage et le provider-supervisor s'y aligne.",
+      "source": "docs/architecture/03-tech-decisions.md",
+      "needle": "7474"
+    },
+    {
+      "id": "R3",
+      "categorie": "relation",
+      "question": "En quoi le format de configuration MCP que Locaryn adopte facilite-t-il la venue des utilisateurs de Claude Code et Cursor ?",
+      "reponse_ref": "Il adopte le format de fait .mcp.json / mcpServers {command, args, env}, compatible avec ces outils.",
+      "source": "docs/adr/ADR-0004-mcp-compatibility.md",
+      "needle": "mcpServers"
+    },
+    {
+      "id": "R4",
+      "categorie": "relation",
+      "question": "Comment le cœur Rust partagé empêche-t-il la duplication de la logique agentique entre le desktop, la CLI et le serveur, et où cette exigence est-elle posée ?",
+      "reponse_ref": "Un seul workspace de crates partagé, le shell Tauri l'intègre in-process ; exigence posée dans l'ADR-0001 et reprise dans l'architecture.",
+      "source": "docs/adr/ADR-0001-rust-tauri-core.md",
+      "needle": "exactly the same"
+    },
+    {
+      "id": "R5",
+      "categorie": "relation",
+      "question": "Quel mécanisme restreint-il les outils selon le niveau de confiance d'un projet, et où ce niveau est-il décrit pour l'utilisateur ?",
+      "reponse_ref": "Le gating des outils par niveau de confiance (Trusted / Untrusted / Sandbox), décrit dans la doc d'expérience 08-ux.",
+      "source": "docs/architecture/08-ux.md",
+      "needle": "Untrusted"
+    },
+    {
+      "id": "S1",
+      "categorie": "synthese",
+      "question": "Quelles sont les grandes briques produit prévues pour Locaryn, et dans quel ordre la roadmap les place-t-elle ?",
+      "reponse_ref": "Desktop + CLI + daemon + serveur distant partageant un cœur ; MVP puis V1 puis V1.1 puis V2.",
+      "source": "docs/architecture/10-roadmap.md",
+      "needle": "MVP"
+    },
+    {
+      "id": "S2",
+      "categorie": "synthese",
+      "question": "Quelles décisions d'architecture structurantes Locaryn a-t-il actées dans ses ADR, et quel est le principal compromis de chacune ?",
+      "reponse_ref": "Cœur Rust/Tauri, transport HTTP+SSE, licence open-core, compatibilité MCP, persistance SQLite — chacun avec ses conséquences positives/négatives.",
+      "source": "docs/adr/README.md",
+      "needle": "ADR"
+    },
+    {
+      "id": "S3",
+      "categorie": "synthese",
+      "question": "Décris l'architecture technique globale de Locaryn et le rôle respectif du desktop, de la CLI, du daemon et du serveur distant.",
+      "reponse_ref": "Desktop Tauri + CLI + daemon local + remote server partageant le même cœur Rust, communiquant en HTTP + SSE.",
+      "source": "docs/architecture/02-architecture.md",
+      "needle": "SSE"
+    },
+    {
+      "id": "S4",
+      "categorie": "synthese",
+      "question": "Quelle est la direction artistique de l'interface Locaryn ?",
+      "reponse_ref": "Liquid glass inspiré d'Apple, palette vert nature, dark mode par défaut, police Sen, animations subtiles.",
+      "source": "contexte.md",
+      "needle": "liquid glass"
+    },
+    {
+      "id": "H1",
+      "categorie": "hors-corpus",
+      "question": "Quel est le prix de l'offre Pro de Locaryn ?",
+      "reponse_ref": "Information absente du corpus : le modèle doit dire qu'il ne sait pas.",
+      "source": null,
+      "needle": null
+    },
+    {
+      "id": "H2",
+      "categorie": "hors-corpus",
+      "question": "Quel est le nom du fondateur de Locaryn et d'où vient-il ?",
+      "reponse_ref": "Information absente du corpus : le modèle doit dire qu'il ne sait pas.",
+      "source": null,
+      "needle": null
+    },
+    {
+      "id": "H3",
+      "categorie": "hors-corpus",
+      "question": "Quelle est la date de sortie publique exacte de Locaryn v2 ?",
+      "reponse_ref": "Information absente du corpus (V2 est une étape de roadmap sans date) : le modèle doit dire qu'il ne sait pas.",
+      "source": null,
+      "needle": null
+    }
+  ]
+}

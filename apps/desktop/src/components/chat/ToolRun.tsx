@@ -1,6 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
-import { ToolCard, estOutilCommande } from "./ToolCard";
+import { ToolCard, estOutilCommande, estOutilWeb } from "./ToolCard";
 
 export type ToolEntry = {
   id: string;
@@ -15,17 +15,42 @@ type Props = {
   entries: ToolEntry[];
 };
 
-/** « Exécuté 4 commandes (1 échec) » — le texte de la ligne repliée. */
+/** « Recherche web en cours… », « Exécuté 4 commandes (1 échec) » — le texte
+ *  de la ligne repliée. Une recherche web se dit comme telle : sur une
+ *  réponse qui cherche sur Google ou Brave, « Exécute 1 commande… » ne
+ *  dit pas ce qui se passe. */
 function resume(entries: ToolEntry[]): string {
   const total = entries.length;
   const encours = entries.filter((e) => e.status === "running").length;
   const rates = entries.filter((e) => e.status === "error").length;
-
-  const nom = total > 1 ? "commandes" : "commande";
-  if (encours > 0) {
-    return `Exécute ${total} ${nom}…`;
-  }
+  const web = entries.filter((e) => estOutilWeb(e.tool)).length;
+  const webEnCours = entries.filter((e) => e.status === "running" && estOutilWeb(e.tool)).length;
+  const autresEnCours = encours - webEnCours;
   const echecs = rates === 0 ? "" : rates === 1 ? " (1 échec)" : ` (${rates} échecs)`;
+
+  if (encours > 0) {
+    // Uniquement des recherches : c'est le libellé qui doit le dire.
+    if (autresEnCours === 0) {
+      return webEnCours === 1
+        ? "Recherche web en cours…"
+        : `${webEnCours} recherches web en cours…`;
+    }
+    if (webEnCours > 0) {
+      const nom = autresEnCours > 1 ? "commandes" : "commande";
+      return `Exécute ${autresEnCours} ${nom}… et ${webEnCours} ${
+        webEnCours > 1 ? "recherches" : "recherche"
+      } web`;
+    }
+    return `Exécute ${total} ${total > 1 ? "commandes" : "commande"}…`;
+  }
+  if (web === total) {
+    return web === 1
+      ? `Recherche web terminée${echecs}`
+      : `${web} recherches web terminées${echecs}`;
+  }
+  // Mélange fini : le globe à gauche de la ligne dit déjà la présence du web,
+  // le détail reste sur les cartes dépliées.
+  const nom = total > 1 ? "commandes" : "commande";
   return `Exécuté ${total} ${nom}${echecs}`;
 }
 
@@ -45,6 +70,7 @@ export function ToolRun({ entries }: Props) {
 
   const encours = entries.some((e) => e.status === "running");
   const rate = entries.some((e) => e.status === "error");
+  const surLeWeb = entries.some((e) => estOutilWeb(e.tool));
   const commandeEnCours = entries.some((e) => e.status === "running" && estOutilCommande(e.tool));
   const ouvert = manuel ?? commandeEnCours;
 
@@ -56,6 +82,11 @@ export function ToolRun({ entries }: Props) {
         onClick={() => setManuel(!ouvert)}
         aria-expanded={ouvert}
       >
+        {surLeWeb && (
+          <span className="locaryn-toolrun-web" aria-hidden="true">
+            <Icon name="globe" size={13} />
+          </span>
+        )}
         <span className="locaryn-toolrun-label">{resume(entries)}</span>
         {rate && !encours && (
           <span className="locaryn-toolrun-warn" aria-hidden="true">

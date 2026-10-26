@@ -379,9 +379,14 @@ export const MODEL_CATEGORIES: ModelCategoryDefinition[] = [
   { id: "chat", label: "Chat / Instruct", icon: "chat", matches: ["chat"] },
   { id: "code", label: "Code", icon: "code", matches: ["code"] },
   { id: "vision", label: "Vision", icon: "image", matches: ["vision"] },
-  { id: "reasoning", label: "Raisonnement", labelEn: "Reasoning", icon: "memory", matches: ["reasoning"] },
+  {
+    id: "reasoning",
+    label: "Raisonnement",
+    labelEn: "Reasoning",
+    icon: "memory",
+    matches: ["reasoning"],
+  },
 ];
-
 
 /** Display language for catalogue data. */
 export type DisplayLang = "fr" | "en";
@@ -405,9 +410,10 @@ export function familyDescription(
  *  not one of those. Lets live-discovered models read English without
  *  storing a translation per repository. */
 function hfDiscoveredDescriptionEn(fr: string): string | null {
-  const m = /^Poids GGUF [\s\S]*? sur HuggingFace par (.+?)(?:, ([\d\s.,]+) [\s\S]*?chargements)?\.$/.exec(
-    fr.trim(),
-  );
+  const m =
+    /^Poids GGUF [\s\S]*? sur HuggingFace par (.+?)(?:, ([\d\s.,]+) [\s\S]*?chargements)?\.$/.exec(
+      fr.trim(),
+    );
   if (!m) return null;
   const author = m[1];
   const digits = m[2]?.replace(/[^\d]/g, "");
@@ -483,7 +489,8 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "DeepSeek / AirLLM",
     description:
       "Modèle de raisonnement 70B exécutable sur petit GPU (4 Go VRAM) grâce au chargement couche par couche AirLLM.",
-      descriptionEn: "70B reasoning model runnable on a small GPU (4GB VRAM) thanks to AirLLM layer-by-layer loading.",
+    descriptionEn:
+      "70B reasoning model runnable on a small GPU (4GB VRAM) thanks to AirLLM layer-by-layer loading.",
     license: "MIT",
     contextWindow: "128k",
     releaseDate: "2025-01",
@@ -508,7 +515,8 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Meta / AirLLM",
     description:
       "Flagship 70B de Meta exécutable en local sur machine modeste via le streaming de couches AirLLM.",
-      descriptionEn: "Meta's 70B flagship runnable locally on a modest machine via AirLLM layer streaming.",
+    descriptionEn:
+      "Meta's 70B flagship runnable locally on a modest machine via AirLLM layer streaming.",
     license: "Llama 3.3 Community",
     contextWindow: "128k",
     releaseDate: "2024-12",
@@ -533,7 +541,7 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Alibaba / Qwen / AirLLM",
     description:
       "Le plus puissant modèle Qwen 2.5 de 72B exécutable localement avec ~4 Go de VRAM.",
-      descriptionEn: "The most powerful 72B Qwen 2.5 model runnable locally with ~4GB of VRAM.",
+    descriptionEn: "The most powerful 72B Qwen 2.5 model runnable locally with ~4GB of VRAM.",
     license: "Apache-2.0",
     contextWindow: "128k",
     releaseDate: "2024-09",
@@ -558,7 +566,8 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Mistral AI / AirLLM",
     description:
       "Modèle compact et rapide 24B pour le code et le chat, ultra-fluide avec AirLLM sur GPU 2-4 Go.",
-      descriptionEn: "Compact, fast 24B model for code and chat, ultra-smooth with AirLLM on 2-4GB GPUs.",
+    descriptionEn:
+      "Compact, fast 24B model for code and chat, ultra-smooth with AirLLM on 2-4GB GPUs.",
     license: "Apache-2.0",
     contextWindow: "128k",
     releaseDate: "2024-07",
@@ -583,7 +592,8 @@ export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
     brand: "Mistral AI / AirLLM",
     description:
       "Architecture MoE 47B paramètres (8 experts) tournant couche par couche sur 4 Go de VRAM.",
-      descriptionEn: "47B-parameter MoE architecture (8 experts) running layer by layer on 4GB of VRAM.",
+    descriptionEn:
+      "47B-parameter MoE architecture (8 experts) running layer by layer on 4GB of VRAM.",
     license: "Apache-2.0",
     contextWindow: "32k",
     releaseDate: "2024-01",

@@ -16,7 +16,50 @@ const TOOL_ICONS: Record<string, IconName> = {
   run_command: "cpu",
   search: "search",
   list_dir: "project",
+  web_search: "globe",
+  web_fetch: "globe",
+  image_search: "globe-simple",
+  image_download: "globe-simple",
 };
+
+/** Les quatre outils web intégrés : moteur, page, image. */
+const OUTILS_WEB = new Set(["web_search", "web_fetch", "image_search", "image_download"]);
+/** Noms qui trahissent une recherche web chez un connecteur MCP :
+ *  brave_web_search, tavily_search… La list est volontairement stricte :
+ *  « google » tout court attraperait la recherche Google Drive. Le moteur
+ *  choisi dans l'outil intégré (`engine: google`) compte déjà pour web. */
+const SIGNES_WEB = [
+  "web_search",
+  "search_web",
+  "brave",
+  "duckduckgo",
+  "yandex",
+  "serper",
+  "serpapi",
+  "tavily",
+  "searx",
+];
+
+/** Cet outil interroge-t-il le web (intégré, ou connecteur dont le nom le dit) ? */
+export function estOutilWeb(tool: string): boolean {
+  const court = tool.replace(/^.*__/, "").toLowerCase();
+  if (OUTILS_WEB.has(court)) return true;
+  // `search` tout court est la recherche de fichiers du projet : pas de web.
+  if (court === "search") return false;
+  return SIGNES_WEB.some((s) => court.includes(s));
+}
+
+/** Le nom d'un outil intégré en français ; le nom brut des connecteurs. */
+function nomOutil(tool: string): string {
+  const court = tool.replace(/^.*__/, "");
+  const noms: Record<string, string> = {
+    web_search: "Recherche web",
+    web_fetch: "Page web",
+    image_search: "Recherche d'images",
+    image_download: "Téléchargement d'image",
+  };
+  return noms[court] ?? court;
+}
 
 /** Compact one-line summary of the tool arguments. */
 function argsSummary(args: unknown): string {
@@ -29,6 +72,16 @@ function argsSummary(args: unknown): string {
     }
   }
   return JSON.stringify(args);
+}
+
+/** Une recherche web : la requête seule (le moteur seulement s'il est choisi). */
+function resumeWeb(args: unknown): string | null {
+  const a = args && typeof args === "object" ? (args as Record<string, unknown>) : null;
+  if (!a) return null;
+  const cible = typeof a.query === "string" ? a.query : typeof a.url === "string" ? a.url : null;
+  if (cible === null) return null;
+  const moteur = typeof a.engine === "string" && a.engine !== "auto" ? ` · ${a.engine}` : "";
+  return `${cible}${moteur}`;
 }
 
 /** Les codes de couleur d'un terminal (`\x1b[32m`…) : illisibles hors terminal. */
@@ -230,7 +283,7 @@ function CarteCommande({
 }
 
 export function ToolCard({ tool, args, status, output, live }: Props) {
-  const icon = TOOL_ICONS[tool] ?? "extensions";
+  const icon = TOOL_ICONS[tool] ?? (estOutilWeb(tool) ? "globe" : "extensions");
   const commande = lireCommande(tool, args);
   // Une commande qui tourne s'ouvre d'elle-même : on voit sa sortie arriver en
   // direct. Une fois finie, elle se referme — ouvrable d'un clic pour relire.
@@ -249,9 +302,11 @@ export function ToolCard({ tool, args, status, output, live }: Props) {
         <span className="locaryn-tool-icon" aria-hidden="true">
           <Icon name={commande ? "cpu" : icon} size={14} />
         </span>
-        <span className="locaryn-tool-name">{tool.replace(/^.*__/, "")}</span>
+        <span className="locaryn-tool-name">{nomOutil(tool)}</span>
         <span className="locaryn-tool-summary">
-          {commande ? commande.commande : argsSummary(args)}
+          {commande
+            ? commande.commande
+            : (estOutilWeb(tool) && resumeWeb(args)) || argsSummary(args)}
         </span>
         <span className={`locaryn-tool-status locaryn-tool-status-${status}`}>
           {status === "running" ? (

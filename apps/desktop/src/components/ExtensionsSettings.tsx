@@ -20,10 +20,10 @@ import {
 } from "../lib/core";
 import { consumePendingInstall, getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { confirmer, pickAnyFile } from "../lib/dialog";
+import { useI18n } from "../lib/i18n";
 import { ExtensionConfigPanel } from "./ExtensionConfigPanel";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
 import { ExtensionPermissionsModal } from "./ExtensionPermissionsModal";
-import { useI18n } from "../lib/i18n";
 
 /**
  * The extension store, wired to the real registry.
@@ -797,7 +797,7 @@ export function ExtensionsSettings() {
       return (
         entry.name.toLowerCase().includes(q) ||
         entry.display_name.toLowerCase().includes(q) ||
-        ((entry.description ?? "") + " " + (entry.descriptionEn ?? "")).toLowerCase().includes(q) ||
+        `${entry.description ?? ""} ${entry.descriptionEn ?? ""}`.toLowerCase().includes(q) ||
         entry.keywords.some((k) => k.toLowerCase().includes(q))
       );
     });

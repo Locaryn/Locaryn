@@ -609,8 +609,11 @@ pub async fn set_mcp_disabled_tools(
     Ok(())
 }
 
-/// Le réglage « Alléger les outils » : désactivé par défaut, le modèle reçoit
-/// tous les outils des connecteurs actifs.
+/// Le réglage « Catalogue des connecteurs » (clé : `trim_tools`) :
+/// désactivé par défaut, le modèle reçoit toutes les commandes des
+/// connecteurs actifs. Activé, il reçoit un connecteur par ligne — ce qu'il
+/// fait, combien de commandes — et charge un connecteur entier à la demande
+/// (voir `tool_budget::catalogue_avec`).
 #[tauri::command]
 pub async fn outils_alleges() -> Result<bool, String> {
     Ok(locaryn_config::load(None)
