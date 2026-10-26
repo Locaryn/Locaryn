@@ -139,8 +139,18 @@ export function CloudProviderTile({
               : "Pas de clé"}
           </span>
         )}
-        {provider.model_count > 0 && (
-          <span className="locaryn-tag">{provider.model_count} modèles</span>
+        {/* Les modèles que le compte sert, pas les centaines que la passerelle
+            route : c'est la seule réponse utile à « combien j'en ai ? »
+            (Locaryn/Locaryn#90). */}
+        {typeof provider.usable_count === "number" ? (
+          <span className="locaryn-tag">
+            {provider.usable_count}{" "}
+            {provider.usable_count > 1 ? "modèles utilisables" : "modèle utilisable"}
+          </span>
+        ) : (
+          provider.model_count > 0 && (
+            <span className="locaryn-tag">{provider.model_count} modèles</span>
+          )
         )}
       </div>
     </button>
@@ -258,6 +268,17 @@ function CloudGatewayCard({
     void probe();
   }, [probe]);
 
+  /* Un démarrage en cours, lancé par cet écran ou un autre (lancement de
+     l'application, clic avant d'être parti) : l'état est relu jusqu'à ce
+     qu'elle réponde, sans qu'on ait à cliquer sur « Vérifier »
+     (Locaryn/Locaryn#89). */
+  const demarrageAilleurs = status?.starting === true && status.running !== true;
+  useEffect(() => {
+    if (!demarrageAilleurs) return;
+    const t = window.setInterval(() => void probe(), 3000);
+    return () => window.clearInterval(t);
+  }, [demarrageAilleurs, probe]);
+
   async function start() {
     setStarting(true);
     setError(null);
@@ -322,6 +343,7 @@ function CloudGatewayCard({
 
   if (!provider.is_local) return null;
   const running = status?.running === true;
+  const enDemarrage = starting || demarrageAilleurs;
   /* Tant que l'état n'est pas revenu, on croit le manifeste : afficher
      « pas installée » sur une passerelle qui l'est ferait proposer une
      installation inutile. */
@@ -332,7 +354,7 @@ function CloudGatewayCard({
       <div className="locaryn-field-head" style={{ marginBottom: 8 }}>
         <h3 style={{ margin: 0, fontSize: 13 }}>La passerelle sur votre machine</h3>
         <span className={`locaryn-tag${running ? " locaryn-tag-installed" : ""}`}>
-          {running ? "En marche" : "Éteinte"}
+          {running ? "En marche" : enDemarrage ? "Démarrage…" : "Éteinte"}
         </span>
       </div>
       <p className="locaryn-cloud-help">
@@ -344,7 +366,7 @@ function CloudGatewayCard({
             type="button"
             className="locaryn-btn-primary"
             onClick={() => void install()}
-            disabled={installing || starting}
+            disabled={installing || enDemarrage}
           >
             {installing ? "Installation… (quelques minutes)" : `Installer ${provider.label}`}
           </button>
@@ -354,11 +376,11 @@ function CloudGatewayCard({
             type="button"
             className="locaryn-btn-primary"
             onClick={() => void start()}
-            disabled={starting || installing}
+            disabled={enDemarrage || installing}
           >
-            {starting
+            {enDemarrage
               ? installed
-                ? "Démarrage… (jusqu'à 2 min la première fois)"
+                ? "Démarrage en cours…"
                 : "Installation puis démarrage…"
               : installed
                 ? "Démarrer la passerelle"
@@ -444,6 +466,30 @@ type EtatCompte = {
   detail?: string;
 };
 
+/* Se souvenir qu'un fournisseur a un compte à gérer : la carte réserve alors
+   sa place dès l'ouverture du dossier, au lieu d'apparaître d'un coup quand
+   le pont a répondu (Locaryn/Locaryn#91). Une simple commodité : sans
+   stockage, la carte attend la réponse, comme avant. */
+const CLE_COMPTE_CONNU = "locaryn.compte-connu.";
+
+function compteConnu(id: string): boolean {
+  try {
+    return window.localStorage.getItem(CLE_COMPTE_CONNU + id) === "1";
+  } catch (e) {
+    console.debug("stockage local indisponible", e);
+    return false;
+  }
+}
+
+function retenirCompte(id: string, aUnCompte: boolean) {
+  try {
+    if (aUnCompte) window.localStorage.setItem(CLE_COMPTE_CONNU + id, "1");
+    else window.localStorage.removeItem(CLE_COMPTE_CONNU + id);
+  } catch (e) {
+    console.debug("stockage local indisponible", e);
+  }
+}
+
 /**
  * Se connecter au compte du fournisseur depuis Locaryn, sans terminal.
  *
@@ -460,11 +506,19 @@ function CloudAccountCard({ provider }: { provider: CloudProvider }) {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
+  const [attendu] = useState(() => compteConnu(provider.id));
+  const [lu, setLu] = useState(false);
+
   const lire = useCallback(async () => {
     try {
-      setEtat((await core.cloudProviderAccount(provider.id, "status")) as EtatCompte);
+      const suivant = (await core.cloudProviderAccount(provider.id, "status")) as EtatCompte;
+      setEtat(suivant);
+      retenirCompte(provider.id, suivant?.installed !== undefined);
     } catch {
+      // Pas de compte à gérer, ou passerelle éteinte : la carte se retire.
       setEtat(null);
+    } finally {
+      setLu(true);
     }
   }, [provider.id]);
 
@@ -533,6 +587,18 @@ function CloudAccountCard({ provider }: { provider: CloudProvider }) {
     }
   }
 
+  // La première lecture d'un compte déjà vu : la place est gardée.
+  if (!lu && attendu) {
+    return (
+      <div className="locaryn-card locaryn-cloud-account" aria-busy="true">
+        <div className="locaryn-field-head" style={{ marginBottom: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 13 }}>Votre compte {provider.label}</h3>
+          <span className="locaryn-tag">Vérification…</span>
+        </div>
+        <p className="locaryn-cloud-help">Lecture de l'état de votre compte…</p>
+      </div>
+    );
+  }
   // Une passerelle sans compte à gérer (ou éteinte) : rien à montrer.
   if (!etat || etat.installed === undefined) return null;
   const connecte = etat.logged_in === true;

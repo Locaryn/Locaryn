@@ -180,18 +180,28 @@ export function QuickModelSelector({
     if (!isOpen) {
       setOpenFolder(null);
       setQuery("");
+      setVoirInutilisables(false);
     }
   }, [isOpen]);
 
   const openedProvider = cloudProviders.find((p) => p.id === openFolder) ?? null;
 
+  /* Les modèles que le compte ne sert pas restent cachés tant qu'on ne les
+     demande pas : une clé gratuite en sert trois sur plus de cinq cents
+     (Locaryn/Locaryn#90). */
+  const [voirInutilisables, setVoirInutilisables] = useState(false);
+  const inutilisables = useMemo(
+    () => cloudModels.filter((m) => m.available === false).length,
+    [cloudModels],
+  );
   const filteredCloud = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return cloudModels;
-    return cloudModels.filter((m) =>
-      `${m.id} ${m.name} ${m.description}`.toLowerCase().includes(q),
-    );
-  }, [cloudModels, query]);
+    const visibles = voirInutilisables
+      ? cloudModels
+      : cloudModels.filter((m) => m.available !== false);
+    if (!q) return visibles;
+    return visibles.filter((m) => `${m.id} ${m.name} ${m.description}`.toLowerCase().includes(q));
+  }, [cloudModels, query, voirInutilisables]);
 
   async function selectCloudModel(providerId: string, model: string) {
     setCloudError(null);
@@ -353,7 +363,7 @@ export function QuickModelSelector({
           className="locaryn-input"
           placeholder={
             openedProvider
-              ? `Rechercher parmi ${cloudModels.length} modèles ${openedProvider.label}…`
+              ? `Rechercher parmi ${cloudModels.length - (voirInutilisables ? 0 : inutilisables)} modèles ${openedProvider.label}…`
               : "Rechercher parmi vos modèles installés…"
           }
           value={query}
@@ -412,6 +422,18 @@ export function QuickModelSelector({
               {!cloudBusy && filteredCloud.length === 0 && !cloudError && (
                 <div className="locaryn-cloud-empty">Aucun modèle ne correspond.</div>
               )}
+              {inutilisables > 0 && (
+                <button
+                  type="button"
+                  className="locaryn-chip"
+                  style={{ alignSelf: "center", minHeight: 40 }}
+                  onClick={() => setVoirInutilisables((v) => !v)}
+                >
+                  {voirInutilisables
+                    ? "Cacher les modèles non utilisables"
+                    : `Afficher ${inutilisables} modèles non utilisables avec ce compte`}
+                </button>
+              )}
             </>
           )}
 
@@ -430,7 +452,10 @@ export function QuickModelSelector({
                   <span style={{ minWidth: 0, textAlign: "left" }}>
                     <span className="locaryn-cloud-model-name">{provider.label}</span>
                     <span className="locaryn-cloud-model-id">
-                      {provider.active_model ?? `${provider.model_count} modèles distants`}
+                      {provider.active_model ??
+                        (typeof provider.usable_count === "number"
+                          ? `${provider.usable_count} modèles utilisables`
+                          : `${provider.model_count} modèles distants`)}
                     </span>
                   </span>
                 </span>

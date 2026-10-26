@@ -642,7 +642,8 @@ export const EN_EXACT: Record<string, string> = {
   "Définir un serveur et dossier distant pour le chat":
     "Set a remote server and folder for the chat",
   "Démarrage…": "Starting…",
-  "Démarrage… (jusqu'à 2 min la première fois)": "Starting… (up to 2 min the first time)",
+  "Démarrage en cours…": "Starting…",
+  "Cacher les modèles non utilisables": "Hide models not usable",
   "Démarre le serveur qui expose les fonctions de Locaryn — modèles, conversations et outils — aux appareils autorisés sur votre réseau (application mobile, interface web).":
     "Starts the server that exposes Locaryn's features — models, conversations and tools — to authorized devices on your network (mobile app, web interface).",
   Démarrer: "Start",

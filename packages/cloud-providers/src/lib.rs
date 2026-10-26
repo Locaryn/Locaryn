@@ -110,6 +110,9 @@ pub struct CloudProviderInfo {
     pub has_key: bool,
     /// Modèles dans le catalogue gardé, 0 si rien n'a encore été lu.
     pub model_count: usize,
+    /// Parmi eux, ceux que le compte sert vraiment — quand la passerelle
+    /// sait le dire (`available_models`). `None` sinon.
+    pub usable_count: Option<usize>,
     /// Quand la liste a été lue pour la dernière fois (RFC 3339).
     pub updated_at: Option<String>,
     /// Le modèle de ce catalogue actuellement actif, s'il l'est.
@@ -439,6 +442,7 @@ pub async fn list_infos(host: &Host<'_>) -> Vec<CloudProviderInfo> {
             CloudProviderInfo {
                 has_key: stored_key(host, &p.id).is_some(),
                 model_count: cache.as_ref().map(|c| c.models.len()).unwrap_or(0),
+                usable_count: cache.as_ref().and_then(CachedCatalog::nombre_utilisables),
                 updated_at: cache.map(|c| c.updated_at),
                 active_model: match &actif {
                     Some((id, model)) if *id == p.id => model.clone(),

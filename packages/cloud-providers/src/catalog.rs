@@ -77,6 +77,25 @@ impl CachedCatalog {
         )
     }
 
+    /// Les modèles marqués utilisables ; vide si rien n'a été marqué.
+    pub fn utilisables(&self) -> std::collections::HashSet<String> {
+        self.models
+            .iter()
+            .filter(|m| m.available == Some(true))
+            .map(|m| m.id.clone())
+            .collect()
+    }
+
+    /// Combien de modèles sont utilisables, si le catalogue a été marqué.
+    pub fn nombre_utilisables(&self) -> Option<usize> {
+        self.models.iter().any(|m| m.available.is_some()).then(|| {
+            self.models
+                .iter()
+                .filter(|m| m.available == Some(true))
+                .count()
+        })
+    }
+
     /// Le catalogue est-il encore frais pour cette fenêtre de fraîcheur ?
     pub fn is_fresh(&self, refresh_hours: u32) -> bool {
         if self.models.is_empty() || refresh_hours == 0 {
@@ -109,7 +128,7 @@ pub async fn models(
 
     match fetch(host, p).await {
         Ok(models) => {
-            let models = marquer_disponibles(host, p, models).await;
+            let models = marquer_disponibles(host, p, models, cache.as_ref()).await;
             let catalog = CachedCatalog {
                 updated_at: chrono::Utc::now().to_rfc3339(),
                 models,
@@ -130,15 +149,31 @@ pub async fn models(
 }
 
 /// Marquer chaque modèle d'après la liste de ceux que la passerelle sert
-/// vraiment, et mettre ceux-là en tête. Sans liste déclarée, ou si la
-/// commande échoue, rien ne change : mieux vaut tout montrer que tout cacher.
+/// vraiment, et mettre ceux-là en tête.
+///
+/// Si la commande échoue — passerelle encore au démarrage, le plus souvent —
+/// le marquage du catalogue précédent est repris : le perdre faisait
+/// réapparaître des centaines de modèles inutilisables (Locaryn/Locaryn#90).
+/// Sans liste déclarée ni marquage connu, rien ne change : mieux vaut tout
+/// montrer que tout cacher.
 async fn marquer_disponibles(
     host: &Host<'_>,
     p: &DeclaredProvider,
     mut models: Vec<CloudModel>,
+    precedent: Option<&CachedCatalog>,
 ) -> Vec<CloudModel> {
-    let Some(utilisables) = crate::gateway::modeles_disponibles(host, p).await else {
-        return models;
+    let utilisables = match crate::gateway::modeles_disponibles(host, p).await {
+        Some(liste) => liste,
+        None => match precedent
+            .map(CachedCatalog::utilisables)
+            .filter(|l| !l.is_empty())
+        {
+            Some(liste) => {
+                tracing::info!(fournisseur = %p.id, "liste des modèles utilisables illisible : marquage précédent repris");
+                liste
+            }
+            None => return models,
+        },
     };
     for m in &mut models {
         m.available = Some(utilisables.contains(&m.id));
@@ -299,6 +334,37 @@ mod tests {
         // Publié par jeton, montré par million : 0,000005 → 5 $.
         assert_eq!(m.prompt_price_per_m, Some(5.0));
         assert!(m.supports_tools);
+    }
+
+    /// Le marquage d'un catalogue se relit : c'est lui qui est repris quand
+    /// la passerelle ne sait pas encore dire ce qu'elle sert (Locaryn/Locaryn#90).
+    #[test]
+    fn le_marquage_garde_se_relit_et_se_compte() {
+        let body = serde_json::json!({ "data": [{ "id": "a" }, { "id": "b" }, { "id": "c" }] });
+        let mut models = parse_models(&body);
+        let brut = CachedCatalog {
+            updated_at: String::new(),
+            models: models.clone(),
+        };
+        assert_eq!(
+            brut.nombre_utilisables(),
+            None,
+            "rien de marqué : on ne sait pas"
+        );
+        assert!(brut.utilisables().is_empty());
+
+        models[0].available = Some(true);
+        models[1].available = Some(false);
+        models[2].available = Some(false);
+        let marque = CachedCatalog {
+            updated_at: String::new(),
+            models,
+        };
+        assert_eq!(marque.nombre_utilisables(), Some(1));
+        assert_eq!(
+            marque.utilisables(),
+            std::collections::HashSet::from(["a".to_string()])
+        );
     }
 
     /// Un modèle sans identifiant n'est pas sélectionnable : le garder

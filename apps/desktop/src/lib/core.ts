@@ -102,6 +102,9 @@ export interface CloudProvider {
   has_key: boolean;
   /** Modèles dans le catalogue gardé sur disque. */
   model_count: number;
+  /** Parmi eux, ceux que le compte sert vraiment, quand la passerelle sait
+   *  le dire ; absent sinon. */
+  usable_count?: number | null;
   updated_at: string | null;
   /** Le modèle de ce catalogue actuellement actif, s'il l'est. */
   active_model: string | null;
@@ -138,6 +141,9 @@ export interface CloudProviderStatus {
   /** Ce qu'il faut faire quand elle ne répond pas — jamais un code. */
   detail: string;
   dashboard_url: string | null;
+  /** Un démarrage est en cours (lancement de l'application, un clic, une
+   *  mise à jour), quel que soit l'écran qui l'a demandé. */
+  starting?: boolean;
 }
 
 /** Un modèle du catalogue distant. */

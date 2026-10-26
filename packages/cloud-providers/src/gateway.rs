@@ -51,6 +51,52 @@ pub struct CloudProviderStatus {
     /// Ce qu'il faut faire — jamais un code.
     pub detail: String,
     pub dashboard_url: Option<String>,
+    /// Un démarrage est-il en cours ? Une passerelle Node peut mettre
+    /// plusieurs minutes à servir sa première requête : sans ce drapeau,
+    /// l'écran qui revient pendant ce temps la croyait éteinte et proposait
+    /// de la démarrer encore (Locaryn/Locaryn#89).
+    pub starting: bool,
+}
+
+// ============================================================================
+// Démarrages en cours
+// ============================================================================
+
+/// Les passerelles dont un démarrage est en cours, quel qu'en soit l'auteur :
+/// le lancement de l'application, un clic, une mise à jour du morph.
+fn en_demarrage() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static EN_COURS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    EN_COURS.get_or_init(Default::default)
+}
+
+fn ensemble_en_demarrage() -> std::sync::MutexGuard<'static, std::collections::HashSet<String>> {
+    match en_demarrage().lock() {
+        Ok(g) => g,
+        Err(empoisonne) => empoisonne.into_inner(),
+    }
+}
+
+/// Un démarrage tant que cette valeur vit : la sortie de `start`, par
+/// n'importe quel chemin, le retire.
+struct Demarrage(String);
+
+impl Demarrage {
+    fn inscrire(id: &str) -> Self {
+        ensemble_en_demarrage().insert(id.to_string());
+        Self(id.to_string())
+    }
+}
+
+impl Drop for Demarrage {
+    fn drop(&mut self) {
+        ensemble_en_demarrage().remove(&self.0);
+    }
+}
+
+/// Un démarrage de cette passerelle est-il en cours ?
+pub fn demarrage_en_cours(id: &str) -> bool {
+    ensemble_en_demarrage().contains(id)
 }
 
 // ============================================================================
@@ -377,6 +423,7 @@ pub async fn status(host: &Host<'_>, p: &DeclaredProvider) -> CloudProviderStatu
                 p.label()
             ),
             dashboard_url: None,
+            starting: false,
         };
     };
 
@@ -388,8 +435,14 @@ pub async fn status(host: &Host<'_>, p: &DeclaredProvider) -> CloudProviderStatu
         rattraper_cle(host, p, &local, &dir).await;
     }
 
+    let starting = !running && demarrage_en_cours(&p.id);
     let detail = if running {
         format!("{} répond sur {}.", p.label(), p.manifest.api_url)
+    } else if starting {
+        format!(
+            "{} démarre. La première fois après le lancement, elle peut mettre quelques minutes              à répondre : vous pouvez quitter cette page, le démarrage continue.",
+            p.label()
+        )
     } else if !installed {
         match local.install.as_ref().filter(|i| i.is_runnable()) {
             Some(_) => format!(
@@ -420,6 +473,7 @@ pub async fn status(host: &Host<'_>, p: &DeclaredProvider) -> CloudProviderStatu
         installed,
         detail,
         dashboard_url: local.dashboard_url,
+        starting,
     }
 }
 
@@ -632,6 +686,7 @@ pub async fn start(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvide
     // Un seul démarrage à la fois par passerelle : deux clics, ou le
     // démarrage automatique plus un clic, en lançaient deux sur le même port.
     let verrou = verrou_de_demarrage(&p.id);
+    let _demarrage = Demarrage::inscrire(&p.id);
     let _garde = verrou.lock().await;
 
     let dir = dossier_de(p);
@@ -703,9 +758,9 @@ pub async fn start(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvide
         Attente::Muette => {
             let mut etat = status(host, p).await;
             etat.detail = format!(
-                "{} a été lancée mais ne répond toujours pas après {} s. Son journal dit pourquoi : {}",
+                "{} a été lancée mais ne répond toujours pas après {} min. Son journal dit pourquoi : {}",
                 p.label(),
-                local.start_timeout_seconds,
+                PATIENCE_MAX.as_secs() / 60,
                 journal.display()
             );
             Ok(etat)
@@ -721,7 +776,17 @@ enum Attente {
     Muette,
 }
 
-/// Sonder jusqu'à la réponse, la mort du processus, ou la fin du délai.
+/// L'attente au-delà du délai déclaré, tant que le processus lancé vit.
+///
+/// OmniRoute prépare son catalogue avant de servir quoi que ce soit : 20 s
+/// d'habitude, plus de trois minutes au lancement de l'application quand tout
+/// démarre en même temps. Abandonner à la fin du délai déclaré laissait une
+/// passerelle qui finissait par répondre sans clé ni réglages
+/// (Locaryn/Locaryn#89).
+const PATIENCE_MAX: Duration = Duration::from_secs(10 * 60);
+
+/// Sonder jusqu'à la réponse, la mort du processus, ou la fin du délai —
+/// prolongé tant que le processus vit encore.
 async fn attendre_reponse(
     host: &Host<'_>,
     p: &DeclaredProvider,
@@ -729,8 +794,18 @@ async fn attendre_reponse(
     enfant: &mut std::process::Child,
     delai: Duration,
 ) -> Attente {
-    let fin = std::time::Instant::now() + delai;
-    while std::time::Instant::now() < fin {
+    let debut = std::time::Instant::now();
+    let mut fin = debut + delai;
+    let mut vivant = true;
+    loop {
+        if std::time::Instant::now() >= fin {
+            if vivant && fin < debut + PATIENCE_MAX {
+                fin = debut + PATIENCE_MAX;
+                tracing::info!(fournisseur = %p.id, "passerelle lente à répondre : l'attente continue tant qu'elle vit");
+            } else {
+                return Attente::Muette;
+            }
+        }
         tokio::time::sleep(Duration::from_secs(1)).await;
         // Le lanceur peut sortir en succès après avoir confié la passerelle à
         // un autre processus : seul un échec dit qu'elle est morte.
@@ -738,6 +813,7 @@ async fn attendre_reponse(
             if !code.success() {
                 return Attente::Morte(code);
             }
+            vivant = false;
         }
         let restant = fin.saturating_duration_since(std::time::Instant::now());
         let sonde = SONDE_DEMARRAGE.min(restant.max(Duration::from_secs(1)));
@@ -745,7 +821,6 @@ async fn attendre_reponse(
             return Attente::Repond;
         }
     }
-    Attente::Muette
 }
 
 /// Le verrou de démarrage d'une passerelle, partagé par tous les appelants.
@@ -1296,6 +1371,21 @@ mod tests {
         assert!(
             extraire_cle("{\"key\":\"  \"}", "key").is_none(),
             "une clé vide n'en est pas une"
+        );
+    }
+
+    /// Un démarrage en cours se voit dans l'état, de n'importe quel écran
+    /// (Locaryn/Locaryn#89).
+    #[test]
+    fn un_demarrage_se_voit_tant_qu_il_dure() {
+        assert!(!demarrage_en_cours("essai-demarrage"));
+        {
+            let _d = Demarrage::inscrire("essai-demarrage");
+            assert!(demarrage_en_cours("essai-demarrage"));
+        }
+        assert!(
+            !demarrage_en_cours("essai-demarrage"),
+            "quitter start, par n'importe quel chemin, retire le démarrage"
         );
     }
 
