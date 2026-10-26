@@ -3903,6 +3903,7 @@ name = "locaryn-extensions"
 version = "0.4.46"
 dependencies = [
  "chrono",
+ "futures",
  "locaryn-command-runtime",
  "locaryn-config",
  "locaryn-hook-runtime",

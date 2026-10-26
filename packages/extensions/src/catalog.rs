@@ -13,6 +13,7 @@
 //! snapshot locally, so the store still works offline and a single dead source
 //! degrades to "this one source failed" instead of an empty page.
 
+use futures::StreamExt as _;
 use locaryn_shared_types::{
     CatalogCompat, CatalogEntry, CatalogSnapshot, CatalogSource, CatalogSourceStatus,
     ExtensionEcosystem,
@@ -127,8 +128,12 @@ impl CatalogClient {
         let mut statuses = Vec::new();
         let mut any_ok = false;
 
-        for source in sources.iter().filter(|s| s.enabled) {
-            let result = self.fetch_source(source).await;
+        // Les sources sont indépendantes : la plus lente fixe la durée, pas
+        // leur somme.
+        let actives: Vec<&CatalogSource> = sources.iter().filter(|s| s.enabled).collect();
+        let resultats =
+            futures::future::join_all(actives.iter().map(|s| self.fetch_source(s))).await;
+        for (source, result) in actives.into_iter().zip(resultats) {
             match result {
                 Ok(mut found) => {
                     any_ok = true;
@@ -198,6 +203,9 @@ impl CatalogClient {
             .get(url)
             .header("Accept", "application/json")
             .header("User-Agent", "Locaryn-Extension-Catalog/1.0")
+            // Une source qui ne répond pas ne doit pas tenir tout le
+            // catalogue en otage.
+            .timeout(std::time::Duration::from_secs(REQUETE_DELAI_SECS))
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -215,25 +223,74 @@ impl CatalogClient {
         &self,
         source: &CatalogSource,
     ) -> Result<Vec<CatalogEntry>, String> {
-        let mut out = Vec::new();
-
         // Les dépôts `morph-*` de l'organisation, chacun installé depuis sa
         // racine.
-        let v = self.get_json(&source.url).await?;
-        let repos = v
-            .as_array()
-            .ok_or_else(|| "GitHub API response n'est pas un tableau".to_string())?;
-        for r in repos {
-            let Some(name) = r.get("name").and_then(|n| n.as_str()) else {
-                continue;
-            };
-            // Seuls les Morphs. Le préfixe est le contrat de nommage de
-            // l'organisation : il écarte `locaryn-cores`, le dépôt de profil,
-            // et les anciens dépôts `plugin-*` restés en place après le
-            // renommage, qui n'ont plus à être proposés.
-            if !name.starts_with("morph-") {
-                continue;
+        let repos = self.depots_de_l_organisation(source).await?;
+        // Deux requêtes par dépôt (manifeste, releases) : faites l'une après
+        // l'autre pour une vingtaine de dépôts, « Actualiser » prenait 15 à
+        // 30 s (Locaryn/Locaryn#82). En parallèle, bornées, ordre conservé.
+        let mut out: Vec<CatalogEntry> =
+            futures::stream::iter(repos.iter().map(|r| self.entree_morph(source, r)))
+                .buffered(DEPOTS_EN_PARALLELE)
+                .filter_map(|e| async move { e })
+                .collect()
+                .await;
+
+        // L'index officiel `Locaryn/locaryn-cores` (catalog.json) : les deux
+        // noyaux alternatifs, installables par sous-chemin `#cores/…` (D13).
+        // Best-effort — si l'index est injoignable ou mal formé, les repos de
+        // l'organisation restent listés ; on ne fait pas échouer la source
+        // entière pour une vitrine.
+        match self.fetch_locaryn_cores_index(source).await {
+            Ok(mut found) => out.append(&mut found),
+            Err(e) => {
+                tracing::warn!(source = %source.id, error = %e, "index locaryn-cores injoignable")
             }
+        }
+
+        Ok(out)
+    }
+
+    /// Les dépôts de l'organisation, par l'API GitHub. Quota épuisé (403) :
+    /// ceux de la dernière actualisation réussie — leurs manifestes et leurs
+    /// releases se relisent hors quota, seule l'apparition d'un nouveau dépôt
+    /// attend l'heure suivante.
+    async fn depots_de_l_organisation(
+        &self,
+        source: &CatalogSource,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let erreur = match self.get_json(&source.url).await {
+            Ok(v) => {
+                return v
+                    .as_array()
+                    .cloned()
+                    .ok_or_else(|| "GitHub API response n'est pas un tableau".to_string())
+            }
+            Err(e) => e,
+        };
+        let connus = depots_connus(self.cached().as_ref(), &source.id);
+        if connus.is_empty() {
+            return Err(erreur);
+        }
+        tracing::warn!(source = %source.id, erreur = %erreur, depots = connus.len(), "liste des dépôts refusée, dépôts connus relus");
+        Ok(connus)
+    }
+
+    /// L'entrée d'un dépôt de l'organisation, ou rien si ce n'est pas un morph.
+    async fn entree_morph(
+        &self,
+        source: &CatalogSource,
+        r: &serde_json::Value,
+    ) -> Option<CatalogEntry> {
+        let name = r.get("name").and_then(|n| n.as_str())?;
+        // Seuls les Morphs. Le préfixe est le contrat de nommage de
+        // l'organisation : il écarte `locaryn-cores`, le dépôt de profil,
+        // et les anciens dépôts `plugin-*` restés en place après le
+        // renommage, qui n'ont plus à être proposés.
+        if !name.starts_with("morph-") {
+            return None;
+        }
+        {
             let full_name = r.get("full_name").and_then(|f| f.as_str()).unwrap_or(name);
             let homepage = r
                 .get("html_url")
@@ -302,7 +359,7 @@ impl CatalogClient {
                 advertised.push("bêta".to_string());
             }
 
-            out.push(CatalogEntry {
+            Some(CatalogEntry {
                 id: format!("locaryn:{name}"),
                 name: name.to_string(),
                 display_name,
@@ -331,22 +388,8 @@ impl CatalogClient {
                 installed: false,
                 is_beta: derniere_est_beta,
                 versions,
-            });
+            })
         }
-
-        // L'index officiel `Locaryn/locaryn-cores` (catalog.json) : les deux
-        // noyaux alternatifs, installables par sous-chemin `#cores/…` (D13).
-        // Best-effort — si l'index est injoignable ou mal formé, les repos de
-        // l'organisation restent listés ; on ne fait pas échouer la source
-        // entière pour une vitrine.
-        match self.fetch_locaryn_cores_index(source).await {
-            Ok(mut found) => out.append(&mut found),
-            Err(e) => {
-                tracing::warn!(source = %source.id, error = %e, "index locaryn-cores injoignable")
-            }
-        }
-
-        Ok(out)
     }
 
     /// Releases GitHub d'un dépôt morph, plus récentes d'abord, plafonnées à
@@ -357,41 +400,51 @@ impl CatalogClient {
         &self,
         full_name: &str,
     ) -> Option<Vec<locaryn_shared_types::MorphVersionRelease>> {
+        // Le flux Atom d'abord : public et hors quota. L'API sans jeton
+        // plafonne à 60 requêtes par heure et par adresse, et ce catalogue en
+        // demandait une par morph — deux actualisations l'épuisaient, et la
+        // liste des dépôts de l'organisation, qui n'a pas d'autre source,
+        // tombait avec elle.
+        if let Some(found) = self.releases_atom(full_name).await {
+            return Some(found);
+        }
         let url = format!(
             "https://api.github.com/repos/{full_name}/releases?per_page={MORPH_RELEASES_PER_REPO}"
         );
         match self.get_json(&url).await {
-            Ok(v) => {
-                let arr = v.as_array()?;
-                Some(
-                    arr.iter()
-                        .filter_map(|r| release_from_json(r, full_name))
-                        .collect(),
-                )
-            }
-            // L'API sans jeton plafonne à 60 requêtes par heure et par adresse,
-            // et ce catalogue en demande une par morph : derrière une même box,
-            // quelques rafraîchissements suffisent. Le flux Atom des releases
-            // est public et hors quota ; sans lui, on retombait sur la table
-            // écrite dans le code, en retard sur les vraies versions.
+            Ok(v) => Some(
+                v.as_array()?
+                    .iter()
+                    .filter_map(|r| release_from_json(r, full_name))
+                    .collect(),
+            ),
             Err(e) => {
-                tracing::warn!(depot = %full_name, erreur = %e, "API GitHub refusée, lecture du flux des releases");
-                let url = format!("https://github.com/{full_name}/releases.atom");
-                let resp = self
-                    .http
-                    .get(&url)
-                    .header("User-Agent", "Locaryn-Extension-Catalog/1.0")
-                    .send()
-                    .await
-                    .ok()?;
-                if !resp.status().is_success() {
-                    return None;
-                }
-                let xml = resp.text().await.ok()?;
-                let found = releases_from_atom(&xml, full_name);
-                (!found.is_empty()).then_some(found)
+                tracing::warn!(depot = %full_name, erreur = %e, "releases illisibles (flux et API)");
+                None
             }
         }
+    }
+
+    /// Les releases du flux Atom ; `None` s'il est injoignable ou vide.
+    async fn releases_atom(
+        &self,
+        full_name: &str,
+    ) -> Option<Vec<locaryn_shared_types::MorphVersionRelease>> {
+        let url = format!("https://github.com/{full_name}/releases.atom");
+        let resp = self
+            .http
+            .get(&url)
+            .header("User-Agent", "Locaryn-Extension-Catalog/1.0")
+            .timeout(std::time::Duration::from_secs(REQUETE_DELAI_SECS))
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let xml = resp.text().await.ok()?;
+        let found = releases_from_atom(&xml, full_name);
+        (!found.is_empty()).then_some(found)
     }
 
     /// `Locaryn/locaryn-cores/catalog.json` — l'index des extensions de noyaux
@@ -999,6 +1052,13 @@ pub fn filter(
 /// et plafonner protège le quota de l'API GitHub (60 req/h sans jeton).
 const MORPH_RELEASES_PER_REPO: usize = 10;
 
+/// Dépôts lus en même temps. Assez pour que la liste se remplisse en une ou
+/// deux secondes, pas au point d'inonder GitHub.
+const DEPOTS_EN_PARALLELE: usize = 8;
+
+/// Délai d'une requête de catalogue.
+const REQUETE_DELAI_SECS: u64 = 15;
+
 /// Une release GitHub → une entrée de versions du catalogue.
 ///
 /// `draft` est écartée (invisible côté GitHub jusqu'à publication) ; une
@@ -1035,6 +1095,30 @@ pub(crate) fn releases_from_atom(
             )
         })
         .take(MORPH_RELEASES_PER_REPO)
+        .collect()
+}
+
+/// Les dépôts morphs d'une source tels que la dernière actualisation les a
+/// vus, sous la forme que rend l'API GitHub (`name`, `full_name`…).
+fn depots_connus(snapshot: Option<&CatalogSnapshot>, source_id: &str) -> Vec<serde_json::Value> {
+    let Some(snapshot) = snapshot else {
+        return Vec::new();
+    };
+    snapshot
+        .entries
+        .iter()
+        .filter(|e| e.catalog_id == source_id && e.name.starts_with("morph-"))
+        .filter_map(|e| {
+            let full_name = e.install_source.split('@').next()?.trim();
+            full_name.contains('/').then(|| {
+                serde_json::json!({
+                    "name": e.name,
+                    "full_name": full_name,
+                    "html_url": e.homepage,
+                    "description": e.description,
+                })
+            })
+        })
         .collect()
 }
 
@@ -1365,5 +1449,52 @@ mod tests {
         assert_eq!(got[0].name, "z-native");
         assert_eq!(filter(&all, "", None, 1).len(), 1);
         assert_eq!(filter(&all, "nomatch", None, 10).len(), 0);
+    }
+
+    /// Quota GitHub épuisé : les dépôts de la dernière actualisation
+    /// reviennent sous la forme de l'API, et seulement ceux de cette source.
+    #[test]
+    fn les_depots_connus_remplacent_la_liste_refusee() {
+        let mk = |name: &str, catalog: &str, source: &str| CatalogEntry {
+            id: name.into(),
+            name: name.into(),
+            display_name: name.into(),
+            description: Some("d".into()),
+            author: None,
+            version: None,
+            homepage: None,
+            ecosystem: ExtensionEcosystem::Locaryn,
+            catalog_id: catalog.into(),
+            catalog_label: catalog.into(),
+            install_source: source.into(),
+            keywords: vec![],
+            advertised: vec![],
+            compat: CatalogCompat::Native,
+            installed: false,
+            is_beta: false,
+            versions: Vec::new(),
+        };
+        let snap = CatalogSnapshot {
+            entries: vec![
+                mk("morph-a", "locaryn:official", "Locaryn/morph-a@v1.0.0"),
+                mk("morph-b", "locaryn:official", "Locaryn/morph-b"),
+                mk("morph-c", "ailleurs", "Autre/morph-c"),
+                mk(
+                    "openclaw",
+                    "locaryn:official",
+                    "github:Locaryn/locaryn-cores#cores/openclaw",
+                ),
+            ],
+            sources: vec![],
+            fetched_at: None,
+            stale: true,
+        };
+        let depots = depots_connus(Some(&snap), "locaryn:official");
+        let noms: Vec<&str> = depots
+            .iter()
+            .filter_map(|d| d["full_name"].as_str())
+            .collect();
+        assert_eq!(noms, ["Locaryn/morph-a", "Locaryn/morph-b"]);
+        assert!(depots_connus(None, "locaryn:official").is_empty());
     }
 }

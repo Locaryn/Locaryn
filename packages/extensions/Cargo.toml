@@ -27,5 +27,6 @@ notify = "7"
 # archives; `toml` parses Gemini CLI command files.
 reqwest = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 toml = "0.8"
