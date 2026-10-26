@@ -682,6 +682,7 @@ pub async fn start(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvide
         Attente::Repond => {
             tracing::info!(fournisseur = %p.id, "passerelle locale démarrée");
             obtenir_cle(host, p, &local, &dir).await;
+            apres_demarrage(host, p, &local, &dir).await;
             Ok(status(host, p).await)
         }
         Attente::Morte(code) => Err(format!(
@@ -818,6 +819,53 @@ fn lire_disponibles(
             .filter_map(|e| e.get(&decl.id_field)?.as_str().map(str::to_string))
             .collect(),
     )
+}
+
+/// Les commandes `after_start` du manifeste, l'une après l'autre. Un échec
+/// est noté et n'empêche ni les suivantes ni la passerelle de servir.
+async fn apres_demarrage(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+    local: &CloudLocalRuntime,
+    dir: &Path,
+) {
+    if local.after_start.is_empty() {
+        return;
+    }
+    let env = match environnement(host, p, local, dir) {
+        Ok(env) => env,
+        Err(e) => {
+            tracing::warn!(fournisseur = %p.id, erreur = %e, "réglages d'après démarrage non lancés");
+            return;
+        }
+    };
+    for commande in &local.after_start {
+        let Some((programme_, arguments)) = resoudre(commande, local, dir) else {
+            continue;
+        };
+        let (dossier, env) = (dir.to_path_buf(), env.clone());
+        let sortie = tokio::task::spawn_blocking(move || {
+            let mut command = Command::new(&programme_);
+            command.args(&arguments).current_dir(&dossier);
+            for (k, v) in &env {
+                command.env(k, v);
+            }
+            quiet(&mut command);
+            command.output()
+        })
+        .await;
+        match sortie {
+            Ok(Ok(s)) if s.status.success() => {
+                tracing::info!(fournisseur = %p.id, commande = %commande.join(" "), "réglage d'après démarrage appliqué")
+            }
+            Ok(Ok(s)) => {
+                tracing::warn!(fournisseur = %p.id, commande = %commande.join(" "), erreurs = %queue(&s.stderr), "réglage d'après démarrage en échec")
+            }
+            _ => {
+                tracing::warn!(fournisseur = %p.id, commande = %commande.join(" "), "réglage d'après démarrage non lancé")
+            }
+        }
+    }
 }
 
 /// Lancer la commande d'arrêt que le manifeste déclare.

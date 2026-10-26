@@ -332,6 +332,13 @@ pub struct CloudLocalRuntime {
     /// donner.
     #[serde(default, rename = "available_models", alias = "availableModels")]
     pub available_models: Option<CloudAvailableModels>,
+    /// Des commandes lancées une fois la passerelle prête, à chaque
+    /// démarrage : régler ce que ses défauts règlent mal pour Locaryn (une
+    /// file d'attente trop courte pour des sous-agents en parallèle…).
+    /// Sans shell, mêmes marqueurs que `start` ; un échec est noté, jamais
+    /// bloquant.
+    #[serde(default, rename = "after_start", alias = "afterStart")]
+    pub after_start: Vec<Vec<String>>,
     /// Combien de secondes attendre qu'elle réponde après l'avoir lancée.
     ///
     /// Un premier démarrage peut être long (migrations de base avant d'ouvrir
