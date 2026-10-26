@@ -820,12 +820,7 @@ fn catalogue_des_serveurs(deferred: &[&ToolSpec]) -> String {
         .map(|(serveur, outils)| {
             let resume = outils
                 .iter()
-                .filter_map(|s| {
-                    s.description
-                        .lines()
-                        .map(str::trim)
-                        .find(|l| !l.is_empty())
-                })
+                .filter_map(|s| s.description.lines().map(str::trim).find(|l| !l.is_empty()))
                 .max_by_key(|d| d.len())
                 .map(|d| short_text(d, 140))
                 .unwrap_or_default();
@@ -1170,8 +1165,10 @@ mod tests {
     #[test]
     fn le_catalogue_charge_un_connecteur_entier() {
         let mut r = fit_selon(beaucoup_d_outils(), 8192, "x", true, &[]);
-        let (charges, inconnus) =
-            charger(&mut r.deferred, &serde_json::json!({ "noms": ["Roblox_Studio"] }));
+        let (charges, inconnus) = charger(
+            &mut r.deferred,
+            &serde_json::json!({ "noms": ["Roblox_Studio"] }),
+        );
         assert_eq!(charges.len(), 28, "toutes les commandes du connecteur");
         assert!(inconnus.is_empty());
         assert!(charges
@@ -1179,8 +1176,10 @@ mod tests {
             .all(|s| s.name.starts_with("mcp__Roblox_Studio__")));
         // Une commande exacte continue de fonctionner.
         let reste = r.deferred[0].name.clone();
-        let (une, inconnus) =
-            charger(&mut r.deferred, &serde_json::json!({ "noms": [reste.clone()] }));
+        let (une, inconnus) = charger(
+            &mut r.deferred,
+            &serde_json::json!({ "noms": [reste.clone()] }),
+        );
         assert_eq!(une.len(), 1);
         assert_eq!(une[0].name, reste);
         assert!(inconnus.is_empty());

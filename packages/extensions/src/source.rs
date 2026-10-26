@@ -1056,7 +1056,11 @@ mod tests {
     #[test]
     fn retag_spec_moves_a_pinned_version_to_the_new_release() {
         assert_eq!(
-            retag_spec("github:Exemple/morph-exemple@v0.1.0-beta.4", "v0.1.0-beta.5").as_deref(),
+            retag_spec(
+                "github:Exemple/morph-exemple@v0.1.0-beta.4",
+                "v0.1.0-beta.5"
+            )
+            .as_deref(),
             Some("github:Exemple/morph-exemple@v0.1.0-beta.5")
         );
         // The bare `owner/repo@tag` shorthand is rebuilt in canonical form.
