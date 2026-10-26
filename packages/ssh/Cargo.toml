@@ -10,7 +10,9 @@ description = "Locaryn SSH connector: connect, run, and capability-probe remote 
 [dependencies]
 # russh with the `ring` crypto backend (default is aws-lc-rs, which needs
 # NASM+CMake on Windows MSVC). ring builds out of the box everywhere.
-russh = { version = "0.60.3", default-features = false, features = ["ring", "flate2", "rsa"] }
+# 0.63.1 : la dernière qui compile en Rust 1.88 (0.63.2+ exige 1.89) et qui
+# tire crypto-bigint 0.7.10, corrigé pour RUSTSEC-2026-0387.
+russh = { version = "=0.63.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

@@ -200,7 +200,10 @@ fn preview_zip(path: &Path) -> Result<SourcePreview, SourceError> {
         let mut entry = zip
             .by_index(i)
             .map_err(|e| SourceError::Archive(e.to_string()))?;
-        let name = entry.name().replace('\\', "/");
+        let name = entry
+            .name()
+            .map_err(|e| SourceError::Archive(e.to_string()))?
+            .replace('\\', "/");
         // Le manifeste peut être à la racine ou sous le dossier racine unique
         // généré par GitHub (`repo-main/morph.json`).
         let Some(candidate) = MANIFEST_CANDIDATES
@@ -231,7 +234,10 @@ fn preview_zip(path: &Path) -> Result<SourcePreview, SourceError> {
                 let mut mentry = zip
                     .by_index(j)
                     .map_err(|e| SourceError::Archive(e.to_string()))?;
-                let mname = mentry.name().replace('\\', "/");
+                let mname = mentry
+                    .name()
+                    .map_err(|e| SourceError::Archive(e.to_string()))?
+                    .replace('\\', "/");
                 if mname != rel && !mname.ends_with(&format!("/{rel}")) {
                     continue;
                 }
@@ -601,7 +607,7 @@ mod tests {
         let zip_path = base.join("plugin.zip");
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
-        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let options: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default();
         writer.start_file("repo-main/morph.json", options).unwrap();
         writer
             .write_all(
@@ -630,7 +636,7 @@ mod tests {
         let zip_path = base.join("plugin.zip");
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
-        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let options: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default();
         writer.start_file("repo-main/morph.json", options).unwrap();
         writer
             .write_all(

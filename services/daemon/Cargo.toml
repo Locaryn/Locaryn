@@ -61,7 +61,7 @@ rand = { workspace = true }
 
 # Le catalogue arrive en archive : une extension installée depuis un
 # téléphone ne peut pas désigner un dossier du serveur.
-zip = "8.6.0"
+zip = "9"
 reqwest = { workspace = true }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "fs", "trace", "catch-panic"] }

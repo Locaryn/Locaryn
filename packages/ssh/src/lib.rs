@@ -64,8 +64,16 @@ impl client::Handler for HostKeyHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &russh::keys::PublicKey,
+        presentee: &russh::keys::PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // Un certificat d'hôte porte la clé de l'hôte : c'est elle qu'on
+        // épingle, comme une clé présentée seule.
+        let server_public_key = match presentee {
+            russh::keys::PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
+            russh::keys::PublicKeyOrCertificate::Certificate(c) => {
+                russh::keys::PublicKey::from(c.public_key().clone())
+            }
+        };
         let fp = server_public_key
             .fingerprint(Default::default())
             .to_string();

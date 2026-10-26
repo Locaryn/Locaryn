@@ -265,7 +265,7 @@ mod tests {
         let zip_path = base.join("zipped-tool.zip");
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
-        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let options: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default();
         for entry in walk(&src) {
             let rel = entry.strip_prefix(&src).unwrap();
             let name = format!(

@@ -46,7 +46,7 @@ locaryn-sdk = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true, features = ["std"] }
 tokio-util = { workspace = true }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
 regex = "1"
 hex = "0.4"

@@ -803,6 +803,15 @@ pub fn version_gt(a: &str, b: &str) -> bool {
     false
 }
 
+/// A relative path made only of plain names: no root, no drive, no `..`.
+fn chemin_contenu(rel: &str) -> bool {
+    let chemin = Path::new(rel);
+    !rel.contains(':')
+        && chemin
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
 /// Extract a GitHub archive. Every entry sits under a single generated root
 /// (`repo-branch/`), which we strip so the plugin lands directly in `dest`.
 fn extract_zip_stripping_root(bytes: &[u8], dest: &Path) -> Result<(), SourceError> {
@@ -816,7 +825,10 @@ fn extract_zip_stripping_root(bytes: &[u8], dest: &Path) -> Result<(), SourceErr
         let f = zip
             .by_index(i)
             .map_err(|e| SourceError::Archive(e.to_string()))?;
-        let name = f.name().replace('\\', "/");
+        let name = f
+            .name()
+            .map_err(|e| SourceError::Archive(e.to_string()))?
+            .replace('\\', "/");
         let first = name.split('/').next().unwrap_or_default().to_string();
         if first.is_empty() {
             continue;
@@ -837,7 +849,10 @@ fn extract_zip_stripping_root(bytes: &[u8], dest: &Path) -> Result<(), SourceErr
         let mut f = zip
             .by_index(i)
             .map_err(|e| SourceError::Archive(e.to_string()))?;
-        let raw = f.name().replace('\\', "/");
+        let raw = f
+            .name()
+            .map_err(|e| SourceError::Archive(e.to_string()))?
+            .replace('\\', "/");
         let rel = match &strip {
             Some(r) => raw
                 .strip_prefix(r.as_str())
@@ -848,8 +863,10 @@ fn extract_zip_stripping_root(bytes: &[u8], dest: &Path) -> Result<(), SourceErr
         if rel.is_empty() {
             continue;
         }
-        // Zip-slip guard: never write outside `dest`.
-        if rel.split('/').any(|c| c == "..") {
+        // Zip-slip guard: never write outside `dest`. Refusing `..` was not
+        // enough: an absolute entry (`/etc/x`, `C:/x`) made `dest.join` return
+        // that path as is. Only plain components are accepted.
+        if !chemin_contenu(rel) {
             return Err(SourceError::Archive(format!(
                 "archive entry escapes the target directory: {raw}"
             )));
@@ -871,10 +888,13 @@ fn extract_zip_stripping_root(bytes: &[u8], dest: &Path) -> Result<(), SourceErr
         // A bundle ships its server binary; extracted without its executable
         // bit it cannot be spawned, and the extension looks installed while
         // nothing it provides ever runs.
+        // Only the permission bits: an archive must not create setuid,
+        // setgid or sticky files (RUSTSEC-2026-0367 describes the same flaw
+        // in the zip crate's own extractor).
         #[cfg(unix)]
         if let Some(mode) = mode {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode))?;
+            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(mode & 0o777))?;
         }
         #[cfg(not(unix))]
         let _ = mode;
@@ -1076,6 +1096,17 @@ mod tests {
     }
 
     #[test]
+    fn an_archive_entry_must_stay_inside_the_target() {
+        assert!(super::chemin_contenu("bin/server"));
+        assert!(super::chemin_contenu("morph.json"));
+        assert!(!super::chemin_contenu("../x"));
+        assert!(!super::chemin_contenu("a/../../x"));
+        assert!(!super::chemin_contenu("/etc/passwd"));
+        assert!(!super::chemin_contenu("C:/Windows/x"));
+        assert!(!super::chemin_contenu("C:x"));
+    }
+
+    #[test]
     fn retag_spec_leaves_everything_else_alone() {
         // Already on the latest release: nothing to change.
         assert_eq!(retag_spec("github:acme/tools@v1.2.0", "v1.2.0"), None);
@@ -1100,7 +1131,7 @@ mod tests {
         let zip_path = base.join("plugin.zip");
         let file = std::fs::File::create(&zip_path).unwrap();
         let mut writer = zip::ZipWriter::new(file);
-        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let options: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default();
         for (name, content) in [
             (
                 "repo-main/morph.json",

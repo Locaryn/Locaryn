@@ -48,7 +48,20 @@ yanked = "deny"
 # d'opérations privées chronométrées sur la machine de l'utilisateur. À
 # réexaminer dès qu'un correctif amont existe, ou le jour où abandonner RSA
 # devient acceptable pour les utilisateurs.
-ignore = ["RUSTSEC-2023-0071"]
+ignore = [
+    "RUSTSEC-2023-0071",
+    # RUSTSEC-2026-0367 / 0368 / 0369 — `ZipArchive::extract` de zip < 9
+    # (bits SUID, liens symboliques hors du dossier). Nos crates sont en zip 9
+    # et n'appellent pas `extract` ; seule la copie de tauri-plugin-updater
+    # (zip 4.6.1, aucune 2.x corrigée) reste en 4.x. Elle n'ouvre que le
+    # paquet de mise à jour de Locaryn, dont la signature (minisign, clé de
+    # tauri.conf.json) est vérifiée avant toute extraction : une archive
+    # piégée devrait d'abord être signée par notre clé. À retirer dès qu'une
+    # version de l'updater passe à zip 9.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+]
 # Portée du contrôle des paquets non maintenus : `workspace` ne signale que
 # nos dépendances directes. `all` remonterait des transitives sur lesquelles
 # nous n'avons aucune prise, ce qui bloquerait la CI sans recours.

@@ -228,7 +228,8 @@ async fn obtenir_uv(app: &AppHandle) -> Result<PathBuf, String> {
             .map_err(|e| format!("archive de uv : {e}"))?;
         for i in 0..archive.len() {
             let mut f = archive.by_index(i).map_err(|e| e.to_string())?;
-            let Some(nom_fichier) = Path::new(f.name()).file_name().map(|n| n.to_owned()) else {
+            let nom = f.name().map_err(|e| e.to_string())?.into_owned();
+            let Some(nom_fichier) = Path::new(&nom).file_name().map(|n| n.to_owned()) else {
                 continue;
             };
             if f.is_dir() {
