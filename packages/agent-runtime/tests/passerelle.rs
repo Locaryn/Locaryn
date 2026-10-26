@@ -525,9 +525,10 @@ async fn la_limite_de_60_actions_arrete_la_tache() {
     });
 
     let client = reqwest::Client::new();
-    let mut flux = run_openai_tool_loop(&format!("http://{addr}"), &client, &entree("qwen3-4b.gguf"))
-        .await
-        .expect("le flux doit s'ouvrir");
+    let mut flux =
+        run_openai_tool_loop(&format!("http://{addr}"), &client, &entree("qwen3-4b.gguf"))
+            .await
+            .expect("le flux doit s'ouvrir");
     let mut logs = Vec::new();
     while let Some(ev) = flux.next().await {
         if let StreamEvent::Log { msg, .. } = ev {
@@ -538,5 +539,9 @@ async fn la_limite_de_60_actions_arrete_la_tache() {
         logs.iter().any(|m| m.contains("Limite de 60 actions")),
         "message de limite attendu, reçu : {logs:?}"
     );
-    assert_eq!(*compte.lock().expect("verrou"), 60, "exactement 60 envois au modèle");
+    assert_eq!(
+        *compte.lock().expect("verrou"),
+        60,
+        "exactement 60 envois au modèle"
+    );
 }
