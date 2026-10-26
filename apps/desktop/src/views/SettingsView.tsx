@@ -37,7 +37,7 @@ import {
   core,
 } from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
-import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
+import { useI18n } from "../lib/i18n";
 import { type AccountSection, AccountView } from "./AccountView";
 import { ProjectSettings } from "./ProjectSettings";
 

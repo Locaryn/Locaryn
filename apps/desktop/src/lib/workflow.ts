@@ -69,7 +69,7 @@ const MAX_VERIFICATIONS_FINALES = 3;
  * le modèle doit les relire — mais ne s'affichent pas : seul ce que la
  * personne a tapé apparaît comme venant d'elle.
  */
-export const MARQUE_INTERNE = "<!--locaryn-interne-->";
+const MARQUE_INTERNE = "<!--locaryn-interne-->";
 
 /** Une consigne interne, marquée ou d'avant le marqueur (« [Étape 2/5 du plan] »). */
 export function estConsigneInterne(contenu: string): boolean {
@@ -96,7 +96,7 @@ function attendre(ms: number, arret?: () => boolean): Promise<void> {
 }
 
 /** L'étape ajoutée en fin de plan, en mode goal. */
-export const ETAPE_VERIFICATION_FINALE =
+const ETAPE_VERIFICATION_FINALE =
   "Vérification finale : contrôle concrètement chaque condition de la demande globale (lis les fichiers, lance ou ouvre ce qui doit l'être), corrige tout ce qui manque ou ne marche pas, puis liste chaque condition avec son état vérifié.";
 
 /** Ce que la personne a imposé devant sa demande. */
@@ -161,7 +161,7 @@ function extractSplit(answer: string): string[] | null {
  * avaient écrit : le modèle recommençait le site dans un autre dossier, et le
  * juge ne jugeait que ce que le modèle disait avoir fait.
  */
-export async function etatDuDossier(sessionId: string, maxEntrees = 60): Promise<string> {
+async function etatDuDossier(sessionId: string, maxEntrees = 60): Promise<string> {
   const lignes: string[] = [];
   const parcourir = async (dossier: string, profondeur: number) => {
     if (profondeur > 3 || lignes.length >= maxEntrees) return;
@@ -199,7 +199,7 @@ export async function etatDuDossier(sessionId: string, maxEntrees = 60): Promise
  * chemin du fichier… » et rend la main sans appeler d'outil. Ce n'est ni un
  * échec ni une étape faite : on lui demande de le faire, sans compter d'essai.
  */
-export function simpleAnnonce(reponse: string, outilsAppeles: number): boolean {
+function simpleAnnonce(reponse: string, outilsAppeles: number): boolean {
   if (outilsAppeles > 0) return false;
   const texte = sansReflexion(reponse).trim();
   if (texte.length === 0 || texte.length > 700) return texte.length === 0;
@@ -207,24 +207,6 @@ export function simpleAnnonce(reponse: string, outilsAppeles: number): boolean {
     /(?:^|[^\p{L}])(je vais|je dois|je m'apprête|commençons|je commence|laisse-moi|d'abord|let me|i will|i'll|first,)/iu.test(
       texte,
     ) || /[:：]\s*$/.test(texte)
-  );
-}
-
-/**
- * Le verdict de vérification a-t-il signalé un échec ?
- *
- * Le verdict explicite `ok: true` / `ok: false` a la priorité. Les mots-clés
- * libres ne servent que de dernier recours, parce que des mots comme « failed »
- * apparaissent dans des réponses parfaitement réussies.
- */
-function verificationFailed(answer: string): boolean {
-  const a = answer.toLowerCase();
-  const okTrue = /\bok\s*[:=]\s*"?true\b/.test(a);
-  const okFalse = /\bok\s*[:=]\s*"?false\b/.test(a);
-  if (okTrue) return false;
-  if (okFalse) return true;
-  return /(ne fonctionne (toujours )?pas|erreur persiste|toujours cass|\b[ée]chec\b|tests? (ont )?[ée]chou)/.test(
-    a,
   );
 }
 

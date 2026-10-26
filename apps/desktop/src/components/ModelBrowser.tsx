@@ -130,7 +130,7 @@ function familyMarketplaceCapabilities(family: ModelFamily): Set<string> {
  * of its Marketplace traces in the same render. The core names no specialised
  * capability: whatever is not in `CORE_CAPABILITIES` must come from a morph.
  */
-export function isFamilyAvailableForCapabilities(
+function isFamilyAvailableForCapabilities(
   family: ModelFamily,
   activeCapabilities: string[],
 ): boolean {
@@ -731,7 +731,7 @@ export function ModelBrowser({
   const [extensionsResolved, setExtensionsResolved] = useState(false);
   const [catalogueReady, setCatalogueReady] = useState(false);
 
-  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [expandedCards] = useState<Record<string, boolean>>({});
   const [openId, setOpenId] = useState<string | null>(null);
 
   const [installProgress, setInstallProgress] = useState<Record<string, number>>({});
@@ -1197,10 +1197,6 @@ export function ModelBrowser({
     const timer = setTimeout(() => setCatalogueReady(true), 8000);
     return () => clearTimeout(timer);
   }, []);
-
-  function toggleCardExpand(id: string) {
-    setExpandedCards((prev) => ({ ...prev, [id]: !prev[id] }));
-  }
 
   async function handleFetchLiveApiModels() {
     setIsFetchingLive(true);
@@ -2510,9 +2506,6 @@ export function ModelBrowser({
             const minP = Math.min(...paramNums);
             const maxP = Math.max(...paramNums);
             const cleanSizeRange = minP === maxP ? `${minP}B` : `${minP}B – ${maxP}B`;
-            const expandLabel = isExpanded
-              ? t("▲ Masquer les variantes")
-              : t(`▼ ${f.variants.length} variantes (${cleanSizeRange})`);
             const compat = familyBestCompat(f.variants, hardwareSpec, airllmEnabled, fits);
             // Family-level AirLLM speed estimate: best case = smallest variant.
             const bestVariant = f.variants.reduce((a, b) => (a.storageGb <= b.storageGb ? a : b));

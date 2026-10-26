@@ -123,10 +123,7 @@ function flags(capabilities: string[]): Partial<ModelFamily> {
 }
 
 /** Parse one data asset without executing extension code. Invalid rows are ignored. */
-export function parseExtensionMarketplace(
-  raw: string,
-  extensionId: string,
-): ExtensionMarketplaceCatalog {
+function parseExtensionMarketplace(raw: string, extensionId: string): ExtensionMarketplaceCatalog {
   let value: unknown;
   try {
     value = JSON.parse(raw);

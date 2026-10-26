@@ -7,7 +7,7 @@
  * aussi ce qu'attend une PWA installée.
  */
 
-import { ACCENT_PRESETS, type ThemeMode, applyTheme, resolveMode } from "@locaryn/ui-core";
+import { ACCENT_PRESETS, type ThemeMode, applyTheme } from "@locaryn/ui-core";
 
 export { ACCENT_PRESETS, type ThemeMode };
 
@@ -47,9 +47,4 @@ export function appliquerTheme(reglage: ReglageTheme, anime = false): void {
   } catch (err) {
     console.warn("Thème non conservé : stockage du navigateur indisponible.", err);
   }
-}
-
-/** Le mode réellement rendu, une fois « system » résolu. */
-export function modeRendu(reglage: ReglageTheme) {
-  return resolveMode(reglage.mode);
 }

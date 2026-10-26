@@ -1,4 +1,4 @@
-import { Icon, type IconName } from "@locaryn/ui-core";
+import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import type { ReasoningLevel } from "../../lib/core";
 

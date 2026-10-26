@@ -15,7 +15,7 @@ export const SURFACE = "mobile";
  * l'ordinateur peut lui donner ici une forme à part — ou n'en donner aucune,
  * plutôt que de laisser un écran inutilisable sur un téléphone.
  */
-export function targetsSurface(
+function targetsSurface(
   contribution: { platforms?: string[] },
   surface: string = SURFACE,
 ): boolean {

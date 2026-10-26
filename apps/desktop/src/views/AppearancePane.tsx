@@ -2,7 +2,7 @@ import { Icon, type IconName, type ThemeMode } from "@locaryn/ui-core";
 import { ACCENT_PRESETS, type UseThemeReturn } from "../hooks/useTheme";
 
 /** Les trois réglages de thème, dans l'ordre où ils se lisent. */
-export const THEME_MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
+const THEME_MODES: { value: ThemeMode; label: string; icon: IconName }[] = [
   { value: "dark", label: "Sombre", icon: "moon" },
   { value: "light", label: "Clair", icon: "sun" },
   { value: "system", label: "Système", icon: "monitor" },

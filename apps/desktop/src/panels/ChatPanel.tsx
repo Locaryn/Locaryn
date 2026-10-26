@@ -1,4 +1,4 @@
-import { Icon, LoProgress, isIconName } from "@locaryn/ui-core";
+import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AttentionStrip } from "../components/AttentionStrip";
@@ -21,7 +21,6 @@ import type { MediaForge } from "../components/chat/MessageBubble";
 import { ProjectSuggestion } from "../components/chat/ProjectSuggestion";
 import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { type EtatEtape, type Suivi, TaskTracker } from "../components/chat/TaskTracker";
-import { ToolCard } from "../components/chat/ToolCard";
 import { type Brouillon, ToolDraft } from "../components/chat/ToolDraft";
 import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
 import { UsageGauge } from "../components/chat/UsageGauge";
@@ -52,7 +51,6 @@ import {
 } from "../lib/core";
 import { confirmer, pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
-import { runGoal } from "../lib/goal";
 import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
 import { jouerSon, notifierSysteme } from "../lib/osNotify";
@@ -1996,7 +1994,6 @@ ${d.texte}`
     }
 
     try {
-      const chatStart = t0;
       const images = imgs
         .filter((a) => a.kind === "image" && a.base64)
         .map((a) => a.base64 as string);

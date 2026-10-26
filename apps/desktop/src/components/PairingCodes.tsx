@@ -10,13 +10,7 @@ import {
   core,
 } from "../lib/core";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
-import {
-  LOCAL_STEPS,
-  PairingCheckerboard,
-  PairingStepList,
-  REMOTE_STEPS,
-  useStepProgress,
-} from "./PairingSteps";
+import { LOCAL_STEPS, PairingCheckerboard, PairingStepList, useStepProgress } from "./PairingSteps";
 import { DynamicPluginWidget } from "./extensions/DynamicPluginWidget";
 import { type ResolvedSlotContribution, getSlotContributions } from "./extensions/SlotRegistry";
 

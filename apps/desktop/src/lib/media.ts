@@ -29,7 +29,7 @@ export function toMediaUrl(pathOrUrl: string): string {
 
 /** MIME type for a media path, by extension. The asset protocol does not
  *  always set one, and `<audio>` needs it to compute a duration. */
-export function mediaMimeType(path: string): string {
+function mediaMimeType(path: string): string {
   const ext = path.toLowerCase().split(".").pop() ?? "";
   switch (ext) {
     case "mp3":

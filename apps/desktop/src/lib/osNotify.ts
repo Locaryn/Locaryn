@@ -105,7 +105,7 @@ export function oublierPreferences(): void {
 }
 
 /** Ce qui décide si une bannière part, hors permission du système. */
-export async function notificationAutorisee(
+async function notificationAutorisee(
   groupe: NotificationGroup,
   dureeMs?: number,
 ): Promise<boolean> {

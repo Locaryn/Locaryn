@@ -474,7 +474,7 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
  * Everything heavy happens on the machine at the other end; what is here is a
  * conversation and the pairing that keeps it reachable.
  */
-export const core = {
+const core = {
   status: () => invoke<MobileStatus>("status"),
   /** Ce que les extensions actives du serveur apportent. */
   serverCapabilities: () => invoke<string[]>("server_capabilities"),
@@ -706,7 +706,7 @@ export const coreMode: "tauri" | "demo" = isTauri ? "tauri" : "demo";
 /** Le Stop du mode démo coupe la réponse simulée comme le vrai serveur. */
 const demoArret = { current: false };
 
-export const demoCore: typeof core = {
+const demoCore: typeof core = {
   status: async () => ({
     server_name: "Atelier Vasseur",
     travelling: false,

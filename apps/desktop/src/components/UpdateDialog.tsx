@@ -9,7 +9,7 @@ import { notifierSysteme } from "../lib/osNotify";
 const RELEASES_URL = "https://github.com/Locaryn/Locaryn/releases";
 
 /** L'evenement qu'un autre ecran envoie pour demander une verification. */
-export const CHECK_UPDATE_EVENT = "locaryn:verifier-mise-a-jour";
+const CHECK_UPDATE_EVENT = "locaryn:verifier-mise-a-jour";
 
 /** La dernière version annoncée par une notification du système. */
 const VERSION_ANNONCEE = "locaryn:maj-annoncee";

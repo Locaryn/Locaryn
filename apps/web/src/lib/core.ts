@@ -272,11 +272,11 @@ function saveSession(session: Session): void {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
-export function getToken(): string | null {
+function getToken(): string | null {
   return loadSession()?.token ?? null;
 }
 
-export function clearSession(): void {
+function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
 }
 

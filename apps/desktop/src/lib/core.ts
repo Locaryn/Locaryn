@@ -791,19 +791,6 @@ export interface TtsSampling {
   clarity: number;
 }
 
-export const TTS_SAMPLING_DEFAULTS: TtsSampling = {
-  temperature: 0.9,
-  topK: 50,
-  topP: 1.0,
-  repetitionPenalty: 1.05,
-  expressive: true,
-  referenceText: "",
-  pauseScale: 1.0,
-  pitch: 1.0,
-  energy: 0.7,
-  clarity: 0.8,
-};
-
 // ── Voice presets ──────────────────────────────────────────────────────
 // A saved voice: the reference recording plus how to speak with it, so a
 // voice can be reused without re-uploading a sample and re-tuning sliders.

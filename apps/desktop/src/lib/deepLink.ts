@@ -96,9 +96,3 @@ export function parseDeepLink(url: string): DeepLinkIntent | null {
     return null;
   }
 }
-
-/** Forme historique : ne reconnaît que `install`. */
-export function parseInstallLink(url: string): InstallIntent | null {
-  const intent = parseDeepLink(url);
-  return intent?.action === "install" ? { source: intent.source } : null;
-}

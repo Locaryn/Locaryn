@@ -44,10 +44,3 @@ export function ExtensionScreen({
     </section>
   );
 }
-
-/** Vrai si une extension active revendique cette vue — jamais pour un
- *  identifiant réservé par l'hôte, voir le garde-fou plus haut. */
-export function isExtensionScreen(view: string, extensions: InstalledExtension[]): boolean {
-  if (NAVIGABLE_VIEWS.includes(view)) return false;
-  return getSlotContributions(extensions, "nav.drawer").some((c) => c.id === view);
-}

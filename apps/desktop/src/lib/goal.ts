@@ -11,7 +11,7 @@ import { type StreamEvent, core } from "./core";
 import { taskCenter } from "./taskCenter";
 
 /** Tours au plus avant de rendre la main : un objectif mal posé ne tourne pas sans fin. */
-export const TOURS_MAX = 12;
+const TOURS_MAX = 12;
 
 /** Source de l'avis d'un tour fini sans réponse (`SOURCE_TOUR_INACHEVE`). */
 const TOUR_INACHEVE = "tour_inacheve";

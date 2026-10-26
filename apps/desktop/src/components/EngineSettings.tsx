@@ -1,7 +1,6 @@
 import { Icon, type IconName, isIconName } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import {
-  type AppInfo,
   type InferenceConfig,
   type InferenceEngineInfo,
   type InstalledExtension,

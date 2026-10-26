@@ -18,7 +18,7 @@ export const SURFACE = "desktop";
  * conçu pour un écran large à s'afficher tel quel sur un téléphone, et rien
  * n'oblige non plus à le priver du téléphone.
  */
-export function targetsSurface(
+function targetsSurface(
   contribution: { platforms?: string[] },
   surface: string = SURFACE,
 ): boolean {

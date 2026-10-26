@@ -123,11 +123,11 @@ let current: Lang =
 
 const listeners = new Set<() => void>();
 
-export function getLang(): Lang {
+function getLang(): Lang {
   return current;
 }
 
-export function setLang(l: Lang) {
+function setLang(l: Lang) {
   current = l;
   try {
     localStorage.setItem(STORAGE_KEY, l);

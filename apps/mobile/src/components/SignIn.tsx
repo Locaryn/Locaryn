@@ -1,5 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { type DiscoveredServer, type MobileStatus, api } from "../lib/core";
 
 type Props = {

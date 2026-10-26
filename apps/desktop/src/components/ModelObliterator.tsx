@@ -1,6 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
-import { MODEL_CATALOG, type ModelFamily } from "../lib/modelCatalog";
+import { MODEL_CATALOG } from "../lib/modelCatalog";
 
 type AblationMethod = "repe" | "orthogonal" | "norm_subtraction";
 

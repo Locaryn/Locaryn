@@ -46,10 +46,6 @@ function ecrire(cle: string, valeur: string): void {
   }
 }
 
-export function isNotificationSupported(): boolean {
-  return etat !== "unsupported";
-}
-
 export function getNotificationPermission(): Etat {
   return etat;
 }

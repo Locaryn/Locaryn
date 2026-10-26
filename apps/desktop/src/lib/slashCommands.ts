@@ -425,20 +425,6 @@ export function matchSlashInput(
 }
 
 /**
- * Le « /mot » en cours de frappe à la fin du texte, qu'il soit au début
- * du message ou au milieu/à la fin (après un espace ou une autre commande) :
- * « /g » → « g »
- * « /goal /p » → « p »
- * « /goal / » → « »
- * « explique ce code /plan » → « plan »
- * `null` quand le texte ne finit pas par un slash en cours de frappe.
- */
-export function slashEnFin(input: string): string | null {
-  const m = /(?:^|\s)\/([\w:.-]*)$/.exec(input);
-  return m ? m[1] : null;
-}
-
-/**
  * Le « /mot » en cours de frappe à l'endroit du curseur, même quand du texte
  * le suit : « /pl| corrige le bug » → « pl ». Le mot doit être séparé de ce
  * qui suit par un espace (ou finir le texte), et précédé d'un début de ligne

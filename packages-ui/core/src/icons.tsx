@@ -298,12 +298,6 @@ const ALIASES = {
   target: "crosshair",
   video: "video-camera",
 };
-/** Tous les noms acceptés : les dessins, les logos et les alias de l'application. */
-export const ICON_NAMES: readonly string[] = [
-  ...Object.keys(DESSINS),
-  ...Object.keys(LOGOS),
-  ...Object.keys(ALIASES),
-].sort();
 
 /** L'union réelle des noms acceptés : un nom fautif ne compile pas. */
 export type IconName = keyof typeof DESSINS | keyof typeof LOGOS | keyof typeof ALIASES;

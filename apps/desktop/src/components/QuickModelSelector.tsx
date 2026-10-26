@@ -1,7 +1,6 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { type CloudModel, core as coreApi } from "../lib/core";
-import { core } from "../lib/core";
 import {
   type ModelFamily,
   SEED_CATALOG,

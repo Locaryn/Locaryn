@@ -1,4 +1,3 @@
-import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import type { RiskLevel, RiskScope, ToolApprovalDecision, ToolApprovalRequest } from "../lib/core";
 
@@ -33,13 +32,6 @@ const RISK_LABEL: Record<RiskLevel, string> = {
   medium: "Modification",
   high: "Risque élevé",
   critical: "Critique",
-};
-
-const RISK_ICON: Record<RiskLevel, string> = {
-  low: "ok",
-  medium: "warn",
-  high: "bad",
-  critical: "bad",
 };
 
 const SCOPE_LABEL: Record<RiskScope, string> = {

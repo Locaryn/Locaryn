@@ -10,7 +10,7 @@ import { FirstRunPresentation } from "./components/FirstRunPresentation";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
 import { ModeleTropLourd } from "./components/ModeleTropLourd";
-import { NAVIGABLE_VIEWS, NavDrawer, isNativeViewAccessible } from "./components/NavDrawer";
+import { NAVIGABLE_VIEWS, isNativeViewAccessible } from "./components/NavDrawer";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SupportDialog } from "./components/SupportDialog";
@@ -47,11 +47,10 @@ import { BottomPanel } from "./panels/BottomPanel";
 import { ChatPanel } from "./panels/ChatPanel";
 import { LeftPanel } from "./panels/LeftPanel";
 import { WorkspacePanel, useWorkspace } from "./panels/WorkspacePanel";
-import { AccountView } from "./views/AccountView";
 import { FiguresView } from "./views/FiguresView";
 import { InstalledModelsView } from "./views/InstalledModelsView";
 import { ModelStudioView } from "./views/ModelStudioView";
-import { type Section, SettingsView } from "./views/SettingsView";
+import { SettingsView } from "./views/SettingsView";
 import { StudioView } from "./views/StudioView";
 
 // Les sous-agents émettent leur fil dès qu'ils démarrent : l'écoute précède tout écran.
@@ -261,9 +260,6 @@ export function App() {
     if (v === activeView) window.dispatchEvent(new CustomEvent(VUE_RECHOISIE, { detail: v }));
     setActiveView(v);
   };
-  const [settingsInitialSection, setSettingsInitialSection] = useState<Section | undefined>(
-    undefined,
-  );
 
   // Toggleable panels & drawers
   const [leftOpen, setLeftOpen] = useState(true);
@@ -271,15 +267,6 @@ export function App() {
   // fichiers, terminaux, modifications, aperçu, modèle).
   const workspace = useWorkspace();
   const ongletActif = workspace.tabs.find((t) => t.id === workspace.active);
-  /** Fenetre de contexte appliquee au moteur (panneau Parametres du Modele).
-   *  La jauge du chat la lit : elle doit raconter ce que le moteur a. */
-  const [appliedCtx, setAppliedCtx] = useState<number | null>(null);
-  useEffect(() => {
-    core
-      .getProviderModelParams()
-      .then((p) => setAppliedCtx(p.ctx_size))
-      .catch(() => {});
-  }, []);
   // A run opens the pane that displays it, so output is never produced into a
   // panel the user cannot see.
   useEffect(() => {
@@ -1534,7 +1521,6 @@ export function App() {
                 sessionsByProject={sessionsByProject}
                 standaloneSessions={standaloneSessions}
                 activeCapabilities={activeCapabilities}
-                initialSection={settingsInitialSection}
                 onOpenSession={(session) => {
                   void handleSelectSession(session);
                   setActiveView("chat");

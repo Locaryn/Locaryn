@@ -215,7 +215,7 @@ export function CloudProviderScreen({
  * pourquoi. Cette carte le dit, et propose le seul geste utile — la démarrer,
  * avec la commande que son manifeste déclare.
  */
-export function CloudGatewayCard({
+function CloudGatewayCard({
   provider,
   onRunning,
 }: {
@@ -451,7 +451,7 @@ type EtatCompte = {
  * quand elle affiche un code (Claude), on le colle ici. Le CLI officiel garde
  * la connexion : Locaryn ne voit jamais d'identifiant.
  */
-export function CloudAccountCard({ provider }: { provider: CloudProvider }) {
+function CloudAccountCard({ provider }: { provider: CloudProvider }) {
   const [etat, setEtat] = useState<EtatCompte | null>(null);
   const [lien, setLien] = useState<string | null>(null);
   const [attendCode, setAttendCode] = useState(false);
@@ -623,7 +623,7 @@ export function CloudAccountCard({ provider }: { provider: CloudProvider }) {
  * Volontairement complet : un manifeste de dix lignes doit suffire à rendre un
  * fournisseur utilisable. Une extension qui veut mieux le remplace.
  */
-export function CloudProviderDashboard({
+function CloudProviderDashboard({
   provider,
   onChanged,
 }: {

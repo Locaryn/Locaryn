@@ -112,51 +112,6 @@ export interface TTSCapabilities {
   format: "onnx" | "repo" | "gguf" | "torch" | "unknown";
 }
 
-/** Default capabilities for models without explicit metadata. */
-const DEFAULT_TTS_CAPABILITIES: TTSCapabilities = {
-  cloning: false,
-  voiceDesign: false,
-  expressiveness: false,
-  streaming: false,
-  languages: [],
-  format: "unknown",
-};
-
-export function getModelCapabilities(modelName: string): TTSCapabilities {
-  const lower = modelName.toLowerCase();
-  const caps = { ...DEFAULT_TTS_CAPABILITIES };
-  if (/clone|xtts|coqui|zero.shot|custom.?voice|customvoice/i.test(lower)) caps.cloning = true;
-  if (/design|prompt|description|text.to.voice|voice.?design|voicedesign/i.test(lower))
-    caps.voiceDesign = true;
-  if (/express|emotion|controllable|pitch/i.test(lower)) caps.expressiveness = true;
-  if (/stream|realtime|low.latency/i.test(lower)) caps.streaming = true;
-  if (/onnx/i.test(lower)) caps.format = "onnx";
-  else if (/gguf/i.test(lower)) caps.format = "gguf";
-  else if (/repo|huggingface/i.test(lower)) caps.format = "repo";
-  else if (/\.pth|\.pt|torch/i.test(lower)) caps.format = "torch";
-  return caps;
-}
-
-function buildCaps(f: ModelFamily): TTSCapabilities {
-  return {
-    cloning: f.voiceCloning === true,
-    voiceDesign:
-      f.voiceDesign === true || /voice.?design|text.?to.?voice/i.test(`${f.description} ${f.name}`),
-    expressiveness: /express|emotion|control|controllable/i.test(f.description),
-    streaming: /stream|realtime|real.time/i.test(f.description),
-    languages: /multilingue|multilingual|\d+ .*lang/i.test(f.description) ? ["all"] : [],
-    format: f.variants.some((v) => v.quants.includes("onnx"))
-      ? "onnx"
-      : f.variants.some((v) => v.quants.includes("repo"))
-        ? "repo"
-        : f.variants.some((v) => v.quants.includes("pth"))
-          ? "torch"
-          : f.variants.some((v) => v.tag.endsWith(".gguf"))
-            ? "gguf"
-            : "unknown",
-  };
-}
-
 // ── Model classification ───────────────────────────────────────────────
 
 /** All possible types a model can be. Components use this to filter pickers. */
@@ -301,45 +256,6 @@ export function isChatModel(name: string): boolean {
   return kind === "chat" || kind === "vision" || kind === "code" || kind === "reasoning";
 }
 
-/** True when a model is a text-to-image model. */
-export function isImageGenModel(name: string): boolean {
-  return classifyModel(name).kind === "image-gen";
-}
-
-/** True when a model is a text-to-speech / voice model. */
-export function isTTSModel(name: string): boolean {
-  return classifyModel(name).kind === "tts";
-}
-
-/** True when a model is a text-to-music model. */
-export function isMusicGenModel(name: string): boolean {
-  return classifyModel(name).kind === "music-gen";
-}
-
-/** True when a model is a text-to-video model. */
-export function isVideoGenModel(name: string): boolean {
-  return classifyModel(name).kind === "video-gen";
-}
-
-/** True when a model is a text-to-3D model. */
-export function isModel3DGenModel(name: string): boolean {
-  return classifyModel(name).kind === "3d-gen";
-}
-
-/**
- * Group a list of model paths by their classified kind.
- * Returns a map keyed by ModelKind.
- */
-export function groupModelsByKind(models: string[]): Record<ModelKind, string[]> {
-  const groups: Record<string, string[]> = {};
-  for (const m of models) {
-    const { kind } = classifyModel(m);
-    if (!groups[kind]) groups[kind] = [];
-    groups[kind].push(m);
-  }
-  return groups as Record<ModelKind, string[]>;
-}
-
 export interface SizeBucket {
   id: string;
   label: string;
@@ -436,45 +352,7 @@ export function categoryLabelText(
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const CACHE_KEY = "locaryn_model_registry_cache_v19";
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-const QUANTS_SMALL = ["q4_K_M", "q5_K_M", "q8_0", "fp16"];
-const QUANTS_BIG = ["q4_K_M", "q5_K_M", "q6_K", "q8_0"];
-
-/** Does this tag/filename designate an IMAGE model (diffusion checkpoint)?
- *
- *  Mirrors `is_image_asset` in the Rust backend. Needed because the catalogue's
- *  `imageGen` flag is only set on curated entries — models discovered through
- *  the live HuggingFace search have no flag, and were therefore offered as chat
- *  models and loaded into the conversation. */
-export function looksLikeImageModel(tagOrName: string): boolean {
-  const n = tagOrName.toLowerCase();
-  const diffusion = [
-    "stable-diffusion",
-    "stable_diffusion",
-    "sd_xl",
-    "sdxl",
-    "sd15",
-    "sd-v1",
-    "sd_v1",
-    "sd3",
-    "z_image",
-    "z-image",
-    "z_img",
-    "zimg",
-    "flux",
-    "krea",
-    "dreamshaper",
-    "juggernaut",
-    "pony",
-    "playground-v",
-    "kolors",
-    "hunyuan-dit",
-    "pixart",
-  ];
-  const aux = ["mmproj-", "vae", "clip", "t5xxl", "text_encoder", "text-encoder"];
-  return diffusion.some((p) => n.includes(p)) && !aux.some((p) => n.includes(p));
-}
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 // ── Seed Catalog (offline fallback — top ~20 families) ──────────────────────
 
@@ -482,7 +360,7 @@ export const SEED_CATALOG: ModelFamily[] = catalogueSocle.families as ModelFamil
 
 // ── Curated AirLLM-ready large models (layer-by-layer low VRAM inference) ──
 
-export const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
+const AIRLLM_CATALOG_MODELS: ModelFamily[] = [
   {
     id: "deepseek-r1-70b-airllm",
     name: "DeepSeek-R1 Distill Llama 70B (AirLLM)",
@@ -918,9 +796,3 @@ export async function fetchFullRegistry(): Promise<RegistryResult> {
 export function clearRegistryCache(): void {
   localStorage.removeItem(CACHE_KEY);
 }
-
-// ── Re-export for backward compat ───────────────────────────────────────────
-
-/** @deprecated Use fetchFullRegistry() instead */
-export const MODEL_CATALOG = [...SEED_CATALOG, ...LARGE_LOCAL_MODELS, ...AIRLLM_CATALOG_MODELS];
-export const BRANDS = Array.from(new Set(MODEL_CATALOG.map((f) => f.brand))).sort();

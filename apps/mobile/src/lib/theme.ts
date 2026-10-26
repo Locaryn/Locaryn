@@ -6,7 +6,7 @@
  * d'un client à l'autre. Ici on ne fait que la garder sur l'appareil.
  */
 
-import { ACCENT_PRESETS, type ThemeMode, applyTheme, resolveMode } from "@locaryn/ui-core";
+import { ACCENT_PRESETS, type ThemeMode, applyTheme } from "@locaryn/ui-core";
 
 export { ACCENT_PRESETS, type ThemeMode };
 
@@ -46,9 +46,4 @@ export function appliquerTheme(reglage: ReglageTheme, anime = false): void {
   } catch (err) {
     console.warn("Thème non conservé : stockage indisponible.", err);
   }
-}
-
-/** Le mode réellement rendu, une fois « system » résolu. */
-export function modeRendu(reglage: ReglageTheme) {
-  return resolveMode(reglage.mode);
 }

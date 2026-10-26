@@ -101,7 +101,7 @@ function bridge(): WebPluginApi {
 }
 
 /** La surface sur laquelle cette interface tourne. */
-export const SURFACE = "web";
+const SURFACE = "web";
 
 /**
  * Cette contribution vise-t-elle la surface courante ?
@@ -110,7 +110,7 @@ export const SURFACE = "web";
  * le web l'ignorait, et un panneau explicitement réservé à l'ordinateur
  * s'affichait quand même dans le navigateur.
  */
-export function targetsSurface(
+function targetsSurface(
   contribution: { platforms?: string[] },
   surface: string = SURFACE,
 ): boolean {

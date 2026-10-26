@@ -20,7 +20,7 @@ export interface ModelParams {
   min_p: number; // 0.0 – 1.0
 }
 
-export const DEFAULT_MODEL_PARAMS: ModelParams = {
+const DEFAULT_MODEL_PARAMS: ModelParams = {
   temperature: 0.7,
   top_p: 0.95,
   top_k: 40,

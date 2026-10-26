@@ -88,7 +88,7 @@ function normalize(text: string): string {
 
 /** Return true if the checkpoint/model name matches a known NSFW/unfiltered
  *  diffusion checkpoint. */
-export function isNsfwCheckpoint(name: string): boolean {
+function isNsfwCheckpoint(name: string): boolean {
   if (!name) return false;
   const norm = normalize(name);
   return NSFW_CHECKPOINT_PATTERNS.some((p) => norm.includes(p));
@@ -136,11 +136,6 @@ export function classifyModel(
     return { risk: "nsfw", label: "NSFW", icon: "warning" };
   }
   return { risk: "safe", label: "Safe", icon: "shield" };
-}
-
-/** Classify only by name (no catalog flag). Kept for backwards compat. */
-export function classifyModelRisk(name: string): "nsfw" | "safe" {
-  return isNsfwCheckpoint(name) || isNsfwLora(name) ? "nsfw" : "safe";
 }
 
 /** Human-readable label for the matched risk, or null. */
