@@ -1423,7 +1423,9 @@ pub async fn set_extension_enabled(
             client
                 .set_extension_enabled(&id, enabled)
                 .await
-                .map_err(|e| format!("Le serveur n'a pas pu changer l'état de l'extension : {e}"))?;
+                .map_err(|e| {
+                    format!("Le serveur n'a pas pu changer l'état de l'extension : {e}")
+                })?;
             if let Ok(exts) = client.list_extensions().await {
                 let locales = build_installed(&core).await.unwrap_or_default();
                 return Ok(merge_device_companions(exts, &locales));

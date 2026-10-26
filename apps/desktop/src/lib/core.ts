@@ -1927,6 +1927,8 @@ export interface CoreApi {
   /** Retire le dernier message de la personne et sa suite ; rend son texte. */
   rewindLastMessage(sessionId: string): Promise<string | null>;
   /** `/objectif` : la consigne du premier tour. */
+  /** `/equipe` : la consigne qui répartit la demande entre sous-agents. */
+  equipeConsigne(demande: string): Promise<string>;
   goalConsigne(goal: string): Promise<string>;
   /** `/objectif` : le message qui relance un tour. */
   goalRelance(reste: string): Promise<string>;
@@ -2511,6 +2513,7 @@ const tauriCore: CoreApi = {
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
   rewindLastMessage: (sessionId) => invoke<string | null>("rewind_last_message", { sessionId }),
+  equipeConsigne: (demande) => invoke<string>("equipe_consigne", { demande }),
   goalConsigne: (goal) => invoke<string>("goal_consigne", { goal }),
   goalRelance: (reste) => invoke<string>("goal_relance", { reste }),
   judgeGoal: (goal, answer) =>
@@ -4087,6 +4090,7 @@ Contenu de démonstration, avec **du gras** et une liste :
     ],
   }),
   rewindLastMessage: async () => null,
+  equipeConsigne: async (demande) => `[Équipe] ${demande}`,
   goalConsigne: async (goal) => `${goal}
 
 [Objectif] Travaille jusqu'au bout.`,

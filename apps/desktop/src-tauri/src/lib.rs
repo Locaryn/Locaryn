@@ -1105,6 +1105,13 @@ async fn compact_history(
     out
 }
 
+/// `/equipe` : la consigne qui répartit la demande entre plusieurs
+/// sous-agents, avec la liste des modèles disponibles.
+#[tauri::command]
+async fn equipe_consigne(core: State<'_, Core>, demande: String) -> Result<String, String> {
+    Ok(sous_agents::consigne_equipe(&core, &demande).await)
+}
+
 /// `/objectif` : la consigne du premier tour.
 #[tauri::command]
 fn goal_consigne(goal: String) -> String {
@@ -7325,6 +7332,7 @@ pub fn run() {
             suggest_followups,
             extract_document,
             rewind_last_message,
+            equipe_consigne,
             goal_consigne,
             goal_relance,
             judge_goal,

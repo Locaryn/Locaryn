@@ -716,6 +716,8 @@ export function ChatPanel({
   const [forceWorkflow, setForceWorkflow] = useState(false);
   /** `/objectif` choisi dans la palette : la prochaine demande devient un objectif. */
   const [goalNext, setGoalNext] = useState(false);
+  /** `/equipe` choisi dans la palette : s'applique au prochain envoi. */
+  const [equipeNext, setEquipeNext] = useState(false);
   /** L'arrêt demandé sur la carte d'un plan ou d'un objectif en cours. */
   const arretSuiviRef = useRef(false);
   const [loopCount, setLoopCount] = useState<number | null>(null);
@@ -1713,13 +1715,14 @@ ${d.texte}`
     const imposeWorkflow = forceWorkflow || mods.force;
     const objectif = goalNext || mods.goal;
     const planifie = planNext || mods.plan;
+    const enEquipe = equipeNext || mods.equipe;
     const reprises = mods.loops ?? loopCount;
     const imgs = attachOverride ?? attachments;
 
     if (!text && imgs.length === 0) {
       // Des modificateurs sans demande : le dire, sinon la palette parait
       // avoir avale le message.
-      if (mods.force || mods.loops !== null || mods.goal || mods.plan) {
+      if (mods.force || mods.loops !== null || mods.goal || mods.plan || mods.equipe) {
         setItems((prev) => [
           ...prev,
           {
@@ -1992,9 +1995,13 @@ ${d.texte}`
           text: a.text ?? "",
           base64: a.base64 ?? null,
         }));
+      // `/equipe` : la demande part avec la consigne qui la répartit entre
+      // sous-agents ; l'écran garde ce que la personne a tapé.
+      if (enEquipe) setEquipeNext(false);
+      const envoi = enEquipe ? await core.equipeConsigne(text) : text;
       await core.sendMessage(
         sid,
-        text,
+        envoi,
         surEvenement,
         images.length ? images : undefined,
         jsonMode === "on" || (jsonMode === "auto" && wantsJson(text))
@@ -2480,6 +2487,13 @@ ${preview}`,
       case "workflow":
         setForceWorkflow(true);
         break;
+      case "equipe": {
+        // Écrit d'un trait (« /equipe faire X ») : part tout de suite.
+        const apres = raw.replace(/^\/\S+\s*/, "").trim();
+        if (apres) send(`/equipe ${apres}`);
+        else setEquipeNext(true);
+        break;
+      }
       case "goal": {
         // Écrit d'un trait (« /objectif faire X ») : part tout de suite.
         const apres = raw.replace(/^\/\S+\s*/, "").trim();

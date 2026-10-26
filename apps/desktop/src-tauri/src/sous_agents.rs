@@ -80,6 +80,17 @@ pub async fn lister(core: &Core) -> String {
         if cloud::stored_key(&h, &p.id).is_none() && !local {
             continue;
         }
+        // Une passerelle locale qui gère un compte le dit par `/auth/status` :
+        // compte déconnecté, ses modèles échouent tous (« OAuth session
+        // expired »). La conversation choisissait l'un d'eux pour un
+        // sous-agent, qui rendait un échec au lieu d'un travail.
+        if local && compte_deconnecte(&h, &p.id).await {
+            lignes.push(format!(
+                "- {} : compte non connecté, ses modèles ne répondront pas — ne pas le choisir.",
+                p.label()
+            ));
+            continue;
+        }
         let modeles = match cloud::models(&h, &p, false).await {
             Ok(m) => m,
             Err(e) => {
@@ -118,6 +129,46 @@ pub async fn lister(core: &Core) -> String {
         }
     }
     lignes.join("\n")
+}
+
+/// Vrai seulement si la passerelle répond qu'elle n'est pas connectée. Une
+/// passerelle sans compte (pas de `/auth/status`) ou injoignable n'est pas
+/// jugée ici : sa liste de modèles dira si elle répond.
+async fn compte_deconnecte(h: &cloud::Host<'_>, fournisseur: &str) -> bool {
+    match cloud::account(h, fournisseur, "status", None).await {
+        Ok(etat) => etat.get("logged_in").and_then(serde_json::Value::as_bool) == Some(false),
+        Err(_) => false,
+    }
+}
+
+/// `/equipe` : la consigne qui fait travailler la demande par plusieurs
+/// sous-agents en même temps, chacun sur le modèle qui convient.
+///
+/// La liste des modèles est jointe : la conversation choisit d'emblée, sans
+/// un tour de `lister_modeles`, et une consigne de la personne (« le cœur avec
+/// tel modèle ») se respecte contre ce qui existe vraiment.
+pub async fn consigne_equipe(core: &Core, demande: &str) -> String {
+    let modeles = lister(core).await;
+    format!(
+        "[Équipe] {demande}\n\n\
+         La personne a demandé que ce travail soit réparti entre plusieurs sous-agents qui \
+         tournent en même temps. Ne fais pas tout toi-même :\n\
+         1. Découpe la demande en 2 à 6 sous-tâches indépendantes : chacune doit pouvoir être \
+         faite sans le résultat des autres.\n\
+         2. Lance un sous-agent par sous-tâche avec `lancer_sous_agent`, tous dans ce même tour, \
+         pour qu'ils travaillent en parallèle. Chaque tâche est complète : le sous-agent ne voit \
+         pas cette conversation — donne-lui le dossier, les fichiers, les contraintes et ce qu'il \
+         doit rendre.\n\
+         3. Choisis le modèle de chacun dans la liste ci-dessous : les plus capables pour le cœur \
+         et les décisions difficiles, les plus rapides pour le reste. Plusieurs sous-agents sur \
+         `{LOCAL}` se partagent la même carte graphique : au-delà de deux, préfère un autre \
+         modèle de la liste s'il y en a. Si la demande impose un modèle pour une partie, \
+         respecte-le à la lettre ; s'il n'est pas dans la liste, dis-le au lieu d'en prendre un \
+         autre en silence.\n\
+         4. Garde pour toi l'assemblage : à l'arrivée des comptes rendus, relis-les, vérifie le \
+         travail (fichiers, tests), corrige ce qui ne va pas, puis rends un bilan.\n\n\
+         Modèles disponibles :\n{modeles}"
+    )
 }
 
 /// La cible d'un nom de modèle : `local`, ou `<catalogue>:<modèle>`.

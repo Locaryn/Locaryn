@@ -1290,6 +1290,9 @@ export const EN_EXACT: Record<string, string> = {
   "Noyau alternatif installé.": "Alternative core installed.",
   "Noyau de la conversation": "Conversation core",
   "Objectif à atteindre": "Goal to reach",
+  "Travail en équipe": "Team work",
+  "Plusieurs sous-agents en parallèle, chacun sur le modèle qui convient ; la conversation relit et assemble":
+    "Several sub-agents in parallel, each on the right model; the conversation reviews and assembles",
   "Oblitération des poids en cours...": "Obliterating weights...",
   "Oblitération en cours...": "Obliteration in progress...",
   "Oblitération en cours…": "Obliteration in progress…",

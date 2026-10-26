@@ -15,6 +15,7 @@ export type SlashAction =
   | "workflow"
   | "loop"
   | "goal"
+  | "equipe"
   | "tester"
   | "revue"
   | "init"
@@ -82,6 +83,8 @@ export interface SlashModifiers {
   goal: boolean;
   /** `/plan` : decomposer et executer etape par etape. */
   plan: boolean;
+  /** `/equipe` : repartir la demande entre sous-agents qui tournent ensemble. */
+  equipe: boolean;
   /** Ce qui reste de la demande, les modificateurs retires. */
   rest: string;
 }
@@ -148,6 +151,15 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "Objectif à atteindre",
     hint: "Le modèle enchaîne sans rendre la main jusqu'à ce que les conditions soient remplies",
     action: "goal",
+  },
+  {
+    name: "equipe",
+    nameEn: "team",
+    aliases: ["team", "agents", "sous-agents", "parallele", "équipe"],
+    icon: "users-three",
+    label: "Travail en équipe",
+    hint: "Plusieurs sous-agents en parallèle, chacun sur le modèle qui convient ; la conversation relit et assemble",
+    action: "equipe",
   },
   {
     name: "tester",
@@ -310,6 +322,7 @@ export function parseModifiers(input: string): SlashModifiers {
   let loops: number | null = null;
   let goal = false;
   let plan = false;
+  let equipe = false;
 
   const motif = /(?:^|\s)\/([\p{L}]+)/gu;
   let rest = "";
@@ -320,7 +333,8 @@ export function parseModifiers(input: string): SlashModifiers {
     const orchestre = motsDeLaction("workflow").has(nom);
     const boucle = motsDeLaction("loop").has(nom);
     const planifie = motsDeLaction("plan").has(nom);
-    if (!but && !orchestre && !boucle && !planifie) continue;
+    const enEquipe = motsDeLaction("equipe").has(nom);
+    if (!but && !orchestre && !boucle && !planifie && !enEquipe) continue;
     rest += input.slice(curseur, m.index);
     curseur = m.index + m[0].length;
     // La ponctuation collee au mot part avec lui : « continue /goal. » ne doit
@@ -336,6 +350,10 @@ export function parseModifiers(input: string): SlashModifiers {
     }
     if (planifie) {
       plan = true;
+      continue;
+    }
+    if (enEquipe) {
+      equipe = true;
       continue;
     }
     // Le nombre qui suit `/loop` est avale seulement s'il en est un.
@@ -356,6 +374,7 @@ export function parseModifiers(input: string): SlashModifiers {
     loops,
     goal,
     plan,
+    equipe,
     // Les trous laisses par les mots retires se referment : « continue  et
     // verifie » redevient lisible. Les sauts de ligne et l'indentation d'un
     // extrait colle dans la demande sont conserves.
