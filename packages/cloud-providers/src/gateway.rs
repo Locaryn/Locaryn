@@ -750,6 +750,76 @@ fn verrou_de_demarrage(id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
     carte.entry(id.to_string()).or_default().clone()
 }
 
+/// Les identifiants des modèles que la passerelle sert vraiment, d'après la
+/// commande `available_models` du manifeste. `None` : pas de commande, ou
+/// une sortie illisible — l'appelant ne marque alors rien.
+pub async fn modeles_disponibles(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+) -> Option<std::collections::HashSet<String>> {
+    let local = p.manifest.local.clone()?;
+    let decl = local.available_models.clone()?;
+    let dir = dossier_de(p);
+    let (programme_, arguments) = resoudre(&decl.command, &local, &dir)?;
+    let env = environnement(host, p, &local, &dir).ok()?;
+    let dossier = dir.clone();
+    let sortie = tokio::task::spawn_blocking(move || {
+        let mut command = Command::new(&programme_);
+        command.args(&arguments).current_dir(&dossier);
+        for (k, v) in &env {
+            command.env(k, v);
+        }
+        quiet(&mut command);
+        command.output()
+    })
+    .await
+    .ok()?
+    .ok()?;
+    let texte = String::from_utf8_lossy(&sortie.stdout);
+    let liste = lire_disponibles(&texte, &decl);
+    if liste.is_none() {
+        tracing::warn!(fournisseur = %p.id, sortie = %queue(&sortie.stdout), erreurs = %queue(&sortie.stderr), "liste des modèles disponibles illisible");
+    }
+    liste
+}
+
+/// La liste d'une sortie JSON, entourée ou non des messages de la commande.
+fn lire_disponibles(
+    sortie: &str,
+    decl: &locaryn_extensions::manifest::CloudAvailableModels,
+) -> Option<std::collections::HashSet<String>> {
+    // Une ligne de commande colore ses messages : `\x1b[2m` contient un `[`
+    // qui n'ouvre aucun JSON. On essaie chaque début possible, jusqu'au
+    // premier document qui se lit.
+    let valeur = sortie
+        .char_indices()
+        .filter(|(_, c)| matches!(c, '{' | '['))
+        .find_map(|(i, _)| {
+            serde_json::Deserializer::from_str(&sortie[i..])
+                .into_iter::<serde_json::Value>()
+                .next()?
+                .ok()
+                .filter(|v| v.is_object() || v.is_array())
+        })?;
+    let entrees = match decl.list.as_deref().filter(|l| !l.is_empty()) {
+        Some(champ) => valeur.get(champ)?.as_array()?.clone(),
+        None => valeur.as_array()?.clone(),
+    };
+    Some(
+        entrees
+            .iter()
+            .filter(|e| {
+                decl.flag_field
+                    .as_deref()
+                    .and_then(|f| e.get(f))
+                    .and_then(serde_json::Value::as_bool)
+                    != Some(false)
+            })
+            .filter_map(|e| e.get(&decl.id_field)?.as_str().map(str::to_string))
+            .collect(),
+    )
+}
+
 /// Lancer la commande d'arrêt que le manifeste déclare.
 async fn commande_d_arret(
     host: &Host<'_>,
@@ -1169,5 +1239,25 @@ mod tests {
             extraire_cle("{\"key\":\"  \"}", "key").is_none(),
             "une clé vide n'en est pas une"
         );
+    }
+
+    /// La sortie d'une commande bavarde : la liste est lue dans son champ, et
+    /// une entrée marquée indisponible est écartée.
+    #[test]
+    fn la_liste_des_modeles_disponibles_se_lit() {
+        let decl = locaryn_extensions::manifest::CloudAvailableModels {
+            command: vec![],
+            list: Some("models".into()),
+            id_field: "fullModel".into(),
+            flag_field: Some("available".into()),
+        };
+        // Les codes couleur ANSI d'une ligne de commande contiennent un `[`.
+        let sortie = "\u{1b}[2m📋 chargement\u{1b}[0m\n{\"models\":[\
+                      {\"fullModel\":\"f/a\",\"available\":true},\
+                      {\"fullModel\":\"f/b\",\"available\":false},\
+                      {\"fullModel\":\"f/c\"}]}\n";
+        let ids = lire_disponibles(sortie, &decl).expect("liste lisible");
+        assert!(ids.contains("f/a") && ids.contains("f/c") && !ids.contains("f/b"));
+        assert!(lire_disponibles("pas de json", &decl).is_none());
     }
 }

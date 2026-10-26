@@ -162,6 +162,9 @@ export interface CloudModel {
   modality: string;
   /** Sans appel d'outils, la boucle d'outils de Locaryn tourne à vide. */
   supports_tools: boolean;
+  /** `false` : publié par la passerelle, mais son fournisseur n'est pas
+   *  connecté. Absent : la passerelle ne le dit pas. */
+  available?: boolean;
 }
 
 export interface Health {

@@ -36,6 +36,11 @@ pub struct CloudModel {
     /// tourne à vide, et il vaut mieux le dire avant.
     #[serde(default)]
     pub supports_tools: bool,
+    /// La passerelle peut-elle le servir ? `None` : elle ne le dit pas.
+    /// `Some(false)` : publié, mais son fournisseur n'est pas connecté — il
+    /// échouera (`cloud_provider.local.available_models`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available: Option<bool>,
 }
 
 /// Le catalogue gardé sur disque.
@@ -104,6 +109,7 @@ pub async fn models(
 
     match fetch(host, p).await {
         Ok(models) => {
+            let models = marquer_disponibles(host, p, models).await;
             let catalog = CachedCatalog {
                 updated_at: chrono::Utc::now().to_rfc3339(),
                 models,
@@ -121,6 +127,25 @@ pub async fn models(
             _ => Err(e),
         },
     }
+}
+
+/// Marquer chaque modèle d'après la liste de ceux que la passerelle sert
+/// vraiment, et mettre ceux-là en tête. Sans liste déclarée, ou si la
+/// commande échoue, rien ne change : mieux vaut tout montrer que tout cacher.
+async fn marquer_disponibles(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+    mut models: Vec<CloudModel>,
+) -> Vec<CloudModel> {
+    let Some(utilisables) = crate::gateway::modeles_disponibles(host, p).await else {
+        return models;
+    };
+    for m in &mut models {
+        m.available = Some(utilisables.contains(&m.id));
+    }
+    // Tri stable : l'ordre du fournisseur reste, les utilisables d'abord.
+    models.sort_by_key(|m| m.available != Some(true));
+    models
 }
 
 /// Lire la liste chez le fournisseur.
@@ -226,6 +251,10 @@ pub fn parse_models(body: &serde_json::Value) -> Vec<CloudModel> {
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string(),
+                // Deux formes publiées : la liste des paramètres acceptés, ou
+                // un drapeau de capacités. Ne lire que la première faisait
+                // passer tous les modèles d'une passerelle pour incapables
+                // d'appeler des outils.
                 supports_tools: m
                     .get("supported_parameters")
                     .and_then(|v| v.as_array())
@@ -235,7 +264,12 @@ pub fn parse_models(body: &serde_json::Value) -> Vec<CloudModel> {
                             .filter_map(|p| p.as_str())
                             .any(|p| p == "tools" || p == "tool_choice")
                     })
-                    .unwrap_or(false),
+                    .unwrap_or(false)
+                    || m.get("capabilities")
+                        .and_then(|c| c.get("tool_calling"))
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false),
+                available: None,
                 id,
             })
         })

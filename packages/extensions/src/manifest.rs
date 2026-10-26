@@ -241,6 +241,35 @@ pub struct CloudKeyProvisioning {
     pub field: String,
 }
 
+/// Les modèles qu'une passerelle peut **vraiment** servir.
+///
+/// Une passerelle publie souvent, dans sa liste OpenAI, tous les modèles
+/// qu'elle sait router — y compris ceux de fournisseurs que l'utilisateur n'a
+/// pas connectés, qui échouent tous. La commande déclarée ici rend la liste
+/// de ceux qui répondent ; l'hôte marque chaque modèle `available` d'après
+/// elle, et montre ceux-là d'abord.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CloudAvailableModels {
+    /// Commande qui imprime du JSON, sans shell. Mêmes marqueurs que `start`.
+    #[serde(default)]
+    pub command: Vec<String>,
+    /// Le champ de l'objet qui porte la liste (`models`). Vide : la sortie
+    /// est la liste elle-même.
+    #[serde(default)]
+    pub list: Option<String>,
+    /// Le champ d'une entrée qui porte l'identifiant tel que `models_url` le
+    /// publie (`id` par défaut).
+    #[serde(default = "champ_id", rename = "id_field", alias = "idField")]
+    pub id_field: String,
+    /// Un champ booléen qui, à `false`, écarte l'entrée (`available`).
+    #[serde(default, rename = "flag_field", alias = "flagField")]
+    pub flag_field: Option<String>,
+}
+
+fn champ_id() -> String {
+    "id".into()
+}
+
 /// La partie d'un fournisseur qui tourne sur la machine de l'utilisateur.
 ///
 /// Une passerelle auto-hébergée n'est ni un moteur d'inférence — elle ne
@@ -299,6 +328,10 @@ pub struct CloudLocalRuntime {
     /// Obtenir la clé sans que l'utilisateur ait à la créer.
     #[serde(default, rename = "provision_key", alias = "provisionKey")]
     pub provision_key: Option<CloudKeyProvisioning>,
+    /// La liste des modèles réellement utilisables, si la passerelle sait la
+    /// donner.
+    #[serde(default, rename = "available_models", alias = "availableModels")]
+    pub available_models: Option<CloudAvailableModels>,
     /// Combien de secondes attendre qu'elle réponde après l'avoir lancée.
     ///
     /// Un premier démarrage peut être long (migrations de base avant d'ouvrir

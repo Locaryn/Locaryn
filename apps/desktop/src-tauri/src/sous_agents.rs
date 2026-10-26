@@ -100,7 +100,9 @@ pub async fn lister(core: &Core) -> String {
         };
         // Les plus utiles d'abord : ceux qui savent appeler des outils, puis
         // les gratuits. Trente suffisent pour choisir sans noyer la fenêtre.
-        let mut tries: Vec<_> = modeles.iter().collect();
+        // Un modèle que la passerelle publie sans pouvoir le servir (son
+        // fournisseur n'est pas connecté) échouerait : il n'est pas proposé.
+        let mut tries: Vec<_> = modeles.iter().filter(|m| m.available != Some(false)).collect();
         tries.sort_by_key(|m| {
             (
                 !m.supports_tools,
