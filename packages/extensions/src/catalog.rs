@@ -131,8 +131,8 @@ impl CatalogClient {
         // Les sources sont indépendantes : la plus lente fixe la durée, pas
         // leur somme.
         let actives: Vec<&CatalogSource> = sources.iter().filter(|s| s.enabled).collect();
-        let resultats =
-            futures::future::join_all(actives.iter().map(|s| self.fetch_source(s))).await;
+        let taches: Vec<_> = actives.iter().map(|s| self.fetch_source(s)).collect();
+        let resultats = futures::future::join_all(taches).await;
         for (source, result) in actives.into_iter().zip(resultats) {
             match result {
                 Ok(mut found) => {
@@ -229,12 +229,15 @@ impl CatalogClient {
         // Deux requêtes par dépôt (manifeste, releases) : faites l'une après
         // l'autre pour une vingtaine de dépôts, « Actualiser » prenait 15 à
         // 30 s (Locaryn/Locaryn#82). En parallèle, bornées, ordre conservé.
-        let mut out: Vec<CatalogEntry> =
-            futures::stream::iter(repos.iter().map(|r| self.entree_morph(source, r)))
-                .buffered(DEPOTS_EN_PARALLELE)
-                .filter_map(|e| async move { e })
-                .collect()
-                .await;
+        // Les futurs sont rassemblés avant le flux : une fermeture qui les
+        // fabrique à la volée rend le tout non `Send`, et les commandes de
+        // l'application, qui l'exigent, ne compilent plus.
+        let taches: Vec<_> = repos.iter().map(|r| self.entree_morph(source, r)).collect();
+        let entrees: Vec<Option<CatalogEntry>> = futures::stream::iter(taches)
+            .buffered(DEPOTS_EN_PARALLELE)
+            .collect()
+            .await;
+        let mut out: Vec<CatalogEntry> = entrees.into_iter().flatten().collect();
 
         // L'index officiel `Locaryn/locaryn-cores` (catalog.json) : les deux
         // noyaux alternatifs, installables par sous-chemin `#cores/…` (D13).

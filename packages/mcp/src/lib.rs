@@ -10,6 +10,8 @@
 //! The client abstraction wraps the JSON-RPC protocol so the rest of the
 //! codebase never touches protocol details.
 
+pub mod arbre;
+
 use locaryn_shared_types::ExtensionScope;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -378,6 +380,14 @@ impl StdioTransport {
     /// verrou aussi bien qu'un vivant.
     async fn shutdown(&mut self) -> Result<(), McpError> {
         use tokio::io::AsyncWriteExt as _;
+        // Ses descendants d'abord : une fois le serveur parti, plus rien ne
+        // les relie à lui, et ils gardaient les fichiers du morph ouverts.
+        let enfants = match self.child.id() {
+            Some(pid) => tokio::task::spawn_blocking(move || crate::arbre::descendants(pid))
+                .await
+                .unwrap_or_default(),
+            None => Vec::new(),
+        };
         let _ = self.stdin.shutdown().await;
         let grace = std::time::Duration::from_millis(1500);
         if tokio::time::timeout(grace, self.child.wait())
@@ -386,6 +396,14 @@ impl StdioTransport {
         {
             let _ = self.child.start_kill();
             let _ = self.child.wait().await;
+        }
+        if !enfants.is_empty() {
+            let tues = tokio::task::spawn_blocking(move || crate::arbre::tuer(&enfants))
+                .await
+                .unwrap_or_default();
+            if tues > 0 {
+                tracing::info!(tues, "processus lancés par le serveur MCP arrêtés avec lui");
+            }
         }
         Ok(())
     }

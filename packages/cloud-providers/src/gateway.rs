@@ -329,7 +329,19 @@ fn environnement(
 
 /// Une requête courte : la passerelle est-elle là ?
 pub async fn probe(host: &Host<'_>, url: &str, key: Option<&str>) -> bool {
-    let mut req = host.http.get(url).timeout(Duration::from_secs(3));
+    probe_patient(host, url, key, Duration::from_secs(3)).await
+}
+
+/// Le délai d'une sonde au démarrage. Une passerelle Node vient de finir de
+/// démarrer qu'elle met encore plus de vingt secondes à servir sa première
+/// requête : sondée à 3 s, elle passait pour éteinte, et l'application en
+/// lançait une seconde sur le même port. Rien n'écoute : la connexion est
+/// refusée aussitôt, ce délai ne coûte rien.
+const SONDE_DEMARRAGE: Duration = Duration::from_secs(30);
+
+/// Sonder avec un délai choisi.
+async fn probe_patient(host: &Host<'_>, url: &str, key: Option<&str>, delai: Duration) -> bool {
+    let mut req = host.http.get(url).timeout(delai);
     if let Some(k) = key {
         req = req.bearer_auth(k);
     }
@@ -607,9 +619,15 @@ pub async fn start(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvide
             .unwrap_or_else(|| format!("{} ne déclare aucune commande de démarrage.", p.label())));
     }
 
+    // Un seul démarrage à la fois par passerelle : deux clics, ou le
+    // démarrage automatique plus un clic, en lançaient deux sur le même port.
+    let verrou = verrou_de_demarrage(&p.id);
+    let _garde = verrou.lock().await;
+
     let dir = dossier_de(p);
     let url = health_url(p, &local);
-    if probe(host, &url, stored_key(host, &p.id).as_deref()).await {
+    let cle = stored_key(host, &p.id);
+    if probe_patient(host, &url, cle.as_deref(), SONDE_DEMARRAGE).await {
         obtenir_cle(host, p, &local, &dir).await;
         return Ok(status(host, p).await);
     }
@@ -647,7 +665,7 @@ pub async fn start(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvide
     quiet(&mut command);
     command.stdout(fichier).stderr(erreurs);
 
-    command.spawn().map_err(|e| {
+    let mut enfant = command.spawn().map_err(|e| {
         format!(
             "« {programme_} » n'a pas pu être lancé ({e}). {}",
             local
@@ -659,43 +677,90 @@ pub async fn start(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvide
 
     // Rendre la main avant qu'elle réponde ferait afficher « éteinte » à
     // l'écran qui vient de la démarrer.
-    let mut repond = false;
-    for _ in 0..local.start_timeout_seconds.max(1) {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        if probe(host, &url, stored_key(host, &p.id).as_deref()).await {
-            repond = true;
-            break;
+    let delai = Duration::from_secs(u64::from(local.start_timeout_seconds.max(1)));
+    match attendre_reponse(host, p, &url, &mut enfant, delai).await {
+        Attente::Repond => {
+            tracing::info!(fournisseur = %p.id, "passerelle locale démarrée");
+            obtenir_cle(host, p, &local, &dir).await;
+            Ok(status(host, p).await)
+        }
+        Attente::Morte(code) => Err(format!(
+            "{} s'est arrêtée au démarrage ({code}).\n{}",
+            p.label(),
+            queue(&std::fs::read(&journal).unwrap_or_default())
+        )),
+        Attente::Muette => {
+            let mut etat = status(host, p).await;
+            etat.detail = format!(
+                "{} a été lancée mais ne répond toujours pas après {} s. Son journal dit pourquoi : {}",
+                p.label(),
+                local.start_timeout_seconds,
+                journal.display()
+            );
+            Ok(etat)
         }
     }
-    if repond {
-        tracing::info!(fournisseur = %p.id, "passerelle locale démarrée");
-        obtenir_cle(host, p, &local, &dir).await;
-        return Ok(status(host, p).await);
-    }
-
-    let mut etat = status(host, p).await;
-    etat.detail = format!(
-        "{} a été lancée mais ne répond toujours pas après {} s. Son journal dit pourquoi : {}",
-        p.label(),
-        local.start_timeout_seconds,
-        journal.display()
-    );
-    Ok(etat)
 }
 
-/// Arrêter la passerelle avec la commande déclarée.
-pub async fn stop(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProviderStatus, String> {
-    let local = p
-        .manifest
-        .local
-        .clone()
-        .ok_or_else(|| format!("{} est un service distant : rien à arrêter.", p.label()))?;
-    let dir = dossier_de(p);
-    let (programme_, arguments) = resoudre(&local.stop, &local, &dir)
-        .ok_or_else(|| format!("{} ne déclare pas comment s'arrêter.", p.label()))?;
-    let env = environnement(host, p, &local, &dir)?;
+/// Ce qu'a donné l'attente d'une passerelle qu'on vient de lancer.
+enum Attente {
+    Repond,
+    /// Son processus est sorti : inutile d'attendre la fin du délai.
+    Morte(std::process::ExitStatus),
+    Muette,
+}
 
-    let dossier = dir.clone();
+/// Sonder jusqu'à la réponse, la mort du processus, ou la fin du délai.
+async fn attendre_reponse(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+    url: &str,
+    enfant: &mut std::process::Child,
+    delai: Duration,
+) -> Attente {
+    let fin = std::time::Instant::now() + delai;
+    while std::time::Instant::now() < fin {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        // Le lanceur peut sortir en succès après avoir confié la passerelle à
+        // un autre processus : seul un échec dit qu'elle est morte.
+        if let Ok(Some(code)) = enfant.try_wait() {
+            if !code.success() {
+                return Attente::Morte(code);
+            }
+        }
+        let restant = fin.saturating_duration_since(std::time::Instant::now());
+        let sonde = SONDE_DEMARRAGE.min(restant.max(Duration::from_secs(1)));
+        if probe_patient(host, url, stored_key(host, &p.id).as_deref(), sonde).await {
+            return Attente::Repond;
+        }
+    }
+    Attente::Muette
+}
+
+/// Le verrou de démarrage d'une passerelle, partagé par tous les appelants.
+fn verrou_de_demarrage(id: &str) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    static VERROUS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<()>>>>,
+    > = std::sync::OnceLock::new();
+    let carte = VERROUS.get_or_init(Default::default);
+    let mut carte = match carte.lock() {
+        Ok(c) => c,
+        Err(empoisonne) => empoisonne.into_inner(),
+    };
+    carte.entry(id.to_string()).or_default().clone()
+}
+
+/// Lancer la commande d'arrêt que le manifeste déclare.
+async fn commande_d_arret(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+    local: &CloudLocalRuntime,
+    dir: &std::path::Path,
+) -> Result<(), String> {
+    let (programme_, arguments) = resoudre(&local.stop, local, dir)
+        .ok_or_else(|| format!("{} ne déclare pas comment s'arrêter.", p.label()))?;
+    let env = environnement(host, p, local, dir)?;
+    let dossier = dir.to_path_buf();
     let sortie = tokio::task::spawn_blocking(move || {
         let mut command = Command::new(&programme_);
         command.args(&arguments);
@@ -716,9 +781,28 @@ pub async fn stop(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvider
             p.label()
         )
     })?;
+    if sortie.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "arrêt signalé en échec : {}",
+            queue(&sortie.stderr)
+        ))
+    }
+}
 
-    if !sortie.status.success() {
-        tracing::warn!(fournisseur = %p.id, sortie = %queue(&sortie.stderr), "arrêt signalé en échec");
+/// Arrêter la passerelle avec la commande déclarée.
+pub async fn stop(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProviderStatus, String> {
+    let local = p
+        .manifest
+        .local
+        .clone()
+        .ok_or_else(|| format!("{} est un service distant : rien à arrêter.", p.label()))?;
+    let dir = dossier_de(p);
+    // La commande déclarée d'abord ; sans elle, ou si elle échoue, l'arrêt
+    // par le dossier plus bas fait le travail.
+    if let Err(e) = commande_d_arret(host, p, &local, &dir).await {
+        tracing::warn!(fournisseur = %p.id, erreur = %e, "commande d'arrêt sans effet : arrêt par le dossier");
     }
     let url = health_url(p, &local);
     for _ in 0..15 {
@@ -726,6 +810,15 @@ pub async fn stop(host: &Host<'_>, p: &DeclaredProvider) -> Result<CloudProvider
             break;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    // La commande d'arrêt ne voit pas toujours tout : un serveur lancé par
+    // `node` laisse son processus de travail derrière lui, qui garde le
+    // dossier ouvert — et la désinstallation échouait ensuite.
+    let restants = tokio::task::spawn_blocking(move || locaryn_mcp::arbre::liberer_dossier(&dir))
+        .await
+        .unwrap_or_default();
+    if restants > 0 {
+        tracing::info!(fournisseur = %p.id, restants, "processus de la passerelle arrêtés après sa commande d'arrêt");
     }
     Ok(status(host, p).await)
 }

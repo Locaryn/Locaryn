@@ -7238,6 +7238,9 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
         if let Err(e) = extensions::reload(&core).await {
             tracing::warn!(error = %e, "chargement des extensions échoué");
         }
+        // Les passerelles locales installées démarrent avec l'application
+        // (Locaryn/Locaryn#84).
+        cloud_providers::demarrer_passerelles(&core).await;
     });
     Ok(())
 }

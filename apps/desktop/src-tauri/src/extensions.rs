@@ -1414,7 +1414,11 @@ pub async fn set_extension_enabled(
 ) -> Result<Vec<InstalledExtension>, String> {
     if let Some(client) = core.remote_client() {
         if !is_local_extension(&core, &id).await {
-            let _ = client.set_extension_enabled(&id, enabled).await;
+            // Un refus du serveur était avalé : le bouton semblait ne rien faire.
+            client
+                .set_extension_enabled(&id, enabled)
+                .await
+                .map_err(|e| format!("Le serveur n'a pas pu changer l'état de l'extension : {e}"))?;
             if let Ok(exts) = client.list_extensions().await {
                 let locales = build_installed(&core).await.unwrap_or_default();
                 return Ok(merge_device_companions(exts, &locales));
@@ -1430,8 +1434,28 @@ pub async fn set_extension_enabled(
     reload(&core).await?;
     if enabled {
         preparer_passerelle(&core, uid).await;
+    } else {
+        arreter_tout(&core, uid).await;
     }
     installed_view(&core).await
+}
+
+/// Une extension désactivée ne laisse rien tourner : `reload` a rendu ses
+/// serveurs MCP, il reste sa passerelle locale et ce qui s'exécute encore
+/// depuis son dossier (un pont `node`, un Python lancé par un outil).
+async fn arreter_tout(core: &Core, extension_id: Uuid) {
+    let Ok(Some(record)) = core.storage.extensions.get(extension_id).await else {
+        return;
+    };
+    crate::cloud_providers::arreter_passerelle(core, &record).await;
+    if let Some(root) = plugin_root(&record.manifest_path) {
+        let arretes = tokio::task::spawn_blocking(move || liberer_dossier(&root))
+            .await
+            .unwrap_or_default();
+        if arretes > 0 {
+            tracing::info!(extension = %record.name, arretes, "processus restants arrêtés à la désactivation");
+        }
+    }
 }
 
 /// Poser ce dont l'extension a besoin pour fonctionner, une fois activée.
@@ -1509,7 +1533,10 @@ pub async fn remove_extension(
 ) -> Result<Vec<InstalledExtension>, String> {
     if let Some(client) = core.remote_client() {
         if !is_local_extension(&core, &id).await {
-            let _ = client.remove_extension(&id).await;
+            client
+                .remove_extension(&id)
+                .await
+                .map_err(|e| format!("Le serveur n'a pas pu désinstaller l'extension : {e}"))?;
             if let Ok(exts) = client.list_extensions().await {
                 let locales = build_installed(&core).await.unwrap_or_default();
                 return Ok(merge_device_companions(exts, &locales));
@@ -1851,8 +1878,8 @@ async fn stop_plugin_mcp(core: &Core, plugin_name: &str) {
     }
 }
 
-/// Arrêter tout processus dont l'exécutable est dans `dossier`, qui que ce
-/// soit qui l'ait lancé.
+/// Arrêter tout ce qui s'exécute depuis `dossier`, qui que ce soit qui l'ait
+/// lancé, avec sa descendance.
 ///
 /// `stop_plugin_mcp` n'arrête que la copie de l'application : le service
 /// (mode serveur) lance la sienne, qui garde l'exécutable du morph ouvert.
@@ -1860,31 +1887,7 @@ async fn stop_plugin_mcp(core: &Core, plugin_name: &str) {
 /// « Accès refusé (os error 5) » — et le morph restait à moitié désinstallé,
 /// impossible à réinstaller.
 fn liberer_dossier(dossier: &Path) -> usize {
-    use sysinfo::{ProcessRefreshKind, RefreshKind, System};
-    let Ok(base) = dossier.canonicalize() else {
-        return 0;
-    };
-    let sys = System::new_with_specifics(
-        RefreshKind::new()
-            .with_processes(ProcessRefreshKind::new().with_exe(sysinfo::UpdateKind::Always)),
-    );
-    let mut arretes = 0;
-    for (pid, proc_) in sys.processes() {
-        let Some(exe) = proc_.exe() else { continue };
-        let dedans = exe
-            .canonicalize()
-            .map(|e| e.starts_with(&base))
-            .unwrap_or_else(|_| exe.starts_with(dossier));
-        if dedans && proc_.kill() {
-            tracing::info!(pid = pid.as_u32(), exe = %exe.display(), "processus du morph arrêté pour libérer ses fichiers");
-            arretes += 1;
-        }
-    }
-    if arretes > 0 {
-        // Le temps que Windows relâche les fichiers.
-        std::thread::sleep(std::time::Duration::from_millis(600));
-    }
-    arretes
+    locaryn_mcp::arbre::liberer_dossier(dossier)
 }
 
 /// Les dossiers de morphs qui ne correspondent plus à aucune extension

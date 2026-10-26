@@ -208,6 +208,41 @@ pub async fn cloud_provider_start(
     cloud::gateway::start(&h, &p).await
 }
 
+/// Démarrer, au lancement de l'application, chaque passerelle locale déjà
+/// installée d'une extension active et autorisée.
+///
+/// Sans cela, un modèle servi par la passerelle restait injoignable tant que
+/// l'on n'avait pas ouvert son dossier pour cliquer « Démarrer ». Jamais
+/// d'installation ici : poser des centaines de mégaoctets reste un geste de
+/// la personne. Connecté à un serveur, c'est lui qui parle aux modèles :
+/// rien à démarrer sur ce poste.
+pub async fn demarrer_passerelles(core: &Core) {
+    if core.remote_client().is_some() {
+        return;
+    }
+    let h = host(core);
+    let mut candidates = Vec::new();
+    for p in cloud::declared(&h).await {
+        if p.manifest.local.is_none() || exiger_shell(core, &p).await.is_err() {
+            continue;
+        }
+        let etat = cloud::gateway::status(&h, &p).await;
+        if etat.installed && !etat.running {
+            candidates.push(p);
+        }
+    }
+    let demarrages = candidates.iter().map(|p| async {
+        match cloud::gateway::start(&h, p).await {
+            Ok(s) if s.running => {
+                tracing::info!(fournisseur = %p.id, "passerelle démarrée au lancement")
+            }
+            Ok(s) => tracing::warn!(fournisseur = %p.id, detail = %s.detail, "passerelle lancée sans réponse"),
+            Err(e) => tracing::warn!(fournisseur = %p.id, erreur = %e, "passerelle non démarrée au lancement"),
+        }
+    });
+    futures::future::join_all(demarrages).await;
+}
+
 /// Arrêter la passerelle avec la commande déclarée par le manifeste.
 #[tauri::command]
 pub async fn cloud_provider_stop(
@@ -241,31 +276,42 @@ pub async fn cloud_provider_dashboard_password(
 /// actifs : une extension désactivée n'y figure plus, et sa passerelle
 /// resterait alors sur le disque après la désinstallation.
 pub async fn retirer_passerelle(core: &Core, record: &locaryn_storage::repos::ExtensionRecord) {
-    let Some(root) = cloud::plugin_root(&record.manifest_path) else {
+    let Some(p) = passerelle_de(record) else {
         return;
     };
-    let Ok(manifest) = locaryn_extensions::manifest::load(&root) else {
+    match cloud::gateway::uninstall(&host(core), &p).await {
+        Ok(()) => tracing::info!(fournisseur = %p.id, "passerelle retirée avec son extension"),
+        Err(e) => tracing::warn!(fournisseur = %p.id, erreur = %e, "passerelle non retirée"),
+    }
+}
+
+/// Arrêter la passerelle locale d'une extension qu'on désactive : elle ne
+/// sert plus personne et continuait de tourner en arrière-plan.
+pub async fn arreter_passerelle(core: &Core, record: &locaryn_storage::repos::ExtensionRecord) {
+    let Some(p) = passerelle_de(record) else {
         return;
     };
-    let Some(cloud_m) = manifest
-        .cloud_provider
-        .clone()
-        .filter(|c| c.local.is_some())
-    else {
-        return;
-    };
-    let p = cloud::DeclaredProvider {
+    match cloud::gateway::stop(&host(core), &p).await {
+        Ok(_) => tracing::info!(fournisseur = %p.id, "passerelle arrêtée avec son extension"),
+        Err(e) => tracing::warn!(fournisseur = %p.id, erreur = %e, "passerelle non arrêtée"),
+    }
+}
+
+/// La passerelle locale qu'une extension déclare, s'il y en a une.
+fn passerelle_de(
+    record: &locaryn_storage::repos::ExtensionRecord,
+) -> Option<cloud::DeclaredProvider> {
+    let root = cloud::plugin_root(&record.manifest_path)?;
+    let manifest = locaryn_extensions::manifest::load(&root).ok()?;
+    let cloud_m = manifest.cloud_provider.filter(|c| c.local.is_some())?;
+    Some(cloud::DeclaredProvider {
         id: cloud_m.effective_id(&record.name),
         manifest: cloud_m,
         extension_id: record.id,
         extension_name: record.name.clone(),
         plugin_root: root,
         autorite: None,
-    };
-    match cloud::gateway::uninstall(&host(core), &p).await {
-        Ok(()) => tracing::info!(fournisseur = %p.id, "passerelle retirée avec son extension"),
-        Err(e) => tracing::warn!(fournisseur = %p.id, erreur = %e, "passerelle non retirée"),
-    }
+    })
 }
 
 /// Installer ou démarrer un programme au nom de l'utilisateur n'est pas

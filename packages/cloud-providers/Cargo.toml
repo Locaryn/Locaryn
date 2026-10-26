@@ -11,6 +11,7 @@ description = "Fournisseurs de modèles apportés par une extension : découvert
 locaryn-auth = { workspace = true }
 locaryn-config = { workspace = true }
 locaryn-extensions = { workspace = true }
+locaryn-mcp = { workspace = true }
 locaryn-shared-types = { workspace = true }
 locaryn-storage = { workspace = true }
 serde = { workspace = true }

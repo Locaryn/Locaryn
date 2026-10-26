@@ -584,6 +584,26 @@ async fn find_record(
     None
 }
 
+/// Arrêter tout ce qui s'exécute depuis le dossier d'une extension, avec sa
+/// descendance : ses serveurs MCP et ce qu'ils ont lancé.
+async fn liberer_extension(state: &DaemonState, name: &str) {
+    let Some(root) = state
+        .extensions
+        .list()
+        .into_iter()
+        .find(|e| e.name == name)
+        .and_then(|e| e.manifest_path.parent().map(std::path::Path::to_path_buf))
+    else {
+        return;
+    };
+    let arretes = tokio::task::spawn_blocking(move || locaryn_mcp::arbre::liberer_dossier(&root))
+        .await
+        .unwrap_or_default();
+    if arretes > 0 {
+        tracing::info!(name, arretes, "processus de l'extension arrêtés");
+    }
+}
+
 async fn persist_removed(state: &DaemonState, name: &str) {
     if let Some(rec) = find_record(state, name).await {
         if let Err(e) = state.storage.extensions.delete(rec.id).await {
@@ -959,6 +979,7 @@ pub async fn disable_extension(
         Ok(()) => {
             persist_enabled(&s, &name, false).await;
             sync_extension_runtime(&s).await;
+            liberer_extension(&s, &name).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "status": "disabled", "name": name })),
@@ -974,6 +995,10 @@ pub async fn remove_extension(
     State(s): State<Arc<DaemonState>>,
     Path(name): Path<String>,
 ) -> Response {
+    // Arrêter d'abord ce qui tourne depuis son dossier : sous Windows, un
+    // serveur encore vivant garde ses fichiers, et la suppression échouait sur
+    // « Accès refusé » en laissant l'extension à moitié retirée.
+    liberer_extension(&s, &name).await;
     match s.extensions.remove(&name) {
         Ok(()) => {
             persist_removed(&s, &name).await;
