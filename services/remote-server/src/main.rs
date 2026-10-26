@@ -98,17 +98,18 @@ async fn health(State(s): State<Arc<ServerState>>) -> Json<serde_json::Value> {
     }))
 }
 
+/// La connexion n'est pas encore écrite. Ce squelette délivrait un jeton à
+/// n'importe quel identifiant : aucune route ne s'en servait, mais il faisait
+/// croire à une authentification qui n'existait pas. Il le dit désormais.
 async fn login(State(_s): State<Arc<ServerState>>, Json(body): Json<LoginBody>) -> Response {
-    // V1 wires real auth (Argon2id + token issuance). Skeleton accepts anything.
-    let token = locaryn_auth::generate_token();
-    let expires = locaryn_auth::default_expiry();
-    tracing::info!(user = %body.user, "login issued (skeleton)");
+    tracing::warn!(user = %body.user, "connexion refusée : l'authentification de ce serveur n'est pas encore implémentée");
     (
-        StatusCode::OK,
+        StatusCode::NOT_IMPLEMENTED,
         Json(serde_json::json!({
-            "token": token,
-            "expires_at": expires,
-            "user": body.user,
+            "error": {
+                "code": "not_implemented",
+                "message": "L'authentification de locaryn-remote-server n'est pas encore implémentée : utilisez le mode serveur de Locaryn (locaryn-daemon)."
+            }
         })),
     )
         .into_response()

@@ -29,6 +29,7 @@ mod routes;
 use std::collections::HashMap;
 mod auth;
 mod chat_gpu;
+mod frein_connexion;
 mod live;
 mod media;
 mod mtls;

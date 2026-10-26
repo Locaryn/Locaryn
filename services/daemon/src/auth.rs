@@ -296,45 +296,84 @@ pub struct LoginBody {
     pub label: Option<String>,
 }
 
+/// Le frein des connexions, partagé par toutes les requêtes du service.
+fn frein() -> &'static crate::frein_connexion::Frein {
+    static FREIN: std::sync::OnceLock<crate::frein_connexion::Frein> = std::sync::OnceLock::new();
+    FREIN.get_or_init(Default::default)
+}
+
+/// Trop d'échecs rapprochés : 429, et dans combien de secondes réessayer.
+fn trop_d_essais(attente: std::time::Duration) -> Response {
+    let secondes = attente.as_secs().max(1);
+    let mut r = (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(serde_json::json!({
+            "error": "too_many_attempts",
+            "detail": format!("Trop d'essais de connexion. Réessayez dans {secondes} s."),
+        })),
+    )
+        .into_response();
+    if let Ok(v) = axum::http::HeaderValue::from_str(&secondes.to_string()) {
+        r.headers_mut().insert(axum::http::header::RETRY_AFTER, v);
+    }
+    r
+}
+
 /// Exchange a username and password for a token.
 ///
 /// The reply is identical for a wrong password and an unknown account: telling
 /// them apart would let someone enumerate who has an account here.
-pub async fn login(State(state): State<Arc<AuthState>>, Json(body): Json<LoginBody>) -> Response {
+pub async fn login(
+    State(state): State<Arc<AuthState>>,
+    pair: Option<axum::extract::ConnectInfo<std::net::SocketAddr>>,
+    Json(body): Json<LoginBody>,
+) -> Response {
+    let cles = match pair {
+        Some(axum::extract::ConnectInfo(a)) => crate::frein_connexion::cles(a.ip(), &body.username),
+        None => vec![format!("compte:{}", body.username.trim().to_lowercase())],
+    };
+    let maintenant = std::time::Instant::now();
+    if let Some(attente) = frein().attente(&cles, maintenant) {
+        return trop_d_essais(attente);
+    }
     match state
         .users
         .authenticate(&body.username, &body.password)
         .await
     {
-        Ok(Some(user)) => match state
-            .users
-            .issue_token(user.id, body.label.as_deref(), 30)
-            .await
-        {
-            Ok(tok) => (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "token": tok.plaintext,
-                    "expires_at": tok.expires_at,
-                    "user": {
-                        "id": user.id,
-                        "username": user.username,
-                        "role": if user.role == Role::Admin { "admin" } else { "member" },
-                    }
-                })),
-            )
-                .into_response(),
-            Err(e) => {
-                tracing::error!(error = %e, "émission du jeton impossible");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": "token_issue_failed" })),
+        Ok(Some(user)) => {
+            frein().reussite(&cles);
+            match state
+                .users
+                .issue_token(user.id, body.label.as_deref(), 30)
+                .await
+            {
+                Ok(tok) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "token": tok.plaintext,
+                        "expires_at": tok.expires_at,
+                        "user": {
+                            "id": user.id,
+                            "username": user.username,
+                            "role": if user.role == Role::Admin { "admin" } else { "member" },
+                        }
+                    })),
                 )
-                    .into_response()
+                    .into_response(),
+                Err(e) => {
+                    tracing::error!(error = %e, "émission du jeton impossible");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({ "error": "token_issue_failed" })),
+                    )
+                        .into_response()
+                }
             }
-        },
+        }
         Ok(None) => {
             tracing::info!(user = %body.username, "échec d'authentification");
+            frein().echec(&cles, maintenant);
             unauthorised("Identifiants incorrects.")
         }
         Err(e) => {
