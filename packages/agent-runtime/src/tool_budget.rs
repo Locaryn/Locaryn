@@ -127,7 +127,7 @@ fn is_mcp_alias(spec: &ToolSpec) -> bool {
 /// aide à reconnaître ce que la demande désigne.
 ///
 /// Un nom court déjà pris par un outil intégré part : le navigateur intégré
-/// (`browser_click`, `browser_type`…) et morph-browser, qui pilote Chrome,
+/// (`browser_click`, `browser_type`…) et une extension qui pilote Chrome
 /// s'offraient sous les mêmes noms avec deux descriptions différentes. Le
 /// modèle confondait les deux navigateurs, lisait « extension non
 /// connectée » et finissait par prendre le contrôle du bureau. L'outil du
@@ -492,22 +492,35 @@ pub fn fit_avec(
 /// elle-même, jamais envoyé à un connecteur.
 pub const CHARGER_OUTILS: &str = "charger_outils";
 
+/// La capacité d'une extension qui pilote le navigateur de la personne.
+pub const CAP_NAVIGATEUR: &str = "browser-control";
+/// La capacité d'une extension qui pilote le bureau (souris, clavier, écran).
+pub const CAP_BUREAU: &str = "computer-use";
+
+/// La capacité d'une extension précise, telle que l'hôte la transmet dans
+/// `AgentInput::capabilities` : `browser-control@<extension>`. Le socle range
+/// ainsi les outils d'un serveur d'après ce que son extension déclare, sans
+/// connaître aucune extension par son nom.
+pub fn capacite_de(capacite: &str, extension: &str) -> String {
+    format!("{capacite}@{}", extension.to_ascii_lowercase())
+}
+
 /// Les outils qui pilotent l'écran, rangés par sorte : ceux du navigateur
-/// (`morph-browser`, et le navigateur intégré `browser_*`) et ceux du bureau
-/// (`morph-desktop`), sous leurs noms préfixés et courts.
+/// (une extension `browser-control`, et le navigateur intégré `browser_*`) et
+/// ceux du bureau (une extension `computer-use`), sous leurs noms préfixés et
+/// courts.
 ///
 /// Du plus simple au plus lourd, pour voir ou tester une page :
 /// 1. le navigateur intégré (`browser_*` de l'application) : rien à
 ///    installer, la personne voit ce que fait le modèle ;
-/// 2. le navigateur de la personne par l'extension de `morph-browser`
-///    (Chrome, Opera…) : seulement si elle le demande, et si l'extension est
-///    connectée ;
-/// 3. le contrôle du bureau (`morph-desktop`) : seulement si elle le demande.
+/// 2. le navigateur de la personne par une extension (Chrome, Opera…) :
+///    seulement si elle le demande, et si l'extension est connectée ;
+/// 3. le contrôle du bureau : seulement si elle le demande.
 #[derive(Debug, Default)]
 pub struct OutilsEcran {
     pub navigateur: HashSet<String>,
-    /// Parmi `navigateur`, ceux de `morph-browser` (le navigateur de la
-    /// personne, par son extension).
+    /// Parmi `navigateur`, ceux d'une extension (le navigateur de la
+    /// personne).
     pub navigateur_externe: HashSet<String>,
     /// Le navigateur intégré de l'application est offert.
     pub navigateur_integre: bool,
@@ -523,18 +536,24 @@ impl OutilsEcran {
     }
 }
 
-pub fn outils_ecran(mcp_tools: &[ToolSpec], integres: &[ToolSpec]) -> OutilsEcran {
+pub fn outils_ecran(
+    mcp_tools: &[ToolSpec],
+    integres: &[ToolSpec],
+    capacites: &[String],
+) -> OutilsEcran {
     let mut o = OutilsEcran::default();
+    let declare = |cap: &str, extension: &str| capacites.contains(&capacite_de(cap, extension));
     for t in mcp_tools {
         let Some(reste) = t.name.strip_prefix(crate::mcp_tools::MCP_PREFIX) else {
             continue;
         };
         let serveur = reste.rsplit_once("__").map(|(s, _)| s).unwrap_or(reste);
-        let s = serveur.to_ascii_lowercase();
-        let externe = s.contains("morph-browser");
+        // `<extension>__<serveur>` : l'extension qui l'apporte.
+        let extension = serveur.split("__").next().unwrap_or(serveur);
+        let externe = declare(CAP_NAVIGATEUR, extension);
         let cible = if externe {
             &mut o.navigateur
-        } else if s.contains("morph-desktop") {
+        } else if declare(CAP_BUREAU, extension) {
             &mut o.bureau
         } else {
             continue;
@@ -546,7 +565,7 @@ pub fn outils_ecran(mcp_tools: &[ToolSpec], integres: &[ToolSpec]) -> OutilsEcra
         }
         if externe {
             o.navigateur_externe.insert(t.name.clone());
-            // Le nom court n'est à morph-browser que si le navigateur intégré
+            // Le nom court n'est à l'extension que si le navigateur intégré
             // ne le porte pas déjà (`browser_click` est aux deux).
             if let Some(c) = court {
                 if !integres.iter().any(|i| {
@@ -576,8 +595,8 @@ pub fn outils_ecran(mcp_tools: &[ToolSpec], integres: &[ToolSpec]) -> OutilsEcra
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct DemandeEcran {
     pub navigateur: bool,
-    /// Son propre navigateur (Chrome, Opera…, par l'extension de
-    /// morph-browser), pas le navigateur intégré.
+    /// Son propre navigateur (Chrome, Opera…, par une extension), pas le
+    /// navigateur intégré.
     pub navigateur_externe: bool,
     /// `Some(false)` : elle refuse explicitement le contrôle du bureau
     /// (« n'utilise pas desktop »).
@@ -594,7 +613,6 @@ const MOTS_NAVIGATEUR: &[&str] = &[
     "opera",
     "site web",
     "page web",
-    "@morph-browser",
 ];
 
 /// Le navigateur de la personne, pas celui de l'application.
@@ -607,7 +625,6 @@ const MOTS_NAVIGATEUR_EXTERNE: &[&str] = &[
     "safari",
     "mon navigateur",
     "extension",
-    "morph-browser",
 ];
 
 const MOTS_BUREAU: &[&str] = &[
@@ -631,7 +648,6 @@ const MOTS_BUREAU: &[&str] = &[
     "contrôle mon",
     "contrôler mon",
     "take control",
-    "@morph-desktop",
 ];
 
 /// Ce que demande ce message : le navigateur, le bureau, ou le refus du
@@ -994,9 +1010,9 @@ mod tests {
         alias.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
         let specs = vec![
             spec("browser_click", "Navigateur intégré."),
-            spec("mcp__morph-browser__browser__browser_click", "Chrome."),
+            spec("mcp__morph-chrome__chrome__browser_click", "Chrome."),
             alias,
-            spec("mcp__morph-browser__browser__browser_status", "Chrome."),
+            spec("mcp__morph-chrome__chrome__browser_status", "Chrome."),
             spec("browser_status", "Chrome."),
         ];
         let (kept, server_of) = one_name_per_tool(specs);
@@ -1005,13 +1021,13 @@ mod tests {
             noms,
             [
                 "browser_click",
-                "mcp__morph-browser__browser__browser_click",
+                "mcp__morph-chrome__chrome__browser_click",
                 "browser_status"
             ]
         );
         assert_eq!(kept[0].description, "Navigateur intégré.");
         assert!(!server_of.contains_key("browser_click"));
-        assert_eq!(server_of["browser_status"], "morph-browser__browser");
+        assert_eq!(server_of["browser_status"], "morph-chrome__chrome");
     }
 
     #[test]
@@ -1021,9 +1037,9 @@ mod tests {
         let mut statut = spec("browser_status", "Chrome.");
         statut.required_permissions = vec![locaryn_shared_types::Permission::Mcp];
         let mcp = vec![
-            spec("mcp__morph-browser__browser__browser_click", "Chrome."),
-            spec("mcp__morph-browser__browser__browser_status", "Chrome."),
-            spec("mcp__morph-desktop__desktop__desktop_click", "Bureau."),
+            spec("mcp__morph-chrome__chrome__browser_click", "Chrome."),
+            spec("mcp__morph-chrome__chrome__browser_status", "Chrome."),
+            spec("mcp__morph-pilote__pilote__desktop_click", "Bureau."),
         ];
         let tous = vec![
             spec("browser_open", "Intégré."),
@@ -1031,12 +1047,16 @@ mod tests {
             alias,
             statut,
         ];
-        let o = outils_ecran(&mcp, &tous);
+        let capacites = vec![
+            capacite_de(CAP_NAVIGATEUR, "morph-chrome"),
+            capacite_de(CAP_BUREAU, "morph-pilote"),
+        ];
+        let o = outils_ecran(&mcp, &tous, &capacites);
         assert!(o.navigateur_integre);
         assert!(o.navigateur_externe.contains("browser_status"));
         assert!(o
             .navigateur_externe
-            .contains("mcp__morph-browser__browser__browser_click"));
+            .contains("mcp__morph-chrome__chrome__browser_click"));
         assert!(
             !o.navigateur_externe.contains("browser_click"),
             "c'est l'intégré"

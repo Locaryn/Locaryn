@@ -370,16 +370,16 @@ mod tests {
     #[test]
     fn un_depot_github_se_reconnait_sous_toutes_ses_formes() {
         assert_eq!(
-            depot_github("Locaryn/morph-wsl").as_deref(),
-            Some("Locaryn/morph-wsl")
+            depot_github("Exemple/morph-exemple").as_deref(),
+            Some("Exemple/morph-exemple")
         );
         assert_eq!(
-            depot_github("https://github.com/Locaryn/morph-browser").as_deref(),
-            Some("Locaryn/morph-browser")
+            depot_github("https://github.com/Exemple/morph-grappe").as_deref(),
+            Some("Exemple/morph-grappe")
         );
         assert_eq!(
-            depot_github("https://github.com/Locaryn/morph-ssh.git").as_deref(),
-            Some("Locaryn/morph-ssh")
+            depot_github("https://github.com/Exemple/morph-pilote.git").as_deref(),
+            Some("Exemple/morph-pilote")
         );
         assert_eq!(
             depot_github("git@github.com:a-b/c_d.git").as_deref(),

@@ -260,7 +260,7 @@ pub async fn run_openai_tool_loop(
     // de captures d'écran. Ils restent chargeables à la demande
     // (`charger_outils`), et leurs définitions — des milliers de jetons — ne
     // pèsent plus sur chaque message.
-    let ecran = crate::tool_budget::outils_ecran(&mcp_tools, &all_tools);
+    let ecran = crate::tool_budget::outils_ecran(&mcp_tools, &all_tools, &input.capabilities);
     // Le message en cours décide d'abord ; sinon les deux derniers de la
     // personne ; sinon ce qui était déjà offert dans la conversation (les
     // retirer changerait le début du prompt, relu alors en entier).
@@ -289,7 +289,7 @@ pub async fn run_openai_tool_loop(
             .iter()
             .find_map(|d| d.bureau)
             .unwrap_or(bureau_avant);
-    // Le navigateur de la personne (extension morph-browser) ne passe
+    // Le navigateur de la personne (par une extension) ne passe
     // qu'après le navigateur intégré : offert seulement si elle le nomme
     // (Chrome, Opera, « mon navigateur »), sinon chargeable à la demande.
     let veut_externe = recents.iter().any(|d| d.navigateur_externe)

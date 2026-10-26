@@ -8,6 +8,7 @@
 //! la personne rendue explicite, pas une consigne de comportement.
 
 use crate::{extensions, mcp_servers, skills, Core};
+use locaryn_shared_types::InstalledExtension;
 use tauri::State;
 
 /// `@nom` présent dans `texte`, insensible à la casse, et pas au milieu d'un
@@ -41,23 +42,42 @@ fn designe(texte: &str, prefixe: char, nom: &str) -> bool {
     false
 }
 
-/// La distribution WSL désignée par `@wsl:<distribution>` (ou
-/// `@morph-wsl:<distribution>`), si la personne en a choisi une.
-pub fn distribution_wsl(texte: &str) -> Option<String> {
+/// La valeur qui suit `@<nom>:` pour l'un des noms d'une extension
+/// (`@wsl:Ubuntu-22.04` → `Ubuntu-22.04`), si la personne en a écrit une.
+pub fn valeur_de_mention(texte: &str, noms: &[&str]) -> Option<String> {
     let bas = texte.to_lowercase();
-    for prefixe in ["@morph-wsl:", "@wsl:"] {
-        if let Some(i) = bas.find(prefixe) {
-            let debut = i + prefixe.len();
-            let nom: String = texte[debut..]
+    for nom in noms.iter().filter(|n| !n.is_empty()) {
+        let prefixe = format!("@{}:", nom.to_lowercase());
+        if let Some(i) = bas.find(&prefixe) {
+            let valeur: String = texte[i + prefixe.len()..]
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_'))
                 .collect();
-            if !nom.is_empty() {
-                return Some(nom);
+            if !valeur.is_empty() {
+                return Some(valeur);
             }
         }
     }
     None
+}
+
+/// Ce que le manifeste d'une extension dit de sa mention.
+fn mention_de(e: &InstalledExtension) -> Option<locaryn_extensions::manifest::MentionSpec> {
+    locaryn_extensions::manifest::load(std::path::Path::new(&e.install_dir))
+        .ok()?
+        .mention
+}
+
+/// Les noms qui désignent une extension après « @ ».
+fn noms_de<'a>(
+    e: &'a InstalledExtension,
+    spec: Option<&'a locaryn_extensions::manifest::MentionSpec>,
+) -> Vec<&'a str> {
+    let mut noms = vec![e.name.as_str(), e.display_name.as_str()];
+    if let Some(s) = spec {
+        noms.extend(s.aliases.iter().map(String::as_str));
+    }
+    noms
 }
 
 /// Ce qu'une mention change à la requête : le texte ajouté au message, et
@@ -155,9 +175,18 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
     let exts = extensions::liste_installees(core.clone())
         .await
         .unwrap_or_default();
-    let morphs: Vec<_> = exts
+    let morphs: Vec<(
+        &InstalledExtension,
+        Option<locaryn_extensions::manifest::MentionSpec>,
+    )> = exts
         .iter()
-        .filter(|e| e.enabled && (mentionne(texte, &e.name) || mentionne(texte, &e.display_name)))
+        .filter(|e| e.enabled)
+        .map(|e| (e, mention_de(e)))
+        .filter(|(e, spec)| {
+            noms_de(e, spec.as_ref())
+                .iter()
+                .any(|n| mentionne(texte, n))
+        })
         .collect();
 
     for s in &serveurs {
@@ -166,7 +195,7 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
         let impose = mentionne(texte, &s.name)
             || morphs
                 .iter()
-                .any(|e| s.name.starts_with(&format!("{}__", e.name)));
+                .any(|(e, _)| s.name.starts_with(&format!("{}__", e.name)));
         if !impose {
             // Nommé en clair (« code dans mon Roblox Studio ») : ses outils
             // restent offerts même dans un petit contexte, sans rien exiger
@@ -232,7 +261,7 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
     }
 
     let tous_les_skills = skills::tous(core.inner()).await;
-    for e in &morphs {
+    for (e, spec) in &morphs {
         // Un morph désigné : ses skills et ses connecteurs, nommés, pour que
         // le modèle sache ce qu'il apporte réellement.
         let siens: Vec<&str> = tous_les_skills
@@ -240,12 +269,11 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
             .filter(|(source, _)| source == &e.name)
             .map(|(_, s)| s.name.as_str())
             .collect();
-        // `@wsl:Ubuntu-22.04` : la distribution à viser, pour chaque outil.
-        if e.name.contains("morph-wsl") {
-            if let Some(d) = distribution_wsl(texte) {
-                lignes.push(format!(
-                    "- la distribution WSL « {d} » : passe distro=\"{d}\" à chaque outil wsl_*, et écris les commandes à lancer pour cette distribution"
-                ));
+        // `@nom:valeur` : ce que la valeur veut dire, l'extension l'a écrit
+        // dans son manifeste — le socle ne le devine pas.
+        if let Some(phrase) = spec.as_ref().and_then(|s| s.argument.as_deref()) {
+            if let Some(v) = valeur_de_mention(texte, &noms_de(e, spec.as_ref())) {
+                lignes.push(format!("- {}", phrase.replace("{valeur}", &v)));
             }
         }
         lignes.push(if siens.is_empty() {
@@ -304,20 +332,22 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
 
 #[cfg(test)]
 mod tests {
-    use super::{distribution_wsl, mentionne};
+    use super::{mentionne, valeur_de_mention};
 
+    /// La valeur suit l'un des noms de l'extension, alias compris.
     #[test]
-    fn la_distribution_wsl_se_lit_dans_la_mention() {
+    fn la_valeur_d_une_mention_se_lit() {
+        let noms = ["morph-exemple", "Exemple", "ex"];
         assert_eq!(
-            distribution_wsl("verifie @wsl:Ubuntu-22.04 le docker").as_deref(),
-            Some("Ubuntu-22.04")
+            valeur_de_mention("verifie @ex:Serveur-2.1 le docker", &noms).as_deref(),
+            Some("Serveur-2.1")
         );
         assert_eq!(
-            distribution_wsl("@morph-wsl:Debian go").as_deref(),
+            valeur_de_mention("@morph-exemple:Debian go", &noms).as_deref(),
             Some("Debian")
         );
-        assert_eq!(distribution_wsl("@wsl fais ça"), None);
-        assert!(mentionne("@wsl:Ubuntu fais", "wsl"));
+        assert_eq!(valeur_de_mention("@ex fais ça", &noms), None);
+        assert!(mentionne("@ex:Serveur fais", "ex"));
     }
 
     #[test]
@@ -346,25 +376,25 @@ mod tests {
         ));
         // Refusé dans la phrase : pas désigné.
         assert!(!super::nomme_en_clair(
-            "Je t'ai dit d'utiliser le moteur intégré, pas le morph desktop qui permet de contrôler le PC.",
-            "morph-desktop__desktop"
+            "Je t'ai dit d'utiliser le moteur intégré, pas le morph pilote qui permet de contrôler le PC.",
+            "morph-pilote__pilote"
         ));
         assert!(!super::nomme_en_clair(
             "fais-le sans Roblox",
             "Roblox_Studio"
         ));
         assert!(!super::nomme_en_clair(
-            "don't use the desktop",
-            "morph-desktop__desktop"
+            "don't use the pilote",
+            "morph-pilote__pilote"
         ));
         assert!(super::nomme_en_clair(
-            "prends le contrôle avec desktop",
-            "morph-desktop__desktop"
+            "prends le contrôle avec pilote",
+            "morph-pilote__pilote"
         ));
         // « morph » seul ne désigne aucun morph.
         assert!(!super::nomme_en_clair(
             "installe un morph",
-            "morph-browser__browser"
+            "morph-exemple__exemple"
         ));
         // Un skill se désigne aussi par « /nom », jamais au milieu d'un chemin.
         assert!(super::designe("fais un rapport /docx stp", '/', "docx"));

@@ -2,9 +2,9 @@
 //!
 //! Laya est un petit modèle de décision (classifieur non autorégressif) :
 //! « quel élément cliquer pour enregistrer ? », « l'objectif est-il atteint ? »,
-//! « cette action est-elle irréversible ? », en une passe. morph-desktop et
-//! morph-browser s'en servent pour décider vite sans faire travailler le
-//! modèle de conversation. Ils savaient l'utiliser… à condition que la
+//! « cette action est-elle irréversible ? », en une passe. Les extensions qui
+//! déclarent la capacité `laya` s'en servent pour décider vite sans faire travailler le
+//! modèle de conversation. Elles savaient l'utiliser… à condition que la
 //! personne ait installé Python, PyTorch et le paquet `laya` elle-même : sur
 //! presque toutes les machines, il manquait, et chaque action retentait de le
 //! lancer pour rien.
@@ -110,10 +110,12 @@ pub fn laya_etat() -> EtatLaya {
     }
 }
 
-/// Les morphs qui se servent de Laya.
-const MORPHS_CLIENTS: &[&str] = &["morph-desktop", "morph-browser"];
+/// La capacité qu'une extension déclare dans son manifeste pour se servir de
+/// Laya. Le socle ne connaît aucune extension par son nom : celle d'un tiers
+/// obtient Laya de la même façon.
+const CAPACITE_LAYA: &str = "laya";
 
-/// Un morph client est installé et actif, Laya manque : on l'installe, en
+/// Une extension active déclare `laya`, et Laya manque : on l'installe, en
 /// arrière-plan. Appelé au démarrage et à chaque relecture des extensions
 /// (donc juste après l'installation d'un morph).
 pub async fn verifier(app: AppHandle, core: &crate::Core) {
@@ -123,11 +125,14 @@ pub async fn verifier(app: AppHandle, core: &crate::Core) {
     let Ok(rows) = core.storage.extensions.list().await else {
         return;
     };
-    if rows
+    let demandee = rows
         .iter()
-        .any(|r| r.enabled && MORPHS_CLIENTS.iter().any(|m| r.name.contains(m)))
-    {
-        tracing::info!("un morph de contrôle est installé : installation de Laya");
+        .filter(|r| r.enabled)
+        .filter_map(|r| crate::extensions::plugin_root(&r.manifest_path))
+        .filter_map(|racine| locaryn_extensions::manifest::load(&racine).ok())
+        .any(|m| m.capabilities.iter().any(|c| c == CAPACITE_LAYA));
+    if demandee {
+        tracing::info!("une extension active demande Laya : installation");
         installer_si_besoin(app);
     }
 }

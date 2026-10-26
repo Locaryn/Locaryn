@@ -296,10 +296,20 @@ pub async fn active_capabilities(core: &Core) -> Vec<String> {
     let Ok(installed) = build_installed(core).await else {
         return Vec::new();
     };
+    // Chaque capacité deux fois : seule (`computer-use`), pour savoir qu'une
+    // extension active l'apporte, et rattachée à son extension
+    // (`computer-use@<extension>`), pour ranger les outils de ses serveurs.
     let mut out: Vec<String> = installed
         .into_iter()
         .filter(|e| e.enabled)
-        .flat_map(|e| e.capabilities)
+        .flat_map(|e| {
+            let rattachees: Vec<String> = e
+                .capabilities
+                .iter()
+                .map(|c| locaryn_agent_runtime::tool_budget::capacite_de(c, &e.name))
+                .collect();
+            e.capabilities.into_iter().chain(rattachees)
+        })
         .collect();
     out.sort();
     out.dedup();

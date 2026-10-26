@@ -1564,12 +1564,21 @@ async fn send_message(
         // Ce que les extensions actives apportent : c'est ce qui décide des
         // outils offerts au modèle. Sans l'extension d'images, il n'a aucun
         // moyen d'en générer une, et le dit.
+        // Seule et rattachée à son extension (`computer-use@<extension>`) :
+        // c'est ce qui range les outils de navigateur et de bureau.
         capabilities: s
             .extensions
             .list()
             .into_iter()
             .filter(|e| e.enabled)
-            .flat_map(|e| e.capabilities)
+            .flat_map(|e| {
+                let rattachees: Vec<String> = e
+                    .capabilities
+                    .iter()
+                    .map(|c| locaryn_agent_runtime::tool_budget::capacite_de(c, &e.name))
+                    .collect();
+                e.capabilities.into_iter().chain(rattachees)
+            })
             .collect(),
         // Les outils que la figure de cette conversation autorise.
         // Absents : tout ce que l'application propose.

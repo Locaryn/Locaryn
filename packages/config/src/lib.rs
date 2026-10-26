@@ -493,7 +493,7 @@ pub fn workspace_config_path(project: &Path) -> PathBuf {
 }
 
 /// L'environnement Python que l'application installe et partage avec les
-/// extensions (Laya pour morph-desktop et morph-browser) : à côté de la
+/// extensions (Laya, pour celles qui déclarent la capacité `laya`) : à côté de la
 /// bibliothèque de modèles, sur le même volume.
 pub fn python_env_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("LOCARYN_PYTHON_VENV") {

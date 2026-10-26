@@ -60,6 +60,10 @@ pub struct PluginManifest {
     /// Retirer l'extension retire l'écran.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Comment la désigner après « @ », et ce qu'une valeur ajoutée
+    /// (`@nom:valeur`) dit au modèle.
+    #[serde(default)]
+    pub mention: Option<MentionSpec>,
     /// Ce que l'extension ajoute à l'interface.
     #[serde(default, rename = "ui_contributions", alias = "uiContributions")]
     pub ui: UiContributions,
@@ -239,6 +243,23 @@ pub struct CloudKeyProvisioning {
     /// Champ de l'objet qui porte la clé (`key`).
     #[serde(default)]
     pub field: String,
+}
+
+/// La mention d'une extension dans un message : `@nom`, ou `@nom:valeur`.
+///
+/// Le socle sait désigner une extension par son nom ; ce qu'une valeur veut
+/// dire (une distribution, un serveur, un projet…) n'appartient qu'à elle.
+/// Elle l'écrit ici, et le socle le transmet au modèle tel quel.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MentionSpec {
+    /// D'autres noms qui la désignent après « @ » (`wsl` pour une extension
+    /// dont le nom est plus long).
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    /// La phrase ajoutée à la demande quand une valeur suit le nom ; `{valeur}`
+    /// y est remplacé par ce qui suit « : ».
+    #[serde(default)]
+    pub argument: Option<String>,
 }
 
 /// Les modèles qu'une passerelle peut **vraiment** servir.

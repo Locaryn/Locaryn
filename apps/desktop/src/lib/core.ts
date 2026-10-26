@@ -4755,7 +4755,7 @@ Contenu de démonstration, avec **du gras** et une liste :
   soutienEtat: async () => ({
     proposer: true,
     login: "demo",
-    depots: ["Locaryn/Locaryn", "Locaryn/morph-browser", "Locaryn/morph-desktop"],
+    depots: ["Locaryn/Locaryn", "Locaryn/morph-exemple"],
   }),
   soutienRepondre: async (choix) => ({
     etoiles: choix === "tout" ? 14 : choix === "oui" ? 3 : 0,

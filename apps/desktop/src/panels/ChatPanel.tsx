@@ -244,9 +244,9 @@ type MentionItem = {
   distro?: string;
 };
 
-/** `@wsl ` (ou `@morph-wsl `, `@wsl:Ubu`) juste avant le curseur : la liste
+/** `@wsl ` (ou `@wsl:Ubu`) juste avant le curseur : la liste
  *  propose alors les distributions installées. */
-const MENTION_WSL = /(?:^|\s)@(?:morph-)?wsl(?::([\w.-]*)|\s)$/i;
+const MENTION_WSL = /(?:^|\s)@wsl(?::([\w.-]*)|\s)$/i;
 
 /** Durée de l'appui sur la jauge qui déclenche la compression. Assez longue
  *  pour qu'un clic distrait ne compresse rien. */
@@ -2265,7 +2265,7 @@ ${d.texte}`
         return typeof d === "string" ? d : "";
       }
       if (it.kind === "msg" && it.role === "user") {
-        const m = /(?:^|\s)@(?:morph-)?wsl(?::([\w.-]+))?(?![\w-])/i.exec(it.text);
+        const m = /(?:^|\s)@wsl(?::([\w.-]+))?(?![\w-])/i.exec(it.text);
         if (m) return m[1] ?? "";
       }
     }
@@ -2706,7 +2706,7 @@ ${preview}`,
     const apres = input.slice(pos);
     const nouveauAvant = item.distro
       ? avant.replace(
-          /(^|\s)@(?:morph-)?wsl(?::[\w.-]*)?\s?$/i,
+          /(^|\s)@wsl(?::[\w.-]*)?\s?$/i,
           (_m, prefix) => `${prefix}@wsl:${item.distro} `,
         )
       : avant.replace(/(^|\s)@[\w.-]*$/, (_m, prefix) => `${prefix}@${item.name} `);
