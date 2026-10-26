@@ -101,6 +101,9 @@ function memesSessions(a: Session[], b: Session[]): boolean {
   );
 }
 
+/** La vue ouverte, retrouvée après un rechargement de la page. */
+const VUE_ACTIVE = "locaryn:vue-active";
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
@@ -235,7 +238,23 @@ export function App() {
   } | null>(null);
 
   // Active top-level view: "chat" | "models" | "studio" | "training" | "connectors" | "settings" | "account"
-  const [activeView, setActiveView] = useState<string>("chat");
+  // Gardée pour la durée de la fenêtre : la mise à jour d'une extension
+  // recharge la page (un élément personnalisé ne se redéfinit pas), et l'on
+  // retombait sur « Nouvelle conversation » au milieu de la liste des morphs.
+  const [activeView, setActiveView] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(VUE_ACTIVE) ?? "chat";
+    } catch {
+      return "chat";
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(VUE_ACTIVE, activeView);
+    } catch (e) {
+      console.warn("vue active non retenue :", e);
+    }
+  }, [activeView]);
   /** Recliquer l'écran déjà ouvert ramène à sa page d'accueil (un dossier de
    *  modèles ouvert se referme) : le raccourci « retour » qu'on attend. */
   const choisirVue = (v: typeof activeView) => {

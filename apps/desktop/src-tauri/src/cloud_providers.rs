@@ -243,6 +243,26 @@ pub async fn demarrer_passerelles(core: &Core) {
     futures::future::join_all(demarrages).await;
 }
 
+/// Arrêter, à la fermeture de l'application, les passerelles locales des
+/// extensions actives.
+pub async fn arreter_passerelles(core: &Core) {
+    let h = host(core);
+    let locales: Vec<_> = cloud::declared(&h)
+        .await
+        .into_iter()
+        .filter(|p| p.manifest.local.is_some())
+        .collect();
+    let arrets = locales.iter().map(|p| {
+        let h = &h;
+        async move {
+            if let Err(e) = cloud::gateway::stop(h, p).await {
+                tracing::warn!(fournisseur = %p.id, erreur = %e, "passerelle non arrêtée à la fermeture");
+            }
+        }
+    });
+    futures::future::join_all(arrets).await;
+}
+
 /// Arrêter la passerelle avec la commande déclarée par le manifeste.
 #[tauri::command]
 pub async fn cloud_provider_stop(

@@ -531,9 +531,19 @@ async fn lancer_installation(
     let programme_ = programme(&cmd[0]);
     let arguments: Vec<String> = cmd[1..].to_vec();
     let dossier = dir.to_path_buf();
+    let npm = local.install.as_ref().is_some_and(|i| i.kind == "npm");
     tokio::task::spawn_blocking(move || {
         let mut command = Command::new(&programme_);
         command.args(&arguments).current_dir(&dossier);
+        if npm {
+            // Sur un réseau lent, un paquet mettait plus de cinq minutes, le
+            // délai de npm : l'installation de plusieurs centaines de
+            // mégaoctets s'arrêtait au bout de huit minutes, à recommencer.
+            command
+                .env("npm_config_fetch_timeout", "600000")
+                .env("npm_config_fetch_retries", "5")
+                .env("npm_config_fetch_retry_maxtimeout", "180000");
+        }
         quiet(&mut command);
         command.output()
     })

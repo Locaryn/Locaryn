@@ -7636,6 +7636,18 @@ pub fn run() {
                 tauri::async_runtime::block_on(async move {
                     sup.kill_all_engines().await;
                 });
+                // Les passerelles locales des extensions aussi : elles
+                // survivaient à l'application, en arrière-plan, sans servir
+                // personne. Dix secondes au plus, pour ne pas retenir la sortie.
+                tauri::async_runtime::block_on(async {
+                    let arret = cloud_providers::arreter_passerelles(&core);
+                    if tokio::time::timeout(std::time::Duration::from_secs(10), arret)
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!("passerelles locales pas toutes arrêtées à la fermeture");
+                    }
+                });
             }
         });
 }
