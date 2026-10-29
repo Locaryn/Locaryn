@@ -60,7 +60,8 @@ export const NEEDS: NeedDef[] = [
 ];
 
 export interface Suggestion {
-  need: Need;
+  /** Le besoin exprimé, ou « npu » quand c'est la machine qui le suggère. */
+  need: Need | "npu";
   entry: CatalogEntry;
 }
 
@@ -90,4 +91,25 @@ export function suggest(entries: CatalogEntry[], needs: Need[], perNeed = 1): Su
     }
   }
   return out;
+}
+
+/** Ce que le matériel suggère sans qu'on le demande : un accélérateur d'IA
+ *  (NPU) présent mérite l'outil qui sait s'en servir. */
+export function suggestForHardware(
+  entries: CatalogEntry[],
+  npuName: string | null | undefined,
+  already: Suggestion[],
+): Suggestion[] {
+  if (!npuName) return [];
+  const used = new Set(already.map((s) => s.entry.id));
+  const words = ["npu", "openvino"];
+  const found = entries.find(
+    (e) =>
+      !e.installed &&
+      !!e.install_source &&
+      e.compat !== "unsupported" &&
+      !used.has(e.id) &&
+      words.some((w) => haystack(e).includes(w)),
+  );
+  return found ? [{ need: "npu", entry: found }] : [];
 }

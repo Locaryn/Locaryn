@@ -1,9 +1,10 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type CatalogEntry, type LlmfitHardware, core } from "../lib/core";
+import { type CatalogEntry, core } from "../lib/core";
 import { LANGUAGES, type Lang, useI18n } from "../lib/i18n";
-import { type ModelTier, judgeTiers, tierModels } from "../lib/onboardingModels";
-import { NEEDS, type Suggestion, suggest } from "../lib/onboardingNeeds";
+import { type ModelTier, type TierPlan, loadTierPlan } from "../lib/onboardingModels";
+import { NEEDS, type Suggestion, suggest, suggestForHardware } from "../lib/onboardingNeeds";
+import { plainSpeed } from "../lib/plainLanguage";
 import { PRESENTATION_KEY } from "../lib/presentation";
 import { type Need, type UiMode, updateProfile, useProfile } from "../lib/profile";
 import { TXT, type Texts } from "./onboardingTexts";
@@ -143,26 +144,18 @@ function LevelStep({
   );
 }
 
-function ModelsStep({ tx, onPick }: { tx: Texts; onPick: (tier: ModelTier) => void }) {
-  const [hw, setHw] = useState<LlmfitHardware | null>(null);
+function ModelsStep({
+  tx,
+  lang,
+  plan,
+  onPick,
+}: {
+  tx: Texts;
+  lang: Lang;
+  plan: TierPlan | null;
+  onPick: (tier: ModelTier) => void;
+}) {
   const [picked, setPicked] = useState<ModelTier | null>(null);
-  useEffect(() => {
-    let off = false;
-    core
-      .llmfitHardware()
-      .then((h) => !off && setHw(h))
-      .catch((e) => console.warn("[Accueil] matériel illisible, conseil générique :", e));
-    return () => {
-      off = true;
-    };
-  }, []);
-  const { recommended, tooHeavy } = useMemo(() => judgeTiers(hw), [hw]);
-  const models = tierModels();
-  const meters: Record<ModelTier, [number, number]> = {
-    fast: [3, 1],
-    balanced: [2, 2],
-    smart: [1, 3],
-  };
   const icons: Record<ModelTier, IconName> = {
     fast: "lightning",
     balanced: "gauge",
@@ -179,45 +172,39 @@ function ModelsStep({ tx, onPick }: { tx: Texts; onPick: (tier: ModelTier) => vo
     <>
       <h2 className="lo-ob-title">{tx.modelsTitle}</h2>
       <p className="lo-ob-body">{tx.modelsBody}</p>
-      <div className="lo-ob-choices">
-        {models.map((m, i) => {
-          const t = tx.tiers[m.tier];
-          const heavy = tooHeavy.has(m.tier);
-          return (
-            <Choice
-              key={m.tier}
-              index={i}
-              selected={picked === m.tier}
-              onClick={() => choose(m.tier)}
-              icon={icons[m.tier]}
-              title={t.name}
-              hint={`${t.hint} · ${m.storageGb.toFixed(1)} ${tx.gb}`}
-              badge={heavy ? tx.tooHeavy : m.tier === recommended ? tx.recommended : undefined}
-              warn={heavy}
-            >
-              <span className="lo-ob-meters" aria-hidden="true">
-                <Meter label={tx.speed} n={meters[m.tier][0]} />
-                <Meter label={tx.smarts} n={meters[m.tier][1]} />
-              </span>
-            </Choice>
-          );
-        })}
-      </div>
+      {!plan ? (
+        <p className="lo-ob-note lo-ob-loading">{tx.modelsLoading}</p>
+      ) : (
+        <div className="lo-ob-choices">
+          {plan.choices.map((m, i) => {
+            const t = tx.tiers[m.tier];
+            const speed = m.tokensPerSecond === null ? null : plainSpeed(m.tokensPerSecond, lang);
+            return (
+              <Choice
+                key={m.tier}
+                index={i}
+                selected={picked === m.tier}
+                onClick={() => choose(m.tier)}
+                icon={icons[m.tier]}
+                title={t.name}
+                hint={`${t.hint} · ${m.storageGb.toFixed(1)} ${tx.gb}`}
+                badge={
+                  m.tooHeavy
+                    ? tx.tooHeavy
+                    : m.tier === plan.recommended
+                      ? tx.recommended
+                      : undefined
+                }
+                warn={m.tooHeavy}
+              >
+                {speed && <span className="lo-ob-speed">{speed}</span>}
+              </Choice>
+            );
+          })}
+        </div>
+      )}
       <p className="lo-ob-note">{tx.modelsNote}</p>
     </>
-  );
-}
-
-function Meter({ label, n }: { label: string; n: number }) {
-  return (
-    <span className="lo-ob-meter">
-      <span>{label}</span>
-      <span className="lo-ob-pips">
-        {[1, 2, 3].map((k) => (
-          <i key={k} data-on={k <= n} />
-        ))}
-      </span>
-    </span>
   );
 }
 
@@ -262,6 +249,7 @@ function SuggestStep(props: {
                 {s.entry.display_name || s.entry.name}
               </span>
               <span className="lo-ob-choice-hint">{s.entry.description ?? ""}</span>
+              {s.need === "npu" && <span className="lo-ob-reason">{tx.npuReason}</span>}
             </span>
             <button
               type="button"
@@ -305,9 +293,23 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
   const [mode, setMode] = useState<UiMode | null>(null);
   const [needs, setNeeds] = useState<Need[]>([]);
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
+  const [plan, setPlan] = useState<TierPlan | null>(null);
   const fetched = useRef(false);
 
-  const suggestions = useMemo(() => suggest(entries, needs), [entries, needs]);
+  // La machine est lue dès l'ouverture : le palier conseillé et un éventuel NPU
+  // en dépendent, et la lecture prend un instant.
+  useEffect(() => {
+    let off = false;
+    loadTierPlan().then((p) => !off && setPlan(p));
+    return () => {
+      off = true;
+    };
+  }, []);
+
+  const suggestions = useMemo(() => {
+    const byNeed = suggest(entries, needs);
+    return [...byNeed, ...suggestForHardware(entries, plan?.hardware?.npu_name, byNeed)];
+  }, [entries, needs, plan]);
   const steps: StepId[] = useMemo(() => {
     const base: StepId[] = ["language", "welcome", "level"];
     if (mode !== "simple") return base;
@@ -364,7 +366,7 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
   };
 
   const pickModel = (tier: ModelTier) => {
-    const model = tierModels().find((m) => m.tier === tier);
+    const model = plan?.choices.find((m) => m.tier === tier);
     if (model) onInstallModel(model.tag).catch((e) => console.error("[Accueil] installation :", e));
     go(1);
   };
@@ -394,7 +396,7 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
           {step === "language" && <LanguageStep tx={tx} />}
           {step === "welcome" && <WelcomeStep tx={tx} />}
           {step === "level" && <LevelStep tx={tx} picked={mode} onPick={pickLevel} />}
-          {step === "models" && <ModelsStep tx={tx} onPick={pickModel} />}
+          {step === "models" && <ModelsStep tx={tx} lang={lang} plan={plan} onPick={pickModel} />}
           {step === "needs" && (
             <NeedsStep tx={tx} lang={lang} needs={needs} onToggle={toggleNeed} />
           )}

@@ -3690,7 +3690,7 @@ ${preview}`,
             <UsageGauge generating={streaming} />
 
             {/* Context gauge — clic : le détail ; maintenir : compresser */}
-            <div className="locaryn-ctx-gauge-zone">
+            <div className="locaryn-ctx-gauge-zone" data-expert-only>
               {ctxDetails && (
                 <>
                   <button

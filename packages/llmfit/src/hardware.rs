@@ -59,6 +59,10 @@ pub struct HardwareProfile {
     pub ram_bandwidth_measured: bool,
     /// Mémoire unifiée : la VRAM *est* la RAM, la partager ne coûte rien.
     pub unified_memory: bool,
+    /// Nom de l'accélérateur d'IA (NPU) quand la machine en a un. Signalé pour
+    /// que l'application propose l'outil qui sait s'en servir ; llama.cpp, lui,
+    /// ne l'utilise pas tout seul.
+    pub npu_name: Option<String>,
 }
 
 impl HardwareProfile {
@@ -163,6 +167,7 @@ struct StaticProbe {
     ram_bandwidth_measured: bool,
     vram_bandwidth_gbps: f64,
     unified_memory: bool,
+    npu_name: Option<String>,
 }
 
 static STATIC_PROBE: OnceLock<StaticProbe> = OnceLock::new();
@@ -198,6 +203,7 @@ pub fn profile() -> HardwareProfile {
         vram_bandwidth_gbps: base.vram_bandwidth_gbps,
         ram_bandwidth_measured: base.ram_bandwidth_measured,
         unified_memory: base.unified_memory,
+        npu_name: base.npu_name.clone(),
     }
 }
 
@@ -275,7 +281,33 @@ fn probe_static() -> StaticProbe {
         ram_bandwidth_measured: measured,
         vram_bandwidth_gbps,
         unified_memory: unified,
+        npu_name: probe_npu(),
     }
+}
+
+/// Le NPU de la machine, par son nom de périphérique.
+///
+/// Intel « AI Boost » / « NPU », AMD « Ryzen AI », Qualcomm « Hexagon ». Une
+/// seule requête, faite une fois pour la session ; un échec vaut « pas de
+/// NPU », ce qui ne retire rien : il ne sert qu'à proposer un outil de plus.
+#[cfg(target_os = "windows")]
+fn probe_npu() -> Option<String> {
+    let sortie = run(
+        "powershell",
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-CimInstance Win32_PnPEntity | Where-Object { $_.Name -match 'NPU|AI Boost|Ryzen AI|Hexagon' } | Select-Object -First 1 -ExpandProperty Name",
+        ],
+    )?;
+    let nom = sortie.trim();
+    (!nom.is_empty()).then(|| nom.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn probe_npu() -> Option<String> {
+    None
 }
 
 /// La part de la mémoire unifiée que le GPU peut réellement occuper.
@@ -1592,6 +1624,7 @@ mod tests {
             vram_bandwidth_gbps: 0.0,
             ram_bandwidth_measured: true,
             unified_memory: false,
+            npu_name: None,
         };
         assert_eq!(hw.gpu_flops(), 0.0);
         assert!(hw.cpu_flops() > 0.0);

@@ -1,4 +1,7 @@
 import type { ModelMetric } from "../lib/core";
+import { useI18n } from "../lib/i18n";
+import { plainSpeedWord } from "../lib/plainLanguage";
+import { useSimpleUi } from "../lib/profile";
 
 /**
  * La vitesse d'un modèle, telle qu'elle a été mesurée ici.
@@ -9,9 +12,15 @@ import type { ModelMetric } from "../lib/core";
  * une seule génération et une moyenne sur trente ne se lisent pas pareil.
  */
 export function SpeedBadge({ metric }: { metric: ModelMetric | undefined }) {
+  const simple = useSimpleUi();
+  const { lang } = useI18n();
   if (!metric) return null;
 
-  const label = formatSpeed(metric);
+  // En interface simplifiée, un mot plutôt qu'un débit : « fluide », pas « 14 jetons/s ».
+  const label =
+    simple && metric.kind === "chat" && metric.avg_tokens_per_second
+      ? plainSpeedWord(metric.avg_tokens_per_second, lang)
+      : formatSpeed(metric);
   if (!label) return null;
 
   const measured = new Date(metric.last_measured_at);

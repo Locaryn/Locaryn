@@ -17,7 +17,7 @@
 //! machine en produit cinq.
 
 use crate::gguf::GgufSummary;
-use crate::hardware::HardwareProfile;
+use crate::hardware::{Backend, HardwareProfile};
 use crate::quant::{self, Quant};
 use serde::Serialize;
 
@@ -26,8 +26,23 @@ const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
 const RUNTIME_OVERHEAD_BYTES: u64 = 256 * 1024 * 1024;
 /// Fraction de la bande passante théorique réellement atteinte en lecture de
 /// poids sur GPU, puis sur processeur.
-const GPU_BANDWIDTH_EFFICIENCY: f64 = 0.85;
+///
+/// Mesurées sur llama.cpp : CUDA et Metal lisent environ trois quarts de la
+/// bande passante théorique, Vulkan un peu plus de la moitié. 0,85 pour tous
+/// promettait des vitesses que seuls les plus gros modèles atteignent.
+const GPU_BANDWIDTH_EFFICIENCY_FAST: f64 = 0.78;
+const GPU_BANDWIDTH_EFFICIENCY_VULKAN: f64 = 0.60;
 const CPU_BANDWIDTH_EFFICIENCY: f64 = 0.60;
+/// Bande passante qu'un seul cœur physique sait tirer de la mémoire (Go/s) :
+/// quelques cœurs ne saturent pas une mémoire rapide.
+const CPU_BANDWIDTH_PER_CORE_GBPS: f64 = 14.0;
+/// Coût fixe par jeton, indépendant de la taille du modèle : lancement des
+/// calculs sur le GPU, synchronisation, échantillonnage. Il plafonne les
+/// petits modèles, que la seule bande passante annonçait à plusieurs centaines
+/// de jetons par seconde.
+const GPU_TOKEN_OVERHEAD_S: f64 = 0.0008;
+const GPU_LAYER_OVERHEAD_S: f64 = 0.00004;
+const CPU_TOKEN_OVERHEAD_S: f64 = 0.0003;
 /// Contexte retenu quand rien ne le précise et que le modèle en autorise plus.
 const DEFAULT_CONTEXT: u32 = 8192;
 
@@ -818,15 +833,27 @@ fn throughput(
     let gpu_bytes = split.gpu_bytes as f64 * active + split.gpu_kv_bytes as f64 * kv_share;
     let cpu_bytes = split.cpu_bytes as f64 * active + split.cpu_kv_bytes as f64 * kv_share;
 
-    let gpu_bw = hardware.vram_bandwidth_gbps * GPU_BANDWIDTH_EFFICIENCY;
-    let cpu_bw = hardware.ram_bandwidth_gbps * CPU_BANDWIDTH_EFFICIENCY;
+    let gpu_efficiency = match hardware.backend {
+        Backend::Vulkan => GPU_BANDWIDTH_EFFICIENCY_VULKAN,
+        _ => GPU_BANDWIDTH_EFFICIENCY_FAST,
+    };
+    let gpu_bw = hardware.vram_bandwidth_gbps * gpu_efficiency;
+    let physical_cores = if hardware.cpu_cores > 4 {
+        hardware.cpu_cores as f64 / 2.0
+    } else {
+        hardware.cpu_cores as f64
+    };
+    let cpu_bw = (hardware.ram_bandwidth_gbps * CPU_BANDWIDTH_EFFICIENCY)
+        .min(physical_cores * CPU_BANDWIDTH_PER_CORE_GBPS);
 
     let mut seconds = 0.0;
     if gpu_bytes > 0.0 && gpu_bw > 0.0 {
-        seconds += gb_decimal(gpu_bytes as u64) / gpu_bw;
+        seconds += gb_decimal(gpu_bytes as u64) / gpu_bw
+            + GPU_TOKEN_OVERHEAD_S
+            + GPU_LAYER_OVERHEAD_S * split.gpu_layers as f64;
     }
     if cpu_bytes > 0.0 && cpu_bw > 0.0 {
-        seconds += gb_decimal(cpu_bytes as u64) / cpu_bw;
+        seconds += gb_decimal(cpu_bytes as u64) / cpu_bw + CPU_TOKEN_OVERHEAD_S;
     }
     if seconds <= 0.0 {
         return 0.0;
@@ -1156,6 +1183,7 @@ mod tests {
             vram_bandwidth_gbps: if vram_gb > 0.0 { 1008.0 } else { 0.0 },
             ram_bandwidth_measured: true,
             unified_memory: false,
+            npu_name: None,
         }
     }
 
@@ -1200,6 +1228,7 @@ mod tests {
             vram_bandwidth_gbps: 120.0,
             ram_bandwidth_measured: true,
             unified_memory: true,
+            npu_name: None,
         }
     }
 
@@ -1511,5 +1540,22 @@ mod tests {
         let report = estimate(&modele(8.0), &machine(24.0, 32.0), &RunOptions::default());
         assert!(report.assumptions.len() >= 4);
         assert!(!report.message.is_empty());
+    }
+
+    /// Le coût fixe par jeton plafonne les petits modèles : la seule bande
+    /// passante d'une RTX 4090 annonçait plus de 600 jetons/s pour un 1,7 Md.
+    #[test]
+    fn un_petit_modele_est_plafonne_par_le_cout_fixe() {
+        let report = estimate(&modele(1.7), &machine(24.0, 64.0), &RunOptions::default());
+        assert!(
+            report.tokens_per_second < 400.0,
+            "{}",
+            report.tokens_per_second
+        );
+        assert!(
+            report.tokens_per_second > 80.0,
+            "{}",
+            report.tokens_per_second
+        );
     }
 }

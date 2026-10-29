@@ -201,7 +201,26 @@
   transform: scale(1);
 }
 
-/* Jauges rapidité / intelligence des modèles. */
+.lo-ob-speed {
+  margin-top: 2px;
+  color: var(--accent);
+  font-size: var(--text-sm);
+}
+.lo-ob-reason {
+  margin-top: 4px;
+  color: var(--accent);
+  font-size: var(--text-xs);
+}
+.lo-ob-loading {
+  animation: lo-ob-pulse 1.4s ease-in-out infinite;
+}
+@keyframes lo-ob-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Jauges rapidité / intelligence des modèles (plus utilisées). */
 .lo-ob-meters {
   display: flex;
   flex-wrap: wrap;

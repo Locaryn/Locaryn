@@ -14,8 +14,6 @@ export interface Texts {
   start: string;
   install: string;
   gb: string;
-  speed: string;
-  smarts: string;
   recommended: string;
   tooHeavy: string;
   languageTitle: string;
@@ -33,6 +31,8 @@ export interface Texts {
   modelsTitle: string;
   modelsBody: string;
   modelsNote: string;
+  modelsLoading: string;
+  npuReason: string;
   tiers: Record<ModelTier, { name: string; hint: string }>;
   needsTitle: string;
   needsBody: string;
@@ -53,10 +53,8 @@ const fr: Texts = {
   start: "C'est parti",
   install: "Installer",
   gb: "Go",
-  speed: "Rapidité",
-  smarts: "Intelligence",
   recommended: "Conseillé",
-  tooHeavy: "Lourd pour cet ordinateur",
+  tooHeavy: "Trop lourd pour cet ordinateur",
   languageTitle: "Choose your language · Choisissez votre langue",
   languageBody: "Vous pourrez la changer à tout moment dans les réglages.",
   welcomeTitle: "Bienvenue dans Locaryn",
@@ -83,8 +81,11 @@ const fr: Texts = {
   levelSimpleHint: "Une interface épurée : on s'occupe de l'essentiel pour vous.",
   levelNote: "Vous pourrez changer d'avis à tout moment dans Réglages → Compte → Apparence.",
   modelsTitle: "Choisissez votre assistant",
-  modelsBody: "Un seul clic : il se télécharge pendant que vous continuez.",
+  modelsBody:
+    "Proposés selon votre ordinateur. Un clic : il se télécharge pendant que vous continuez.",
   modelsNote: "Pas de panique, vous pourrez en changer ou en ajouter plus tard.",
+  modelsLoading: "On regarde la puissance de votre ordinateur…",
+  npuReason: "Votre ordinateur a une puce dédiée à l'IA : cet outil sait s'en servir.",
   tiers: {
     fast: { name: "Éclair", hint: "Très rapide, réponses simples" },
     balanced: { name: "Équilibré", hint: "Rapide et assez malin" },
@@ -110,10 +111,8 @@ const en: Texts = {
   start: "Let's go",
   install: "Install",
   gb: "GB",
-  speed: "Speed",
-  smarts: "Smarts",
   recommended: "Recommended",
-  tooHeavy: "Heavy for this computer",
+  tooHeavy: "Too heavy for this computer",
   languageTitle: "Choose your language · Choisissez votre langue",
   languageBody: "You can change it at any time in the settings.",
   welcomeTitle: "Welcome to Locaryn",
@@ -134,8 +133,10 @@ const en: Texts = {
   levelSimpleHint: "A clean interface: we take care of the essentials for you.",
   levelNote: "You can change your mind at any time in Settings → Account → Appearance.",
   modelsTitle: "Pick your assistant",
-  modelsBody: "One click: it downloads while you carry on.",
+  modelsBody: "Suggested for your computer. One click: it downloads while you carry on.",
   modelsNote: "No worries, you can switch or add more later.",
+  modelsLoading: "Checking how powerful your computer is…",
+  npuReason: "Your computer has a chip dedicated to AI: this tool knows how to use it.",
   tiers: {
     fast: { name: "Lightning", hint: "Very fast, simple answers" },
     balanced: { name: "Balanced", hint: "Quick and fairly smart" },

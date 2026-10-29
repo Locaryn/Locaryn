@@ -2,7 +2,10 @@ import { Icon, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { core } from "../../lib/core";
 import { pickSaveFile } from "../../lib/dialog";
+import { useI18n } from "../../lib/i18n";
+import { plainSpeedWord } from "../../lib/plainLanguage";
 import { ecrirePressePapiers, ecrirePressePapiersRiche } from "../../lib/pressePapiers";
+import { useSimpleUi } from "../../lib/profile";
 import { splitReasoning } from "../../lib/reasoning";
 import { patcherHtml, useTexteFluide } from "../../lib/texteFluide";
 import { formatRate } from "../SpeedBadge";
@@ -153,6 +156,8 @@ export function MessageBubble({
   at,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const simpleUi = useSimpleUi();
+  const { lang } = useI18n();
   const [copiedTout, setCopiedTout] = useState(false);
   const heure = horodatage(at);
   const [lightbox, setLightbox] = useState<{ src: string; path?: string } | null>(null);
@@ -578,11 +583,17 @@ export function MessageBubble({
           title={`${speed.generated} jetons écrits à ${formatRate(speed.generation)} par seconde ; le prompt a été lu à ${formatRate(speed.prompt)} par seconde. Mesuré par le moteur.`}
         >
           <Icon name="speed" size={12} />
-          <span>{formatRate(speed.generation)} t/s</span>
-          <span className="locaryn-msg-speed-sep" aria-hidden="true">
-            ·
-          </span>
-          <span>{speed.generated} jetons</span>
+          {simpleUi ? (
+            <span>{plainSpeedWord(speed.generation, lang)}</span>
+          ) : (
+            <>
+              <span>{formatRate(speed.generation)} t/s</span>
+              <span className="locaryn-msg-speed-sep" aria-hidden="true">
+                ·
+              </span>
+              <span>{speed.generated} jetons</span>
+            </>
+          )}
         </div>
       )}
       {imageViewer()}

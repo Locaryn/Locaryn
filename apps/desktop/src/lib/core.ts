@@ -1553,6 +1553,8 @@ export interface LlmfitHardware {
   ram_bandwidth_measured: boolean;
   /** Mémoire unifiée : la VRAM est la RAM. */
   unified_memory: boolean;
+  /** Accélérateur d'IA (NPU) détecté, par son nom ; `null` sans NPU. */
+  npu_name?: string | null;
 }
 
 /** Une fiche de catalogue à estimer avant tout téléchargement. */
@@ -3785,6 +3787,7 @@ const demoHardware: LlmfitHardware = {
   vram_bandwidth_gbps: 272,
   ram_bandwidth_measured: false,
   unified_memory: false,
+  npu_name: null,
 };
 
 /**
