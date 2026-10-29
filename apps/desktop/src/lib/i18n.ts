@@ -118,8 +118,21 @@ const EN: Record<string, string> = {
   "Aperçu seul": "Preview only",
 };
 
-let current: Lang =
-  (typeof localStorage !== "undefined" && (localStorage.getItem(STORAGE_KEY) as Lang)) || "fr";
+/** Langue de départ : celle déjà choisie ; sinon l'anglais pour un poste neuf, et
+ *  le français pour qui utilisait déjà l'application avant ce choix. */
+function initialLang(): Lang {
+  if (typeof localStorage === "undefined") return "fr";
+  try {
+    const kept = localStorage.getItem(STORAGE_KEY);
+    if (kept === "fr" || kept === "en") return kept;
+    return localStorage.getItem("locaryn.presentation.bureau.v1") === "1" ? "fr" : "en";
+  } catch (e) {
+    console.warn("[Langue] stockage illisible, anglais par défaut :", e);
+    return "en";
+  }
+}
+
+let current: Lang = initialLang();
 
 const listeners = new Set<() => void>();
 

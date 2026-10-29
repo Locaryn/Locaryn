@@ -5,12 +5,14 @@ import { AppContextMenu } from "./components/AppContextMenu";
 import { BatchStudio } from "./components/BatchStudio";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
+import { DownloadBubble } from "./components/DownloadBubble";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
 import { FirstRunPresentation } from "./components/FirstRunPresentation";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
 import { ModeleTropLourd } from "./components/ModeleTropLourd";
 import { NAVIGABLE_VIEWS, isNativeViewAccessible } from "./components/NavDrawer";
+import { Onboarding } from "./components/Onboarding";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SupportDialog } from "./components/SupportDialog";
@@ -37,6 +39,7 @@ import {
 import { parseDeepLink, setPendingInstall } from "./lib/deepLink";
 import { confirmer, pickFolder } from "./lib/dialog";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
+import { useProfile } from "./lib/profile";
 import { setRunReveal } from "./lib/runPanel";
 import { suivreSousAgents } from "./lib/sousAgents";
 import { keepIfEqual } from "./lib/stableState";
@@ -229,6 +232,7 @@ export function App() {
   const [corePickerFor, setCorePickerFor] = useState<Project | null>(null);
 
   const theme = useTheme();
+  const profile = useProfile();
 
   const [downloadProgress, setDownloadProgress] = useState<{
     tag: string;
@@ -1074,11 +1078,23 @@ export function App() {
   return (
     <div
       className="locaryn-app locaryn-app-entree"
+      data-ui={profile.mode}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}
     >
-      <FirstRunPresentation />
+      {profile.onboarded ? (
+        <FirstRunPresentation />
+      ) : (
+        <Onboarding
+          onInstallModel={(tag) => handleInstallModel(tag)}
+          onInstallExtension={(source) => {
+            setPendingInstall({ action: "install", source });
+            setActiveView("settings");
+          }}
+        />
+      )}
+      <DownloadBubble visible={!profile.onboarded || profile.mode === "simple"} />
       <TopBar
         onToggleRail={() => setLeftOpen((v) => !v)}
         activeView={activeView}
@@ -1503,6 +1519,7 @@ export function App() {
                   setActiveView("chat");
                 }}
                 onOpenMarketplace={() => setActiveView("models")}
+                onNavigate={(v) => choisirVue(v as typeof activeView)}
                 onProjectArchived={(p) => {
                   setProjects((prev) => prev.filter((x) => x.id !== p.id));
                   setSessionsByProject((prev) => {
@@ -1526,6 +1543,7 @@ export function App() {
                   setActiveView("chat");
                 }}
                 onOpenMarketplace={() => setActiveView("models")}
+                onNavigate={(v) => choisirVue(v as typeof activeView)}
                 onProjectArchived={(p) => {
                   setProjects((prev) => prev.filter((x) => x.id !== p.id));
                   setSessionsByProject((prev) => {

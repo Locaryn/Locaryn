@@ -6,6 +6,7 @@ import { SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
 import { confirmer, pickFolder } from "../lib/dialog";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
+import { useSimpleUi } from "../lib/profile";
 import {
   type CibleDepot,
   SESSION_DRAG_CANCEL,
@@ -88,6 +89,9 @@ const RAIL_LABELS: Record<string, string> = {
  * cette fermeture et prenait la place du marketplace des extensions.
  */
 const RAIL_HIDDEN = new Set(["account", "chat"]);
+
+/** En interface simplifiée, les catalogues passent dans les paramètres avancés. */
+const RAIL_HIDDEN_SIMPLE = new Set(["models", "installed", "extensions", "connectors"]);
 
 /** Ce que dit la pastille du rail, selon ce qui attend. */
 const PASTILLE_TITRE: Record<"attente" | "erreur", string> = {
@@ -225,6 +229,7 @@ export function LeftPanel({
   installedExtensions = [],
   onNewEphemeralChat,
 }: Props) {
+  const simple = useSimpleUi();
   /** Conversations en vrac, ou classées par espace de travail — la rail
    *  montrait toujours les deux empilés, ce qui pousse la liste des projets
    *  loin en bas dès qu'il y a beaucoup de conversations. Un bascule courte,
@@ -525,7 +530,7 @@ export function LeftPanel({
       <nav className="locaryn-rail-nav" aria-label="Destinations">
         <span className="locaryn-section-title">Bibliothèque</span>
         {destinations
-          .filter((d) => !RAIL_HIDDEN.has(d.id))
+          .filter((d) => !RAIL_HIDDEN.has(d.id) && !(simple && RAIL_HIDDEN_SIMPLE.has(d.id)))
           .map((d) => (
             <button
               key={d.id}

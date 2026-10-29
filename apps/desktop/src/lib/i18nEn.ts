@@ -8,6 +8,20 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "Paramètres système avancés": "Advanced system settings",
+  "Découvrir et installer d'autres modèles": "Discover and install more models",
+  "Choisir, supprimer, ouvrir le dossier": "Choose, delete, open the folder",
+  "Marketplace d'extensions": "Extension marketplace",
+  "Ajouter des morphs et des skills": "Add morphs and skills",
+  Interface: "Interface",
+  "Le niveau de détail affiché. Rien n'est supprimé en mode simplifié : tout reste accessible.":
+    "How much detail is shown. Nothing is removed in simplified mode: everything stays reachable.",
+  Simplifiée: "Simplified",
+  Complète: "Full",
+  "L'essentiel seulement. Catalogues et réglages techniques rangés dans les paramètres avancés.":
+    "Essentials only. Catalogues and technical settings are tucked into advanced settings.",
+  "Toute l'application : modèles, extensions, terminal et réglages à portée de main.":
+    "The whole app: models, extensions, terminal and settings within reach.",
   "Journaux et rapports": "Logs and reports",
   "En cas de problème, les journaux disent ce qui s'est passé. Votre dossier personnel, vos clés et vos jetons y sont masqués.":
     "When something goes wrong, the logs say what happened. Your home folder, keys and tokens are masked.",

@@ -135,6 +135,7 @@ export function TopBar({
             <button
               type="button"
               className={`locaryn-icon-btn locaryn-topbar-action${showBottom ? " locaryn-icon-btn-active" : ""}`}
+              data-expert-only
               title="Terminal / Journaux"
               aria-label="Ouvrir le terminal et les journaux"
               aria-pressed={showBottom}
@@ -203,6 +204,7 @@ export function TopBar({
             <button
               type="button"
               className={`locaryn-icon-btn locaryn-topbar-action${showModelConfig ? " locaryn-icon-btn-active" : ""}`}
+              data-expert-only
               title="Paramètres de génération du modèle"
               aria-label="Ouvrir les paramètres de génération du modèle actif"
               aria-pressed={showModelConfig}

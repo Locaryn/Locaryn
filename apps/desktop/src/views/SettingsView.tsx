@@ -38,6 +38,7 @@ import {
 } from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { useI18n } from "../lib/i18n";
+import { updateProfile, useProfile } from "../lib/profile";
 import { type AccountSection, AccountView } from "./AccountView";
 import { ProjectSettings } from "./ProjectSettings";
 
@@ -174,7 +175,34 @@ type Props = {
   onProjectArchived?: (p: Project) => void;
   /** Jump to the model marketplace (models are managed there, not here). */
   onOpenMarketplace?: () => void;
+  /** Ouvre un écran de l'application (catalogues rangés ici en interface simplifiée). */
+  onNavigate?: (view: string) => void;
 };
+
+/** Ce que l'interface simplifiée montre d'emblée ; le reste se range sous « avancés ». */
+const SIMPLE_SECTIONS: ReadonlySet<Section> = new Set(["account", "server", "storage", "about"]);
+
+/** Les écrans que le rail n'affiche plus en interface simplifiée : ils vivent ici. */
+const ADVANCED_LINKS: { view: string; icon: IconName; label: string; desc: string }[] = [
+  {
+    view: "models",
+    icon: "marketplace",
+    label: "Catalogue de modèles",
+    desc: "Découvrir et installer d'autres modèles",
+  },
+  {
+    view: "installed",
+    icon: "models",
+    label: "Mes modèles installés",
+    desc: "Choisir, supprimer, ouvrir le dossier",
+  },
+  {
+    view: "extensions",
+    icon: "extensions",
+    label: "Marketplace d'extensions",
+    desc: "Ajouter des morphs et des skills",
+  },
+];
 
 const SECTIONS: SectionDef[] = [
   {
@@ -250,8 +278,11 @@ export function SettingsView({
   onOpenSession,
   onProjectArchived,
   onOpenMarketplace,
+  onNavigate,
 }: Props) {
   const { settings, updateAccent, updateMode, resetTheme } = theme;
+  const profile = useProfile();
+  const simple = profile.mode === "simple";
   const { lang, setLang } = useI18n();
   const [section, setSection] = useState<Section>(initialSection ?? "account");
   // Le rail descend d'un cran quand une section a ses propres sous-sections.
@@ -357,6 +388,7 @@ export function SettingsView({
     if (accountSection === "api-keys" && !apiActive) setAccountSection("profile");
   }, [accountSection, apiActive]);
 
+  const visibleSections = simple ? SECTIONS.filter((s) => SIMPLE_SECTIONS.has(s.id)) : SECTIONS;
   const current = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
   // Dans le compte, le volet porte le nom de la sous-section : le titre doit
   // dire ce qu'on regarde, pas la famille dont ça vient.
@@ -467,32 +499,47 @@ export function SettingsView({
               /* Une liste plate : les catégories ajoutaient quatre en-têtes
                  pour douze entrées, et alourdissaient la colonne sans rien
                  classer qu'on ne lise déjà. */
-              SECTIONS.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
-                  onClick={() => {
-                    setSection(s.id);
-                    setPaneOpen(true);
-                    if (s.id === "account") {
-                      setRailFrom("deeper");
-                      setRailLevel("account");
-                      // Descendre dans le compte ouvre son premier écran :
-                      // un menu sans contenu à côté ne dit rien.
-                      setAccountSection("profile");
-                    }
-                  }}
-                >
-                  <span className="locaryn-settings-full-icon">
-                    <Icon name={s.icon} />
-                  </span>
-                  <span className="locaryn-settings-full-text">
-                    <span className="locaryn-settings-full-label">{s.label}</span>
-                    <span className="locaryn-settings-full-desc">{s.desc}</span>
-                  </span>
-                </button>
-              ))
+              <>
+                {visibleSections.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
+                    onClick={() => {
+                      setSection(s.id);
+                      setPaneOpen(true);
+                      if (s.id === "account") {
+                        setRailFrom("deeper");
+                        setRailLevel("account");
+                        // Descendre dans le compte ouvre son premier écran :
+                        // un menu sans contenu à côté ne dit rien.
+                        setAccountSection("profile");
+                      }
+                    }}
+                  >
+                    <span className="locaryn-settings-full-icon">
+                      <Icon name={s.icon} />
+                    </span>
+                    <span className="locaryn-settings-full-text">
+                      <span className="locaryn-settings-full-label">{s.label}</span>
+                      <span className="locaryn-settings-full-desc">{s.desc}</span>
+                    </span>
+                  </button>
+                ))}
+                {simple && (
+                  <AdvancedRail
+                    open={profile.advancedOpen}
+                    section={section}
+                    sections={SECTIONS.filter((s) => !SIMPLE_SECTIONS.has(s.id))}
+                    onToggle={() => updateProfile({ advancedOpen: !profile.advancedOpen })}
+                    onSection={(id) => {
+                      setSection(id);
+                      setPaneOpen(true);
+                    }}
+                    onNavigate={onNavigate}
+                  />
+                )}
+              </>
             )}
           </div>
         </nav>
@@ -576,5 +623,78 @@ export function SettingsView({
         </div>
       </div>
     </section>
+  );
+}
+
+type AdvancedRailProps = {
+  open: boolean;
+  section: Section;
+  sections: SectionDef[];
+  onToggle: () => void;
+  onSection: (id: Section) => void;
+  onNavigate?: (view: string) => void;
+};
+
+/**
+ * Le pied du rail en interface simplifiée : un bouton discret qui déplie les
+ * paramètres avancés — catalogues, moteur, performance, coffre… Replié par
+ * défaut, parce que presque personne n'en a besoin, mais rien n'est perdu.
+ */
+function AdvancedRail({
+  open,
+  section,
+  sections,
+  onToggle,
+  onSection,
+  onNavigate,
+}: AdvancedRailProps) {
+  return (
+    <div className="locaryn-advanced-rail">
+      <button
+        type="button"
+        className="locaryn-advanced-toggle"
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <Icon name={open ? "caret-down" : "caret-right"} size={14} />
+        Paramètres système avancés
+      </button>
+      {open && (
+        <div className="locaryn-advanced-list">
+          {ADVANCED_LINKS.map((l) => (
+            <button
+              key={l.view}
+              type="button"
+              className="locaryn-settings-full-item"
+              onClick={() => onNavigate?.(l.view)}
+            >
+              <span className="locaryn-settings-full-icon">
+                <Icon name={l.icon} />
+              </span>
+              <span className="locaryn-settings-full-text">
+                <span className="locaryn-settings-full-label">{l.label}</span>
+                <span className="locaryn-settings-full-desc">{l.desc}</span>
+              </span>
+            </button>
+          ))}
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={`locaryn-settings-full-item${section === s.id ? " locaryn-active" : ""}`}
+              onClick={() => onSection(s.id)}
+            >
+              <span className="locaryn-settings-full-icon">
+                <Icon name={s.icon} />
+              </span>
+              <span className="locaryn-settings-full-text">
+                <span className="locaryn-settings-full-label">{s.label}</span>
+                <span className="locaryn-settings-full-desc">{s.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

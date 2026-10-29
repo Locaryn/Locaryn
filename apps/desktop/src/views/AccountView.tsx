@@ -2,6 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { ConversationHistorySettings } from "../components/ConversationHistorySettings";
 import { DefaultPermissionsSettings } from "../components/DefaultPermissionsSettings";
+import { InterfaceModeSetting } from "../components/InterfaceModeSetting";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
 import { NotificationSettings } from "../components/NotificationSettings";
@@ -289,6 +290,8 @@ export function AccountView({
       <div className="locaryn-account-content">
         {section === "appearance" ? (
           <>
+            <InterfaceModeSetting />
+            <div style={{ height: 24 }} />
             <AppearancePane theme={theme} />
             <div style={{ height: 16 }} />
             <LanguagePane />

@@ -1,0 +1,558 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Accueil du premier lancement + bulle de téléchargement.
+
+   Même matière que le reste de l'interface : à plat, une teinte d'accent,
+   bordures fines. Le mouvement sert à confirmer un geste (la réponse choisie
+   se marque, la page glisse dans le sens où l'on avance), jamais à décorer.
+   L'état de repos de chaque élément animé est son état final : avec « réduire
+   les animations », rien ne manque.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.lo-ob {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  animation: lo-ob-fade 320ms var(--ease) both;
+}
+
+.lo-ob-card {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 560px;
+  min-height: min(620px, 100%);
+  padding: 32px 24px 24px;
+}
+
+.lo-ob-progress {
+  display: flex;
+  gap: 8px;
+}
+.lo-ob-progress i {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  border-radius: var(--radius-pill);
+  transition: background var(--dur-med) var(--ease);
+}
+.lo-ob-progress i[data-state="done"] {
+  background: var(--accent-fill-strong);
+}
+.lo-ob-progress i[data-state="now"] {
+  background: var(--accent);
+}
+
+.lo-ob-step {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  animation: lo-ob-slide-fwd 380ms var(--ease) both;
+}
+.lo-ob-step[data-dir="back"] {
+  animation-name: lo-ob-slide-back;
+}
+
+.lo-ob-title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.lo-ob-body {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--text-md);
+  line-height: 1.55;
+  max-width: 46ch;
+}
+.lo-ob-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+/* ── Réponses à cliquer ── */
+.lo-ob-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lo-ob-choice {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 16px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  animation: lo-ob-rise 420ms var(--ease) calc(var(--i, 0) * 70ms + 80ms) both;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.lo-ob-choice:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.lo-ob-choice:active {
+  transform: scale(0.985);
+}
+.lo-ob-choice:focus-visible,
+.lo-ob-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lo-ob-choice[data-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+}
+/* L'onde qui part de la carte choisie. */
+.lo-ob-choice[data-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--accent);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: lo-ob-ring 600ms var(--ease-out) both;
+}
+
+.lo-ob-choice-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.lo-ob-choice[data-selected="true"] .lo-ob-choice-icon {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.lo-ob-choice-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.lo-ob-choice-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.lo-ob-choice-hint {
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.lo-ob-badge {
+  flex: none;
+  padding: 2px 8px;
+  color: var(--accent);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+}
+.lo-ob-badge[data-warn="true"] {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.lo-ob-tick {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity var(--dur-fast) var(--ease), transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.lo-ob-choice[data-selected="true"] .lo-ob-tick {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Jauges rapidité / intelligence des modèles. */
+.lo-ob-meters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 4px;
+}
+.lo-ob-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+.lo-ob-pips {
+  display: flex;
+  gap: 3px;
+}
+.lo-ob-pips i {
+  width: 14px;
+  height: 4px;
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+.lo-ob-pips i[data-on="true"] {
+  background: var(--accent);
+}
+
+/* ── Présentation brève ── */
+.lo-ob-points {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lo-ob-points li {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  animation: lo-ob-rise 460ms var(--ease) calc(var(--i, 0) * 120ms + 120ms) both;
+}
+.lo-ob-point-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  color: var(--accent);
+  background: var(--accent-fill);
+  border-radius: var(--radius-sm);
+}
+.lo-ob-points strong {
+  display: block;
+  font-weight: 600;
+}
+.lo-ob-point-text {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.lo-ob-suggest {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  animation: lo-ob-rise 420ms var(--ease) calc(var(--i, 0) * 70ms + 80ms) both;
+}
+
+.lo-ob-done {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  animation: lo-ob-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ── Boutons ── */
+.lo-ob-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lo-ob-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 20px;
+  color: var(--text-dim);
+  font: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.lo-ob-btn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.lo-ob-btn:active {
+  transform: scale(0.97);
+}
+.lo-ob-btn-primary {
+  margin-left: auto;
+  color: var(--on-accent);
+  font-weight: 600;
+  background: var(--accent);
+}
+.lo-ob-btn-primary:hover {
+  color: var(--on-accent);
+  background: var(--accent-600, var(--accent));
+  border-color: transparent;
+  filter: brightness(1.08);
+}
+
+/* ── Bulle de téléchargement, en bas à droite ── */
+.lo-bubble {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 12px 16px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  animation: lo-ob-bubble-in 380ms cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+.lo-bubble-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  color: var(--accent);
+  background: var(--accent-fill);
+  border-radius: var(--radius-sm);
+}
+.lo-bubble-icon[data-done="false"] svg {
+  animation: lo-ob-bob 1.4s ease-in-out infinite;
+}
+.lo-bubble-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lo-bubble-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.lo-bubble-sub {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lo-bubble-track {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  overflow: hidden;
+  background: var(--border);
+  border-radius: var(--radius-pill);
+}
+.lo-bubble-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 400ms var(--ease);
+}
+.lo-bubble-pct {
+  flex: none;
+  min-width: 3ch;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@keyframes lo-ob-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes lo-ob-slide-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+@keyframes lo-ob-slide-back {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+@keyframes lo-ob-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes lo-ob-ring {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.06, 1.2);
+  }
+}
+@keyframes lo-ob-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+@keyframes lo-ob-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+}
+@keyframes lo-ob-bob {
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+@media (max-width: 480px) {
+  .lo-ob-card {
+    padding: 24px 0 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lo-ob,
+  .lo-ob *,
+  .lo-bubble,
+  .lo-bubble * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ═══ Interface simplifiée ═══ */
+
+.locaryn-advanced-rail {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.locaryn-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.locaryn-advanced-toggle:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-advanced-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-advanced-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: lo-ob-rise 260ms var(--ease) both;
+}
+
+.locaryn-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.locaryn-mode-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 16px;
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.locaryn-mode-card:hover {
+  border-color: var(--border-strong);
+}
+.locaryn-mode-card.locaryn-active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-fill);
+}
+.locaryn-mode-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-mode-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.locaryn-mode-card-text strong {
+  color: var(--text);
+  font-size: var(--text-md);
+}
+
+/* En interface simplifiée, les commandes de chat techniques s'effacent. */
+.locaryn-app[data-ui="simple"] [data-expert-only] {
+  display: none !important;
+}
