@@ -70,6 +70,7 @@ import {
   slashAuCurseur,
 } from "../lib/slashCommands";
 import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
+import { useWelcome } from "../lib/welcome";
 import { estConsigneInterne, runWorkflow } from "../lib/workflow";
 
 type ChatItem =
@@ -249,12 +250,6 @@ const MENTION_WSL = /(?:^|\s)@wsl(?::([\w.-]*)|\s)$/i;
 /** Durée de l'appui sur la jauge qui déclenche la compression. Assez longue
  *  pour qu'un clic distrait ne compresse rien. */
 const APPUI_COMPRESSION_MS = 1200;
-
-const SUGGESTIONS = [
-  "Explique la structure de ce projet",
-  "Écris des tests unitaires pour la logique principale",
-  "Cherche les commentaires FIXME et TODO",
-];
 
 /** En « auto », une réponse JSON imposée seulement quand la demande le dit
  *  en toutes lettres (« réponds en JSON », « au format JSON », « as JSON »).
@@ -593,6 +588,7 @@ export function ChatPanel({
   onEtatChange,
   extensions = [],
 }: Props) {
+  const welcome = useWelcome();
   const { lang } = useI18n();
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
@@ -2980,12 +2976,9 @@ ${preview}`,
         {empty ? (
           <div className="locaryn-empty">
             <div className="locaryn-empty-title">Assistant IA Locaryn</div>
-            <div className="locaryn-empty-sub">
-              Locaryn peut lire, chercher, éditer et exécuter du code dans ce projet ou en chat
-              libre.
-            </div>
+            <div className="locaryn-empty-sub">{welcome.sub}</div>
             <div className="locaryn-empty-suggestions">
-              {SUGGESTIONS.map((s) => (
+              {welcome.suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"

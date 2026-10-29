@@ -165,6 +165,62 @@ fn tronquer(texte: &str, max: usize) -> String {
 pub struct ProjetConnu {
     pub id: String,
     pub name: String,
+    /// Ce qui permet de reconnaître le projet au-delà de son nom : son dossier,
+    /// ses conversations récentes, ce que la mémoire en retient. Un projet qui
+    /// s'appelle « Campus » et dont le robot s'appelle « Bastet » ne se
+    /// reconnaît pas au seul nom.
+    pub indices: Vec<String>,
+}
+
+/// Ce que l'on sait d'un projet, prêt à être montré au modèle.
+///
+/// Chaque source est courte et dédoublonnée : la liste des projets part dans
+/// chaque demande, et un indice qui s'étale pousse la conversation hors de la
+/// fenêtre du petit modèle.
+pub fn indices_du_projet(dossier: &str, titres: &[String], notes: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let base = dossier
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .trim();
+    if !base.is_empty() {
+        out.push(format!("dossier {}", tronquer(base, 40)));
+    }
+    let mut vus: Vec<String> = Vec::new();
+    let mut garder = |texte: &str, max: usize, limite: usize, liste: &mut Vec<String>| {
+        let t = texte.trim();
+        if t.is_empty() || vus.iter().any(|v| v.eq_ignore_ascii_case(t)) || liste.len() >= limite {
+            return;
+        }
+        vus.push(t.to_string());
+        liste.push(tronquer(t, max));
+    };
+    let mut conv = Vec::new();
+    for t in titres {
+        garder(t, 50, 4, &mut conv);
+    }
+    if !conv.is_empty() {
+        out.push(format!("conversations : {}", conv.join(" ; ")));
+    }
+    let mut memo = Vec::new();
+    for n in notes {
+        garder(n, 90, 3, &mut memo);
+    }
+    if !memo.is_empty() {
+        out.push(format!("mémoire : {}", memo.join(" ; ")));
+    }
+    out
+}
+
+/// La ligne d'un projet dans la liste numérotée.
+fn ligne_projet(rang: usize, p: &ProjetConnu) -> String {
+    if p.indices.is_empty() {
+        format!("{rang}. {}", p.name)
+    } else {
+        format!("{rang}. {} ({})", p.name, p.indices.join(" ; "))
+    }
 }
 
 /// Demander dans quel projet cette conversation aurait sa place.
@@ -186,7 +242,7 @@ pub async fn ask_for_project(
     let liste = projets
         .iter()
         .enumerate()
-        .map(|(i, p)| format!("{}. {}", i + 1, p.name))
+        .map(|(i, p)| ligne_projet(i + 1, p))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -517,6 +573,114 @@ pub fn lire_faits(brut: &str) -> Vec<Fait> {
 }
 
 // ============================================================================
+// Les phrases proposées à l'accueil d'une conversation
+// ============================================================================
+
+/// Pour qui on écrit les suggestions : quelqu'un qui débute, ou qui connaît.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StyleSuggestion {
+    /// Des demandes de tous les jours, sans un mot de technique.
+    Simple,
+    /// Des demandes de métier : code, outils, systèmes.
+    Expert,
+}
+
+/// Demander au modèle trois phrases que cette personne pourrait avoir envie
+/// d'écrire, d'après ce que la mémoire sait d'elle.
+///
+/// Générées pendant que le modèle ne sert à personne, puis servies telles
+/// quelles à l'ouverture d'une conversation : aucune attente au moment où la
+/// personne regarde l'écran.
+pub async fn ask_for_suggestions(
+    endpoint: &str,
+    client: &reqwest::Client,
+    model: &str,
+    memoire: &str,
+    style: StyleSuggestion,
+) -> Vec<String> {
+    let consigne = match style {
+        StyleSuggestion::Simple => {
+            "Tu écris trois phrases courtes qu'une personne pourrait taper à un assistant.              Cette personne débute : aucun mot technique (pas de code, de fichier, de projet              informatique, de serveur). Des demandes de tous les jours, concrètes, adaptées à              ce qu'on sait d'elle ; sans rien de précis sur elle, des demandes utiles à tout              le monde (écrire un message, comprendre un sujet, s'organiser). Une phrase par              ligne, douze mots au plus, rien d'autre."
+        }
+        StyleSuggestion::Expert => {
+            "Tu écris trois phrases courtes qu'une personne pourrait taper à un assistant.              Cette personne est à l'aise avec l'informatique : des demandes précises et              techniques, adaptées à ce qu'on sait d'elle ; sans rien de précis sur elle, des              demandes de développement (expliquer un projet, écrire des tests, chercher des              défauts). Une phrase par ligne, quatorze mots au plus, rien d'autre."
+        }
+    };
+    let contexte = if memoire.trim().is_empty() {
+        "On ne sait encore rien de cette personne.".to_string()
+    } else {
+        format!(
+            "Ce qu'on sait de cette personne :
+{}",
+            tronquer(memoire, 1500)
+        )
+    };
+    let corps = serde_json::json!({
+        "model": model,
+        "stream": false,
+        "max_tokens": 120,
+        "temperature": 0.7,
+        "messages": [
+            { "role": "system", "content": consigne },
+            { "role": "user", "content": contexte }
+        ]
+    });
+    let Ok(resp) = client
+        .post(format!(
+            "{}/v1/chat/completions",
+            endpoint.trim_end_matches('/')
+        ))
+        .timeout(Duration::from_secs(45))
+        .json(&sans_raisonnement(corps))
+        .send()
+        .await
+    else {
+        return Vec::new();
+    };
+    if !resp.status().is_success() {
+        return Vec::new();
+    }
+    let Ok(v) = resp.json::<serde_json::Value>().await else {
+        return Vec::new();
+    };
+    let brut = v
+        .pointer("/choices/0/message/content")
+        .and_then(|c| c.as_str())
+        .unwrap_or_default();
+    lire_suggestions(brut)
+}
+
+/// Transformer la réponse du modèle en phrases proposables : une par ligne,
+/// sans numéro ni guillemets, ni trop longue, ni répétée. Trois au plus.
+pub fn lire_suggestions(brut: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for ligne in apres_reflexion(brut).lines() {
+        let mut t = ligne.trim();
+        // « 1. », « 2) », « - », « • » en tête.
+        t = t.trim_start_matches(['-', '*', '•']).trim();
+        let sans_numero = t.trim_start_matches(|c: char| c.is_ascii_digit());
+        if sans_numero.len() != t.len() {
+            t = sans_numero.trim_start_matches(['.', ')']).trim();
+        }
+        let t = t
+            .trim_matches(|c| matches!(c, '"' | '«' | '»' | '\'' | '“' | '”'))
+            .trim();
+        let mots = t.split_whitespace().count();
+        if !(2..=16).contains(&mots) || t.chars().count() > 110 {
+            continue;
+        }
+        if out.iter().any(|v| v.eq_ignore_ascii_case(t)) {
+            continue;
+        }
+        out.push(t.to_string());
+        if out.len() == 3 {
+            break;
+        }
+    }
+    out
+}
+
+// ============================================================================
 // Gérer la mémoire en le demandant, plutôt qu'à la main
 // ============================================================================
 
@@ -836,5 +1000,38 @@ mod memory_command_tests {
         let lignes: Vec<String> = (0..30).map(|i| format!("OUBLIE id-{i}")).collect();
         let a = lire_actions(&lignes.join("\n"));
         assert_eq!(a.len(), 20);
+    }
+}
+
+#[cfg(test)]
+mod suggestions_tests {
+    use super::*;
+
+    #[test]
+    fn les_phrases_sortent_nettoyees() {
+        let brut = "1. Aide-moi à écrire un message à mon propriétaire
+                    - « Explique-moi simplement l'inflation »
+                    3) Donne des idées de repas pour la semaine
+                    4. Une quatrième qui sera ignorée aussi";
+        assert_eq!(
+            lire_suggestions(brut),
+            vec![
+                "Aide-moi à écrire un message à mon propriétaire",
+                "Explique-moi simplement l'inflation",
+                "Donne des idées de repas pour la semaine",
+            ]
+        );
+    }
+
+    #[test]
+    fn les_lignes_hors_gabarit_sont_ecartees() {
+        let long = "mot ".repeat(40);
+        let brut = format!(
+            "OK
+{long}
+Résume-moi cet article
+résume-moi cet article"
+        );
+        assert_eq!(lire_suggestions(&brut), vec!["Résume-moi cet article"]);
     }
 }

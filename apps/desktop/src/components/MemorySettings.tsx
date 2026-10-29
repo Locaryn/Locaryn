@@ -2,6 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type MemoryEntry, type MemoryGroup, core } from "../lib/core";
 import { taskCenter } from "../lib/taskCenter";
+import { MemorySortPanel } from "./MemorySortPanel";
 
 /**
  * La mémoire est une liste de fiches, groupées, qui s'ouvrent sur leur
@@ -149,6 +150,8 @@ export function MemorySettings() {
       </div>
 
       {error && <div className="locaryn-vp-error">{error}</div>}
+
+      {!ouverte && <MemorySortPanel onFinished={() => void load()} />}
 
       {total === 0 ? (
         <div className="locaryn-memory-empty">

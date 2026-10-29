@@ -34,6 +34,38 @@ pub fn normalize_group(group: &str) -> &'static str {
     }
 }
 
+/// Un titre ramené à ce qui l'identifie : sans casse, sans accents, sans
+/// ponctuation. « Bot  Bastet », « bot bastet » et « Bot-Bastet » sont le même sujet.
+pub fn normalize_title(title: &str) -> String {
+    let mut out = String::new();
+    for c in title.trim().to_lowercase().chars() {
+        let c = match c {
+            'à' | 'â' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'î' | 'ï' => 'i',
+            'ô' | 'ö' => 'o',
+            'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            c if c.is_alphanumeric() => c,
+            _ => ' ',
+        };
+        if c == ' ' && out.ends_with(' ') {
+            continue;
+        }
+        out.push(c);
+    }
+    out.trim().to_string()
+}
+
+/// Ce que le tri de la mémoire a rangé.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Consolidation {
+    /// Fiches réunies en une seule.
+    pub fiches_reunies: u32,
+    /// Détails en double retirés.
+    pub details_retires: u32,
+}
+
 /// La forme brute, telle que la base la rend : `details` y est du JSON en
 /// texte, parce que SQLite n'a pas de type tableau. [`MemoryEntry`] le
 /// déplie pour tout le reste de l'application.
@@ -117,6 +149,36 @@ impl MemoryRepo {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(MemoryEntry::from).collect())
+    }
+
+    /// Ce que la mémoire retient d'un sujet, une ligne par fiche : celles dont
+    /// le titre, le résumé ou un détail nomment `sujet`.
+    ///
+    /// Sert à reconnaître un projet au-delà de son nom : la fiche « Bot
+    /// Bastet » qui dit « projet Campus » rattache une conversation sur le robot
+    /// au projet « Campus ». Un nom trop court (moins de trois caractères)
+    /// ne cherche rien : il rattacherait n'importe quoi.
+    pub async fn notes_sur(
+        &self,
+        user_id: Option<&str>,
+        sujet: &str,
+    ) -> Result<Vec<String>, StorageError> {
+        let aiguille = sujet.trim().to_lowercase();
+        if aiguille.chars().count() < 3 {
+            return Ok(Vec::new());
+        }
+        let fiches = self.list(user_id).await?;
+        Ok(fiches
+            .into_iter()
+            .filter(|f| {
+                f.title.to_lowercase().contains(&aiguille)
+                    || f.summary.to_lowercase().contains(&aiguille)
+                    || f.details
+                        .iter()
+                        .any(|d| d.to_lowercase().contains(&aiguille))
+            })
+            .map(|f| format!("{} : {}", f.title, f.summary))
+            .collect())
     }
 
     /// Une fiche par son identifiant.
@@ -291,6 +353,53 @@ impl MemoryRepo {
         .await?
         .ok_or_else(|| StorageError::NotFound(format!("mémoire {id}")))?;
         Ok(row.into())
+    }
+
+    /// Range la mémoire : réunit les fiches qui parlent du même sujet sous
+    /// deux écritures (« Bot Bastet » / « bot-bastet »), et retire les détails
+    /// qui se répètent. Rien n'est perdu : les détails de la fiche absorbée
+    /// passent dans celle qui reste, la plus ancienne.
+    pub async fn consolidate(&self, user_id: Option<&str>) -> Result<Consolidation, StorageError> {
+        let mut bilan = Consolidation::default();
+        let fiches = self.list(user_id).await?;
+        let mut grappes: Vec<((String, String), Vec<MemoryEntry>)> = Vec::new();
+        for f in fiches {
+            let cle = (f.group.clone(), normalize_title(&f.title));
+            match grappes.iter_mut().find(|(k, _)| *k == cle) {
+                Some((_, v)) => v.push(f),
+                None => grappes.push((cle, vec![f])),
+            }
+        }
+        for (_, mut grappe) in grappes {
+            // La plus ancienne reste : c'est celle dont l'identifiant a pu être
+            // gardé par un écran ouvert.
+            grappe.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            let reste = grappe.remove(0);
+            let mut details: Vec<String> = Vec::new();
+            let mut tous = reste.details.clone();
+            for autre in &grappe {
+                tous.extend(autre.details.iter().cloned());
+            }
+            let total = tous.len() as u32;
+            for d in tous {
+                if !details
+                    .iter()
+                    .any(|v| v.trim().eq_ignore_ascii_case(d.trim()))
+                {
+                    details.push(d);
+                }
+            }
+            if grappe.is_empty() && details.len() as u32 == total {
+                continue;
+            }
+            bilan.details_retires += total - details.len() as u32;
+            self.set_details(&reste.id, &details).await?;
+            for autre in grappe {
+                self.forget(&autre.id).await?;
+                bilan.fiches_reunies += 1;
+            }
+        }
+        Ok(bilan)
     }
 
     /// Oublie une fiche entière. Un oubli est définitif : garder une trace de
@@ -537,6 +646,53 @@ mod tests {
         let all = r.list(None).await.unwrap();
         let groupes: Vec<&str> = all.iter().map(|e| e.group.as_str()).collect();
         assert_eq!(groupes, vec!["vous", "zones", "personnes"]);
+    }
+
+    /// Deux écritures du même sujet ne font plus qu'une fiche, et ce qu'elles
+    /// savaient se réunit sans doublon.
+    #[tokio::test]
+    async fn le_tri_reunit_les_fiches_du_meme_sujet() {
+        let r = repo().await;
+        r.remember(None, "zones", "Bot Bastet", "Robot de campus", "assistant")
+            .await
+            .unwrap();
+        r.remember(None, "zones", "bot-bastet", "Pile ROS2", "assistant")
+            .await
+            .unwrap();
+        r.remember(
+            None,
+            "zones",
+            "Bot  Bastet ",
+            "robot de campus",
+            "assistant",
+        )
+        .await
+        .unwrap();
+        r.remember(
+            None,
+            "vous",
+            "Bot Bastet",
+            "Autre groupe, autre fiche",
+            "assistant",
+        )
+        .await
+        .unwrap();
+        assert_eq!(r.list(None).await.unwrap().len(), 4);
+
+        let bilan = r.consolidate(None).await.unwrap();
+        assert_eq!(bilan.fiches_reunies, 2);
+
+        let fiches = r.list(None).await.unwrap();
+        assert_eq!(fiches.len(), 2, "un sujet par groupe");
+        let zone = fiches.iter().find(|f| f.group == "zones").unwrap();
+        assert_eq!(
+            zone.details.len(),
+            2,
+            "Robot de campus + Pile ROS2, sans doublon"
+        );
+
+        // Un second tri n'a plus rien à faire.
+        assert_eq!(r.consolidate(None).await.unwrap(), Consolidation::default());
     }
 
     #[tokio::test]

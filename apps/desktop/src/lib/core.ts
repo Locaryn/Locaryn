@@ -479,6 +479,31 @@ export interface MemoryEntry {
 
 /** Ce qu'a fait la boîte de commande, après avoir traduit une instruction en
  *  actions sur des fiches existantes. */
+/** Où en est le tri de la mémoire. */
+export interface MemorySortStatus {
+  running: boolean;
+  phase: string;
+  conversationsTotal: number;
+  conversationsDone: number;
+  tasksTotal: number;
+  tasksDone: number;
+  factsLearned: number;
+  cardsMerged: number;
+  suggestionsWritten: number;
+  /** Les dernières conversations lues, la plus récente d'abord. */
+  recent: string[];
+  finished: boolean;
+  error: string | null;
+  /** Une fois fini : secondes avant le déchargement du modèle inutilisé. */
+  unloadInSecs: number | null;
+}
+
+/** Les phrases d'accueil écrites d'avance, une série par niveau. */
+export interface WelcomeSuggestions {
+  simple: string[];
+  expert: string[];
+}
+
 export interface MemoryCommandResult {
   summary: string;
   applied: number;
@@ -2202,6 +2227,11 @@ export interface CoreApi {
   forgetAllMemory(): Promise<number>;
   /** La boîte de commande : décrire ce qu'il faut changer, plutôt que le faire à la main. */
   runMemoryCommand(instruction: string): Promise<MemoryCommandResult>;
+  /** Trie toute la mémoire maintenant, sans attendre l'inactivité du modèle. */
+  forceMemorySort(): Promise<void>;
+  memorySortStatus(): Promise<MemorySortStatus>;
+  /** Les phrases proposées à l'ouverture d'une conversation. */
+  welcomeSuggestions(): Promise<WelcomeSuggestions>;
   listExtensions(): Promise<InstalledExtension[]>;
   /** La liste canonique des capacités, telle que le serveur la connaît. */
   listCapabilities(): Promise<Capability[]>;
@@ -2791,6 +2821,9 @@ const tauriCore: CoreApi = {
   forgetAllMemory: () => invoke<number>("forget_all_memory"),
   runMemoryCommand: (instruction) =>
     invoke<MemoryCommandResult>("run_memory_command", { instruction }),
+  forceMemorySort: () => invoke<void>("force_memory_sort"),
+  memorySortStatus: () => invoke<MemorySortStatus>("memory_sort_status"),
+  welcomeSuggestions: () => invoke<WelcomeSuggestions>("get_welcome_suggestions"),
   listExtensions: () => invoke<InstalledExtension[]>("list_extensions"),
   listCapabilities: () => invoke<Capability[]>("list_capabilities"),
   coreStatus: (id) => invoke<CoreStatus>("core_status", { id }),
@@ -5002,6 +5035,25 @@ Contenu de démonstration, avec **du gras** et une liste :
     demoUserMemory = [];
     return n;
   },
+  forceMemorySort: async () => {
+    throw new Error("Mode aperçu navigateur : le tri a besoin d'un modèle chargé.");
+  },
+  memorySortStatus: async () => ({
+    running: false,
+    phase: "",
+    conversationsTotal: 0,
+    conversationsDone: 0,
+    tasksTotal: 0,
+    tasksDone: 0,
+    factsLearned: 0,
+    cardsMerged: 0,
+    suggestionsWritten: 0,
+    recent: [],
+    finished: false,
+    error: null,
+    unloadInSecs: null,
+  }),
+  welcomeSuggestions: async () => ({ simple: [], expert: [] }),
   runMemoryCommand: async () => ({
     summary: "Mode aperçu navigateur : la boîte de commande a besoin d'un moteur actif.",
     applied: 0,

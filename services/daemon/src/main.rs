@@ -2691,14 +2691,35 @@ async fn suggest_project(State(s): State<Arc<DaemonState>>, Path(id): Path<Strin
     let Ok(projets) = s.storage.projects.list().await else {
         return rien();
     };
-    let candidats: Vec<locaryn_agent_runtime::titling::ProjetConnu> = projets
+    let mut candidats: Vec<locaryn_agent_runtime::titling::ProjetConnu> = Vec::new();
+    for p in projets
         .iter()
         .filter(|p| p.id != sess.project_id && p.name != "Conversations libres")
-        .map(|p| locaryn_agent_runtime::titling::ProjetConnu {
+    {
+        // Ce qui permet de reconnaître le projet au-delà de son nom : ses
+        // conversations récentes, et ce que la mémoire en sait.
+        let titres: Vec<String> = s
+            .storage
+            .sessions
+            .list_for_project(p.id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|c| c.title)
+            .take(6)
+            .collect();
+        let notes = s
+            .storage
+            .memory
+            .notes_sur(None, &p.name)
+            .await
+            .unwrap_or_default();
+        candidats.push(locaryn_agent_runtime::titling::ProjetConnu {
             id: p.id.to_string(),
             name: p.name.clone(),
-        })
-        .collect();
+            indices: locaryn_agent_runtime::titling::indices_du_projet(&p.path, &titres, &notes),
+        });
+    }
     if candidats.is_empty() {
         return rien();
     }

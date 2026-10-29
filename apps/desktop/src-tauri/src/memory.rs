@@ -14,7 +14,7 @@ use crate::Core;
 use locaryn_agent_runtime::titling::{self, FicheResumee, MemoryAction};
 use locaryn_storage::memory::MemoryEntry;
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 pub async fn list_memory(core: State<'_, Core>) -> Result<Vec<MemoryEntry>, String> {
@@ -317,4 +317,56 @@ pub async fn list_model_metrics(
     core: State<'_, Core>,
 ) -> Result<Vec<locaryn_storage::metrics::ModelMetric>, String> {
     core.storage.metrics.list().await.map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Le tri forcé et les phrases d'accueil
+// ============================================================================
+
+/// Lance le tri complet de la mémoire, sans attendre l'inactivité. Rend la
+/// main aussitôt ; l'avancement se lit avec `memory_sort_status`.
+#[tauri::command]
+pub async fn force_memory_sort(app: tauri::AppHandle) -> Result<(), String> {
+    if crate::memory_gardener::progression().running {
+        return Err("Un tri est déjà en cours.".into());
+    }
+    // Refuser tout de suite quand il n'y a pas de modèle chargé : l'erreur
+    // arrive dans la réponse du clic, pas dans un état lu plus tard.
+    {
+        let core = app.state::<Core>();
+        let providers = core.storage.providers.active().await.map_err(|e| e.to_string())?;
+        let charge = match providers {
+            Some(p) => {
+                p.engine == locaryn_shared_types::ProviderEngine::LlamaCpp
+                    && core.supervisor.is_healthy(&p.engine).await
+            }
+            None => false,
+        };
+        if !charge {
+            return Err(
+                "Aucun modèle local n'est chargé. Envoyez un message pour le charger, puis                  relancez le tri."
+                    .into(),
+            );
+        }
+    }
+    tauri::async_runtime::spawn(async move {
+        let core = app.state::<Core>();
+        if let Err(e) = crate::memory_gardener::trier_maintenant(&core).await {
+            tracing::warn!(erreur = %e, "tri forcé de la mémoire interrompu");
+        }
+    });
+    Ok(())
+}
+
+/// Où en est le tri : conversations lues, tâches faites, ce qui a été appris.
+#[tauri::command]
+pub fn memory_sort_status() -> crate::memory_gardener::Progression {
+    crate::memory_gardener::progression()
+}
+
+/// Les phrases proposées à l'ouverture d'une conversation, écrites pendant les
+/// temps morts d'après ce que la mémoire sait de la personne.
+#[tauri::command]
+pub fn get_welcome_suggestions(core: State<'_, Core>) -> crate::memory_gardener::PhrasesAccueil {
+    crate::memory_gardener::lire_phrases(&core.data_dir)
 }

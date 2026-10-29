@@ -8,6 +8,22 @@
 // (`Téléchargement de ${nom}`) : chaque « {} » est une valeur gardée telle quelle.
 
 export const EN_EXACT: Record<string, string> = {
+  "Ranger ma mémoire maintenant": "Tidy my memory now",
+  "Trier la mémoire maintenant": "Sort memory now",
+  "Locaryn range déjà tout seul quand vous ne l'utilisez pas. Ce bouton le fait tout de suite, sur toutes vos conversations.":
+    "Locaryn already tidies up by itself when you are not using it. This button does it right now, across all your conversations.",
+  "Relit tout l'historique, range les fiches et prépare les phrases d'accueil, sans attendre l'inactivité du modèle. Le modèle reste chargé pendant le tri.":
+    "Rereads the whole history, sorts the cards and prepares the welcome phrases, without waiting for the model to be idle. The model stays loaded during the sort.",
+  Trier: "Sort",
+  "Tri en cours…": "Sorting…",
+  "Conversations analysées": "Conversations analysed",
+  "Aucun modèle local n'est chargé. Envoyez un message pour le charger, puis relancez le tri.":
+    "No local model is loaded. Send a message to load it, then start the sort again.",
+  "Posez une question ou demandez un coup de main : tout reste sur votre ordinateur.":
+    "Ask a question or ask for a hand: everything stays on your computer.",
+  "Aide-moi à écrire un message poli": "Help me write a polite message",
+  "Explique-moi un sujet simplement": "Explain a topic to me simply",
+  "Donne-moi des idées pour ce week-end": "Give me ideas for this weekend",
   "Paramètres système avancés": "Advanced system settings",
   "Découvrir et installer d'autres modèles": "Discover and install more models",
   "Choisir, supprimer, ouvrir le dossier": "Choose, delete, open the folder",
