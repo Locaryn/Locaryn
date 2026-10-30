@@ -13,6 +13,10 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-purple.svg)](https://github.com/Locaryn/locaryn/releases)
 [![Stars](https://img.shields.io/github/stars/Locaryn/locaryn?style=flat&color=yellow)](https://github.com/Locaryn/locaryn)
 
+<video src="https://github.com/Locaryn/Locaryn/raw/main/docs/media/locaryn-promo.mp4" poster="https://github.com/Locaryn/Locaryn/raw/main/docs/media/locaryn-promo-poster.jpg" controls muted playsinline width="100%">
+  <a href="docs/media/locaryn-promo.mp4"><img src="docs/media/locaryn-promo-poster.jpg" alt="Locaryn en 90 secondes" width="100%"></a>
+</video>
+
 [✨ Points Forts](#-pourquoi-locaryn--points-forts-et-avantages-clés) •
 [🏛 Architecture](#-architecture-unifiée) •
 [🧩 Extensions & Noyau](#-écosystème-dextensions--plugins-qui-modifient-le-noyau) •
