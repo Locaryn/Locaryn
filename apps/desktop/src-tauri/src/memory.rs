@@ -334,7 +334,12 @@ pub async fn force_memory_sort(app: tauri::AppHandle) -> Result<(), String> {
     // arrive dans la réponse du clic, pas dans un état lu plus tard.
     {
         let core = app.state::<Core>();
-        let providers = core.storage.providers.active().await.map_err(|e| e.to_string())?;
+        let providers = core
+            .storage
+            .providers
+            .active()
+            .await
+            .map_err(|e| e.to_string())?;
         let charge = match providers {
             Some(p) => {
                 p.engine == locaryn_shared_types::ProviderEngine::LlamaCpp

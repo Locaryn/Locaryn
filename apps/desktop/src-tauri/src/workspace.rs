@@ -664,7 +664,10 @@ mod tests {
         assert_eq!(h[0].sujet, "feat: plateau");
         assert_eq!((h[0].ajouts, h[0].retraits), (42, 4));
         assert_eq!(h[0].fichiers.len(), 3);
-        assert_eq!(h[0].fichiers[2].ajouts, None, "un binaire n'a pas de lignes");
+        assert_eq!(
+            h[0].fichiers[2].ajouts, None,
+            "un binaire n'a pas de lignes"
+        );
         assert_eq!(h[1].fichiers[0].chemin, "README.md");
     }
 

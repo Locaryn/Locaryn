@@ -86,9 +86,17 @@ struct Echange {
 /// toutes les conversations non éphémères, y compris les conversations
 /// libres : c'est là que se disent le métier et les goûts. Les plus anciens
 /// d'abord.
-async fn collecter(core: &Core, depuis: Option<chrono::DateTime<chrono::Utc>>) -> Result<Vec<Echange>, String> {
+async fn collecter(
+    core: &Core,
+    depuis: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Vec<Echange>, String> {
     let mut echanges = Vec::new();
-    let projets = core.storage.projects.list().await.map_err(|e| e.to_string())?;
+    let projets = core
+        .storage
+        .projects
+        .list()
+        .await
+        .map_err(|e| e.to_string())?;
     for projet in projets {
         let Ok(sessions) = core.storage.sessions.list_for_project(projet.id).await else {
             continue;
@@ -101,7 +109,10 @@ async fn collecter(core: &Core, depuis: Option<chrono::DateTime<chrono::Utc>>) -
             let Ok(msgs) = core.storage.messages.list_for_session(session.id).await else {
                 continue;
             };
-            let titre = session.title.clone().unwrap_or_else(|| "Conversation".into());
+            let titre = session
+                .title
+                .clone()
+                .unwrap_or_else(|| "Conversation".into());
             let mut question: Option<&str> = None;
             for m in &msgs {
                 match m.role {
@@ -113,8 +124,11 @@ async fn collecter(core: &Core, depuis: Option<chrono::DateTime<chrono::Utc>>) -
                                     quand: m.created_at,
                                     session: session.id,
                                     titre: titre.clone(),
-                                    texte: format!("Personne : {q}
-Assistant : {}", m.content),
+                                    texte: format!(
+                                        "Personne : {q}
+Assistant : {}",
+                                        m.content
+                                    ),
                                 });
                             }
                         }
@@ -267,8 +281,9 @@ fn phrases_perimees(data_dir: &std::path::Path) -> bool {
     let p = lire_phrases(data_dir);
     p.simple.is_empty()
         || p.expert.is_empty()
-        || p.generated_at
-            .is_none_or(|t| chrono::Utc::now() - t > chrono::Duration::hours(SUGGESTIONS_VALIDITE_H))
+        || p.generated_at.is_none_or(|t| {
+            chrono::Utc::now() - t > chrono::Duration::hours(SUGGESTIONS_VALIDITE_H)
+        })
 }
 
 /// Écrire les phrases d'accueil des deux styles d'après la mémoire. Rend le

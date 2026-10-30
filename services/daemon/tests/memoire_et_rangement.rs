@@ -7,13 +7,13 @@
 //! rien — il ne retient que ce qui est réellement dans la demande, donc un
 //! indice absent du prompt est un indice perdu.
 
-use axum::{Json, Router, routing::post};
+use axum::{routing::post, Json, Router};
 use locaryn_agent_runtime::titling::{
-    ProjetConnu, ask_for_memory, ask_for_project, indices_du_projet,
+    ask_for_memory, ask_for_project, indices_du_projet, ProjetConnu,
 };
 use locaryn_shared_types::{MessageRole, TrustLevel};
-use locaryn_storage::{Storage, open_in_memory};
-use serde_json::{Value, json};
+use locaryn_storage::{open_in_memory, Storage};
+use serde_json::{json, Value};
 
 /// Les mots d'une phrase assez longs pour désigner quelque chose.
 fn mots(texte: &str) -> Vec<String> {
@@ -148,7 +148,10 @@ async fn le_metier_les_gouts_et_les_projets_se_retiennent() {
         "drones FPV",
         "projet Campus",
     ] {
-        assert!(bloc.contains(attendu), "« {attendu} » absent du prompt : {bloc}");
+        assert!(
+            bloc.contains(attendu),
+            "« {attendu} » absent du prompt : {bloc}"
+        );
     }
 }
 
@@ -175,7 +178,12 @@ async fn un_echange_banal_n_apprend_rien() {
     )
     .await;
     assert_eq!(n, 0);
-    assert!(s.memory.as_system_block(None).await.expect("bloc").is_none());
+    assert!(s
+        .memory
+        .as_system_block(None)
+        .await
+        .expect("bloc")
+        .is_none());
 }
 
 /// Les projets tels que le service les présente au modèle, avec leurs indices.
@@ -214,7 +222,11 @@ async fn une_conversation_libre_est_proposee_pour_le_projet_dont_elle_parle() {
         .expect("conteneur");
     let campus = s
         .projects
-        .create("D:\\Projets\\robots-campus", "Campus", TrustLevel::Untrusted)
+        .create(
+            "D:\\Projets\\robots-campus",
+            "Campus",
+            TrustLevel::Untrusted,
+        )
         .await
         .expect("projet");
     s.projects
@@ -232,11 +244,19 @@ async fn une_conversation_libre_est_proposee_pour_le_projet_dont_elle_parle() {
         .await
         .expect("conversation");
     s.messages
-        .append(conv.id, MessageRole::User, "Comment calibrer le lidar de Bastet ?")
+        .append(
+            conv.id,
+            MessageRole::User,
+            "Comment calibrer le lidar de Bastet ?",
+        )
         .await
         .expect("message");
     s.messages
-        .append(conv.id, MessageRole::Assistant, "Place le robot face à un mur plat.")
+        .append(
+            conv.id,
+            MessageRole::Assistant,
+            "Place le robot face à un mur plat.",
+        )
         .await
         .expect("message");
     let echange = "Comment calibrer le lidar de Bastet ?\nPlace le robot face à un mur plat.";
@@ -272,13 +292,12 @@ async fn une_conversation_libre_est_proposee_pour_le_projet_dont_elle_parle() {
         .expect("déplacement");
     let dans_campus = s.sessions.list_for_project(campus.id).await.expect("liste");
     assert!(dans_campus.iter().any(|c| c.id == conv.id));
-    assert!(
-        s.sessions
-            .list_for_project(libre.id)
-            .await
-            .expect("liste")
-            .is_empty()
-    );
+    assert!(s
+        .sessions
+        .list_for_project(libre.id)
+        .await
+        .expect("liste")
+        .is_empty());
 }
 
 #[tokio::test]
@@ -291,7 +310,11 @@ async fn une_conversation_sans_rapport_ne_propose_rien() {
         .await
         .expect("conteneur");
     s.projects
-        .create("D:\\Projets\\robots-campus", "Campus", TrustLevel::Untrusted)
+        .create(
+            "D:\\Projets\\robots-campus",
+            "Campus",
+            TrustLevel::Untrusted,
+        )
         .await
         .expect("projet");
     apprendre(&s, &endpoint, ECHANGE_BASTET).await;
@@ -305,5 +328,8 @@ async fn une_conversation_sans_rapport_ne_propose_rien() {
         &liste,
     )
     .await;
-    assert_eq!(choix, None, "mieux vaut ne rien proposer qu'un rangement à côté");
+    assert_eq!(
+        choix, None,
+        "mieux vaut ne rien proposer qu'un rangement à côté"
+    );
 }
