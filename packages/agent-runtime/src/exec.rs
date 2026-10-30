@@ -247,6 +247,8 @@ pub async fn execute_tool_call(
                     reason: decision.reason.clone(),
                     diff: decision.diff.clone(),
                     is_remote: ctx.remote_target.is_some(),
+                    installation: tool_spec
+                        .is_some_and(|spec| crate::tools::est_une_installation(spec, &args)),
                 })
                 .await;
             match (dispatch_trust, tool_spec) {

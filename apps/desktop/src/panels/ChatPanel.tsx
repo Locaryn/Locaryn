@@ -1365,6 +1365,7 @@ ${d.texte}`
         reason: ev.reason,
         diff: ev.diff,
         is_remote: ev.is_remote,
+        installation: ev.installation === true,
       });
       // Une bannière du système, parce que c'est le seul cas où ne pas
       // prévenir **arrête le travail** : l'agent reste garé tant que personne
@@ -3335,7 +3336,9 @@ ${preview}`,
         <ToolApprovalModal
           approval={approval}
           onRaiseTrust={
-            sessionId
+            // Une installation ou un appel distant redemande même en Autonome :
+            // le bouton ne clôturerait pas la demande, il semblerait mort.
+            sessionId && approval && !approval.installation && !approval.is_remote
               ? () =>
                   void core
                     .setSessionTrust(sessionId, "autonomous")

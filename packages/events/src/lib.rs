@@ -43,6 +43,11 @@ pub enum StreamEvent {
         /// True when this call crosses the machine boundary (SSH, MCP HTTP,
         /// network-aware extensions). Drives an extra banner in the modal.
         is_remote: bool,
+        /// Une installation (morph, skill, connecteur, logiciel du web) : le
+        /// niveau Autonome la demande quand même, donc proposer de passer en
+        /// Autonome ne clôturerait pas cette demande.
+        #[serde(default)]
+        installation: bool,
     },
     ToolResult {
         call_id: String,

@@ -446,6 +446,7 @@ async fn relay_approval(
             reason: reason.clone(),
             diff: None,
             is_remote: false,
+            installation: false,
         })
         .await;
 

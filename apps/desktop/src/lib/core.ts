@@ -286,6 +286,8 @@ export interface ToolApprovalRequest {
   diff: string | null;
   /** True if the call crosses the machine boundary. Drives the banner. */
   is_remote: boolean;
+  /** Une installation : le niveau Autonome la demande quand même. */
+  installation?: boolean;
 }
 
 /** What the frontend sends back to `approve_tool_call` IPC. */
@@ -1367,6 +1369,7 @@ export type StreamEvent =
       reason: string;
       diff: string | null;
       is_remote: boolean;
+      installation?: boolean;
     }
   | { type: "tool_result"; call_id: string; ok: boolean; output: string }
   /** Ce qu'un outil d'extension écrit pendant qu'il tourne, au fil de l'eau. */
