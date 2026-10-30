@@ -13,9 +13,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20Web-purple.svg)](https://github.com/Locaryn/locaryn/releases)
 [![Stars](https://img.shields.io/github/stars/Locaryn/locaryn?style=flat&color=yellow)](https://github.com/Locaryn/locaryn)
 
-<a href="docs/media/locaryn-promo.mp4"><img src="docs/media/locaryn-promo-preview.webp" alt="Locaryn : premier lancement en mode débutant" width="100%"></a>
-
-**[▶ Voir la présentation complète (90 s, avec le son)](docs/media/locaryn-promo.mp4)**
+https://github.com/user-attachments/assets/c02c28f7-7c5a-418f-b36f-e29d7850744b
 
 [✨ Points Forts](#-pourquoi-locaryn--points-forts-et-avantages-clés) •
 [🏛 Architecture](#-architecture-unifiée) •
