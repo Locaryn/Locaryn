@@ -111,7 +111,7 @@ pub(crate) fn specs_app() -> Vec<ToolSpec> {
         ),
         spec(
             "app_install_extension",
-            "Installe et active une extension (morph, skill ou plugin) dans Locaryn, avec les permissions qu'elle demande. `source` : un `install_source` rendu par app_search_extensions, un dépôt « propriétaire/dépôt » ou une adresse git. Ses skills et ses outils sont disponibles au message suivant.",
+            "Installe et active une extension (morph, skill ou plugin) dans Locaryn, avec les permissions qu'elle demande. `source` : un `install_source` rendu par app_search_extensions, un dépôt « propriétaire/dépôt », un lien GitHub (y compris vers un sous-dossier : https://github.com/propriétaire/dépôt/tree/main/skills/nom), une adresse git, ou le chemin complet d'un dossier ou d'une archive .zip sur le disque (un .zip joint à la conversation s'installe tel quel, sans le décompresser). Le type (skill, morph, plugin) est reconnu à l'installation : inutile de le préciser. Une configuration JSON de serveur MCP passe par app_add_connector. Ses skills et ses outils sont disponibles au message suivant.",
             json!({
                 "type": "object",
                 "required": ["source"],

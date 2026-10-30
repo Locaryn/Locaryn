@@ -2374,7 +2374,7 @@ async fn envoyer_message(
     let avec_depots = if !mentions_fichiers_deposes.is_empty() {
         let liste = mentions_fichiers_deposes.join("\n");
         format!(
-            "{avec_documents}\n\n[Fichiers joints déposés dans votre dossier de travail actuel :\n{liste}\nVous pouvez les explorer, les lire ou les analyser directement avec vos outils (commandes shell, python, scripts, read_file, etc.)]"
+            "{avec_documents}\n\n[Fichiers joints déposés dans votre dossier de travail actuel :\n{liste}\nVous pouvez les explorer, les lire ou les analyser directement avec vos outils (commandes shell, python, scripts, read_file, etc.). Une archive .zip d'extension (skill, morph, plugin) s'installe en passant son chemin à app_install_extension.]"
         )
     } else {
         avec_documents
