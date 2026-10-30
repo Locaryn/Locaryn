@@ -143,6 +143,9 @@ export function DynamicPluginWidget({ contribution, context, className, style }:
     host.innerHTML = "";
     const el = document.createElement(tag);
     el.setAttribute("data-locaryn-extension-version", contribution.extensionVersion);
+    // De quoi relire ses propres fichiers (`core.readExtensionAsset`), comme
+    // le catalogue de modèles qu'elle livre, sans que l'hôte les connaisse.
+    el.setAttribute("data-locaryn-extension-id", contribution.extensionId);
     // Lisible depuis CSS sans une ligne de script :
     // `mon-panneau[data-locaryn-surface="desktop"] { … }`.
     el.setAttribute("data-locaryn-surface", SURFACE);

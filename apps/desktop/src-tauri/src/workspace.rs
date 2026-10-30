@@ -565,9 +565,108 @@ pub async fn workspace_diff(
     Ok(texte)
 }
 
+// ── L'historique : chaque commit et ce qu'il a changé ───────────────────────
+
+/// Combien de commits l'onglet montre : l'historique d'une conversation, pas
+/// celui du dépôt entier.
+const COMMITS_MAX: u32 = 30;
+/// Ce qui sépare les champs d'un en-tête de commit dans la sortie de git.
+const SEP: char = '\u{1f}';
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct FichierCommit {
+    pub chemin: String,
+    /// `None` pour un fichier binaire : git ne compte pas ses lignes.
+    pub ajouts: Option<u32>,
+    pub retraits: Option<u32>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Commit {
+    pub hash: String,
+    pub court: String,
+    pub sujet: String,
+    pub auteur: String,
+    /// Horodatage ISO 8601.
+    pub date: String,
+    pub ajouts: u32,
+    pub retraits: u32,
+    pub fichiers: Vec<FichierCommit>,
+}
+
+/// La sortie de `git log --numstat` avec l'en-tête `\x1e%H\x1f%h\x1f%s\x1f%an\x1f%aI`.
+fn lire_historique(sortie: &str) -> Vec<Commit> {
+    let mut commits = Vec::new();
+    for bloc in sortie.split('\u{1e}').filter(|b| !b.trim().is_empty()) {
+        let mut lignes = bloc.lines();
+        let Some(tete) = lignes.next() else { continue };
+        let champs: Vec<&str> = tete.split(SEP).collect();
+        let [hash, court, sujet, auteur, date] = champs[..] else {
+            continue;
+        };
+        let mut c = Commit {
+            hash: hash.into(),
+            court: court.into(),
+            sujet: sujet.into(),
+            auteur: auteur.into(),
+            date: date.into(),
+            ajouts: 0,
+            retraits: 0,
+            fichiers: Vec::new(),
+        };
+        for l in lignes.filter(|l| !l.trim().is_empty()) {
+            let mut parts = l.splitn(3, '\t');
+            let (Some(a), Some(r), Some(p)) = (parts.next(), parts.next(), parts.next()) else {
+                continue;
+            };
+            let (ajouts, retraits) = (a.parse::<u32>().ok(), r.parse::<u32>().ok());
+            c.ajouts += ajouts.unwrap_or(0);
+            c.retraits += retraits.unwrap_or(0);
+            c.fichiers.push(FichierCommit {
+                chemin: p.to_string(),
+                ajouts,
+                retraits,
+            });
+        }
+        commits.push(c);
+    }
+    commits
+}
+
+/// Les derniers commits du dépôt de la conversation, fichier par fichier.
+#[tauri::command]
+pub async fn workspace_commits(
+    core: State<'_, Core>,
+    session_id: Uuid,
+) -> Result<Vec<Commit>, String> {
+    let racine = racine(&core, session_id).await?;
+    let max = format!("-{COMMITS_MAX}");
+    let format = "--format=%x1e%H%x1f%h%x1f%s%x1f%an%x1f%aI";
+    let sortie = git(&racine, &["log", &max, "--numstat", format]).await?;
+    if !sortie.status.success() {
+        // Pas de dépôt, ou pas encore de commit : un historique vide.
+        return Ok(Vec::new());
+    }
+    Ok(lire_historique(&String::from_utf8_lossy(&sortie.stdout)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn l_historique_se_lit_avec_ses_totaux() {
+        let sortie = "\u{1e}abc123\u{1f}abc\u{1f}feat: plateau\u{1f}Locaryn\u{1f}2026-10-29T22:00:00+01:00\n\n\
+                      12\t0\tindex.html\n30\t4\tsrc/app.js\n-\t-\tlogo.png\n\
+                      \u{1e}def456\u{1f}def\u{1f}init\u{1f}Moi\u{1f}2026-10-29T21:00:00+01:00\n\n1\t0\tREADME.md\n";
+        let h = lire_historique(sortie);
+        assert_eq!(h.len(), 2);
+        assert_eq!(h[0].sujet, "feat: plateau");
+        assert_eq!((h[0].ajouts, h[0].retraits), (42, 4));
+        assert_eq!(h[0].fichiers.len(), 3);
+        assert_eq!(h[0].fichiers[2].ajouts, None, "un binaire n'a pas de lignes");
+        assert_eq!(h[1].fichiers[0].chemin, "README.md");
+    }
 
     #[test]
     fn le_statut_git_se_lit_renommages_compris() {

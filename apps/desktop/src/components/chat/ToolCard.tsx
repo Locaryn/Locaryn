@@ -13,6 +13,7 @@ type Props = {
 const TOOL_ICONS: Record<string, IconName> = {
   read_file: "models",
   write_file: "edit",
+  edit_file: "edit",
   run_command: "cpu",
   search: "search",
   list_dir: "project",

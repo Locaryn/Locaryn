@@ -1,5 +1,6 @@
 import { Icon, highlightCode, languageFromPath, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
+import { chargeDesModules, documentApercu, dossierDe } from "../../lib/apercuHtml";
 import { type WorkspaceFile, core, isTauri } from "../../lib/core";
 import { toFrameUrl } from "../../lib/media";
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
@@ -19,6 +20,19 @@ function renduPour(chemin: string): Rendu {
   if (["html", "htm"].includes(ext)) return "html";
   if (ext === "svg") return "svg";
   return null;
+}
+
+/**
+ * La source du cadre d'une page HTML. Donnée en `srcDoc` avec l'adresse de
+ * son dossier, elle trouve son CSS, ses scripts et ses images, et garde un
+ * `localStorage` (voir `documentApercu`). Une page à modules est servie par
+ * son chemin : ses modules exigent l'origine du protocole des fichiers.
+ */
+function cadreHtml(contenu: string, fichier: WorkspaceFile): { src: string } | { srcDoc: string } {
+  if (!isTauri || !fichier.absolu) return { srcDoc: documentApercu(contenu) };
+  const url = toFrameUrl(fichier.absolu, `${fichier.taille}-${contenu.length}`);
+  if (chargeDesModules(contenu)) return { src: url };
+  return { srcDoc: documentApercu(contenu, dossierDe(url)) };
 }
 
 function taille(octets: number): string {
@@ -209,12 +223,7 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
             className="lw-viewer-frame"
             title={fichier.chemin}
             sandbox="allow-scripts"
-            // Servie par son chemin, la page trouve son CSS, son JS et ses
-            // images ; le contenu en version recharge l'aperçu quand le
-            // modèle la réécrit. Sans chemin (démo), le HTML seul.
-            {...(isTauri && fichier.absolu
-              ? { src: toFrameUrl(fichier.absolu, `${fichier.taille}-${contenu.length}`) }
-              : { srcDoc: contenu })}
+            {...cadreHtml(contenu, fichier)}
           />
         ) : (
           <div className="lw-viewer-svg">

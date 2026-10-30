@@ -1,5 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
+import { documentApercu } from "../lib/apercuHtml";
 import { type ModelAbilities, core } from "../lib/core";
 import { type RunView, clearRun, getRun, subscribeRun } from "../lib/runPanel";
 
@@ -158,7 +159,13 @@ function WebView({ html }: { html: string }) {
   // `sandbox` without allow-same-origin: the document is model-generated, so it
   // must not reach this app's origin, storage or cookies. Scripts are allowed
   // so a demo page actually behaves like one, but they run walled off.
+  // documentApercu gives it a localStorage that the opaque origin denies.
   return (
-    <iframe className="locaryn-run-web" title="Aperçu" sandbox="allow-scripts" srcDoc={html} />
+    <iframe
+      className="locaryn-run-web"
+      title="Aperçu"
+      sandbox="allow-scripts"
+      srcDoc={documentApercu(html)}
+    />
   );
 }

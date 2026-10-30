@@ -7443,6 +7443,7 @@ pub fn run() {
                 startup::open_splash(app.handle())?;
             }
             let handle = app.handle().clone();
+            extensions::brancher_progression(handle.clone());
             std::thread::Builder::new()
                 .name("locaryn-boot".into())
                 .spawn(move || {
@@ -7571,6 +7572,7 @@ pub fn run() {
             workspace::workspace_open_with,
             workspace::open_path_with,
             workspace::workspace_changes,
+            workspace::workspace_commits,
             workspace::workspace_diff,
             get_inference_config,
             set_inference_config,

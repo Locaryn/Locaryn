@@ -6,6 +6,7 @@ import {
   type ConnectionInfo,
   core,
 } from "./core";
+import { getProfile } from "./profile";
 
 /**
  * Interface d'interaction exposée à tous les scripts et Web Components de plugins.
@@ -105,11 +106,34 @@ export interface LocarynPluginAPI {
   ui: {
     showToast: (message: string, type?: "info" | "success" | "warning" | "error") => void;
     dispatchAction: (actionId: string, payload?: unknown) => void;
+    /** L'interface que la personne a choisie : `simple` pour qui débute,
+     *  `expert` sinon. Un panneau s'en sert pour taire ses réglages fins. */
+    mode: () => "simple" | "expert";
+  };
+  models: {
+    /** Télécharger un modèle de catalogue, comme le bouton du marketplace :
+     *  `tag` est l'adresse du fichier principal, `downloads` ses compagnons.
+     *  La progression s'affiche dans la bulle et le centre de tâches ; la
+     *  promesse se résout à la fin. */
+    install: (spec: {
+      tag: string;
+      downloads?: { url: string; file: string; label?: string }[];
+    }) => Promise<void>;
   };
   events: {
     on: (eventName: string, handler: (data: unknown) => void) => () => void;
     emit: (eventName: string, data?: unknown) => void;
   };
+}
+
+/** L'hôte installe le modèle demandé par un panneau, avec son centre de tâches. */
+export const MODEL_INSTALL_EVENT = "locaryn:plugin-install-model";
+
+export interface PluginModelInstallRequest {
+  tag: string;
+  downloads?: { url: string; file: string; label?: string }[];
+  resolve: () => void;
+  reject: (e: Error) => void;
 }
 
 class PluginBridgeManager {
@@ -280,6 +304,17 @@ class PluginBridgeManager {
             }),
           );
         },
+        mode: () => getProfile().mode,
+      },
+      models: {
+        install: (spec) =>
+          new Promise<void>((resolve, reject) => {
+            window.dispatchEvent(
+              new CustomEvent(MODEL_INSTALL_EVENT, {
+                detail: { ...spec, resolve, reject },
+              }),
+            );
+          }),
       },
       events: {
         on: (eventName: string, handler: (data: unknown) => void) => {

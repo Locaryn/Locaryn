@@ -1081,6 +1081,26 @@ export interface WorkspaceChange {
   retraits: number | null;
 }
 
+export interface CommitFile {
+  chemin: string;
+  /** `null` pour un fichier binaire. */
+  ajouts: number | null;
+  retraits: number | null;
+}
+
+/** Un commit du dépôt de la conversation et ce qu'il a changé. */
+export interface WorkspaceCommit {
+  hash: string;
+  court: string;
+  sujet: string;
+  auteur: string;
+  /** ISO 8601. */
+  date: string;
+  ajouts: number;
+  retraits: number;
+  fichiers: CommitFile[];
+}
+
 export interface WorkspaceChanges {
   racine: string;
   depot: boolean;
@@ -1956,6 +1976,8 @@ export interface CoreApi {
   ): Promise<void>;
   workspaceChanges(sessionId: string): Promise<WorkspaceChanges>;
   workspaceDiff(sessionId: string, chemin: string): Promise<string>;
+  /** Les derniers commits du dépôt de la conversation, fichier par fichier. */
+  workspaceCommits(sessionId: string): Promise<WorkspaceCommit[]>;
   /** A plan the model produced for a substantial request. */
   /**
    * Decoupe une demande en plan.
@@ -2573,6 +2595,7 @@ const tauriCore: CoreApi = {
     invoke<void>("workspace_open_with", { sessionId, chemin, action }),
   workspaceChanges: (sessionId) => invoke<WorkspaceChanges>("workspace_changes", { sessionId }),
   workspaceDiff: (sessionId, chemin) => invoke<string>("workspace_diff", { sessionId, chemin }),
+  workspaceCommits: (sessionId) => invoke<WorkspaceCommit[]>("workspace_commits", { sessionId }),
   suggestFollowups: (answer, question) =>
     invoke<string[]>("suggest_followups", { answer, question }),
   rewindLastMessage: (sessionId) => invoke<string | null>("rewind_last_message", { sessionId }),
@@ -4037,6 +4060,23 @@ let demoAttention: AttentionItem[] = [
   },
 ];
 
+/** Le même événement que l'hôte émet pendant une installation, sur un paquet
+ *  fictif de 18 Mo reçu en un peu plus de deux secondes. */
+const DEMO_INSTALL_EVENT = "locaryn:demo-extension-install";
+async function demoInstallProgress(source: string): Promise<void> {
+  const total = 18 * 1024 * 1024;
+  const send = (phase: string, done: number) =>
+    window.dispatchEvent(
+      new CustomEvent(DEMO_INSTALL_EVENT, { detail: { source, phase, done, total } }),
+    );
+  for (let i = 0; i <= 20; i++) {
+    send("download", Math.round((total * i) / 20));
+    await new Promise((r) => setTimeout(r, 110));
+  }
+  send("done", total);
+}
+export const demoInstallEventName = DEMO_INSTALL_EVENT;
+
 const demoCore: CoreApi = {
   health: async () => cloneHealth(),
   bootstrap: async () => ({
@@ -4137,6 +4177,23 @@ Contenu de démonstration, avec **du gras** et une liste :
         { chemin: "notes.md", etat: "??", ajouts: null, retraits: null },
       ],
     };
+  },
+  async workspaceCommits() {
+    return [
+      {
+        hash: "3f2a9c1d",
+        court: "3f2a9c1",
+        sujet: "feat: titre et salutation",
+        auteur: "Locaryn",
+        date: new Date(Date.now() - 600_000).toISOString(),
+        ajouts: 14,
+        retraits: 2,
+        fichiers: [
+          { chemin: "src/main.ts", ajouts: 9, retraits: 2 },
+          { chemin: "src/ui.ts", ajouts: 5, retraits: 0 },
+        ],
+      },
+    ];
   },
   async workspaceDiff(_sessionId, chemin) {
     return `--- a/${chemin}
@@ -5103,6 +5160,7 @@ Contenu de démonstration, avec **du gras** et une liste :
   getExtensionMcpServers: async () => [],
   setExtensionMcpServers: async () => [],
   installExtension: async (source) => {
+    await demoInstallProgress(source);
     const entry = demoCatalog.find((c) => c.install_source === source);
     const created: InstalledExtension = {
       id: `demo-${demoExtensions.length + 1}`,

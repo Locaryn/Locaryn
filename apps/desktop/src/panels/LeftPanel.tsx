@@ -110,6 +110,55 @@ function etatDe(
   return null;
 }
 
+const SEEN_KEY = "locaryn.rail.seen.v1";
+const POP_MS = 1800;
+
+function readSeen(): Set<string> | null {
+  try {
+    const raw = localStorage.getItem(SEEN_KEY);
+    return raw ? new Set(JSON.parse(raw) as string[]) : null;
+  } catch (e) {
+    console.warn("[Rail] destinations déjà vues illisibles :", e);
+    return null;
+  }
+}
+
+function writeSeen(ids: Set<string>) {
+  try {
+    localStorage.setItem(SEEN_KEY, JSON.stringify([...ids]));
+  } catch (e) {
+    console.warn("[Rail] destinations vues non enregistrées :", e);
+  }
+}
+
+/**
+ * Les destinations qui viennent d'apparaître dans le rail.
+ *
+ * Une extension installée depuis une conversation ajoute un écran sans que la
+ * personne regarde le rail : la nouvelle entrée éclate une fois pour se faire
+ * remarquer. Au tout premier lancement, rien n'éclate — tout serait nouveau.
+ */
+function useNewDestinations(ids: string[]): ReadonlySet<string> {
+  const [popping, setPopping] = useState<ReadonlySet<string>>(new Set());
+  const key = ids.join("|");
+  useEffect(() => {
+    const current = key ? key.split("|") : [];
+    const seen = readSeen();
+    if (!seen) {
+      writeSeen(new Set(current));
+      return;
+    }
+    const fresh = current.filter((id) => !seen.has(id));
+    if (fresh.length === 0) return;
+    for (const id of fresh) seen.add(id);
+    writeSeen(seen);
+    setPopping(new Set(fresh));
+    const t = window.setTimeout(() => setPopping(new Set()), POP_MS);
+    return () => window.clearTimeout(t);
+  }, [key]);
+  return popping;
+}
+
 function sessionLabel(s: Session, index: number) {
   if (s.title) return s.title;
   const d = new Date(s.created_at);
@@ -508,6 +557,7 @@ export function LeftPanel({
     () => visibleNavItems(activeCapabilities, installedExtensions),
     [activeCapabilities, installedExtensions],
   );
+  const popping = useNewDestinations(destinations.map((d) => d.id));
 
   // Le bloc de navigation, rendu a l'identique dans toutes les vues.
   //
@@ -535,7 +585,9 @@ export function LeftPanel({
             <button
               key={d.id}
               type="button"
-              className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}`}
+              className={`locaryn-rail-link${activeView === d.id ? " locaryn-active" : ""}${
+                popping.has(d.id) ? " locaryn-rail-pop" : ""
+              }`}
               aria-current={activeView === d.id ? "page" : undefined}
               title={d.id === "chat" && etatDuChat ? PASTILLE_TITRE[etatDuChat] : d.desc}
               onClick={() => onSelectView(d.id)}

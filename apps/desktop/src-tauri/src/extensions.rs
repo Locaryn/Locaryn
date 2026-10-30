@@ -1031,7 +1031,97 @@ pub async fn install_extension(
     install_locally(&core, source, scope, workspace).await
 }
 
+// ── La progression d'une installation, pour l'écran ─────────────────────────
+
+/// Le nom de l'événement : `{ source, phase, done, total }`, où `phase` vaut
+/// `download`, `done` ou `error`.
+const EVENEMENT_INSTALLATION: &str = "locaryn://extension-install";
+
+static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+/// La source en cours d'installation, à laquelle rattacher les octets reçus.
+static EN_COURS: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+#[derive(Serialize, Clone)]
+struct ProgressionInstallation<'a> {
+    source: &'a str,
+    phase: &'a str,
+    done: u64,
+    total: Option<u64>,
+}
+
+fn annoncer(source: &str, phase: &str, done: u64, total: Option<u64>) {
+    use tauri::Emitter;
+    if let Some(app) = APP.get() {
+        if let Err(e) = app.emit(
+            EVENEMENT_INSTALLATION,
+            ProgressionInstallation {
+                source,
+                phase,
+                done,
+                total,
+            },
+        ) {
+            tracing::debug!(erreur = %e, "progression d'installation non relayée");
+        }
+    }
+}
+
+fn source_en_cours() -> Option<String> {
+    EN_COURS.lock().ok().and_then(|s| s.clone())
+}
+
+fn marquer_en_cours(source: Option<String>) {
+    match EN_COURS.lock() {
+        Ok(mut s) => *s = source,
+        Err(e) => tracing::warn!(erreur = %e, "installation en cours non notée"),
+    }
+}
+
+/// Relayer à l'écran les octets reçus pendant l'installation d'une extension.
+pub fn brancher_progression(app: tauri::AppHandle) {
+    if APP.set(app).is_err() {
+        return;
+    }
+    // Un événement par pour-cent au plus : un paquet de 40 Mo arrive en
+    // milliers de morceaux, et l'écran n'a pas besoin de chacun.
+    let dernier = Arc::new(std::sync::atomic::AtomicU64::new(u64::MAX));
+    locaryn_extensions::source::set_download_progress(Some(Arc::new(
+        move |done: u64, total: Option<u64>| {
+            let Some(source) = source_en_cours() else {
+                return;
+            };
+            let palier = match total {
+                Some(t) if t > 0 => done.saturating_mul(100) / t,
+                _ => done >> 18,
+            };
+            if dernier.swap(palier, std::sync::atomic::Ordering::Relaxed) != palier {
+                annoncer(&source, "download", done, total);
+            }
+        },
+    )));
+}
+
 async fn install_locally(
+    core: &Core,
+    source: String,
+    scope: Option<String>,
+    workspace: Option<String>,
+) -> Result<InstalledExtension, String> {
+    let suivie = source.trim().to_string();
+    marquer_en_cours(Some(suivie.clone()));
+    annoncer(&suivie, "download", 0, None);
+    let resultat = installer_ici(core, source, scope, workspace).await;
+    marquer_en_cours(None);
+    annoncer(
+        &suivie,
+        if resultat.is_ok() { "done" } else { "error" },
+        0,
+        None,
+    );
+    resultat
+}
+
+async fn installer_ici(
     core: &Core,
     source: String,
     scope: Option<String>,

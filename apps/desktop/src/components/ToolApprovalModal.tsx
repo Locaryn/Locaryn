@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { RiskLevel, RiskScope, ToolApprovalDecision, ToolApprovalRequest } from "../lib/core";
+import { extensionLabel } from "../lib/extensionInstallProgress";
 
 type Props = {
   /** When `null`, the modal is closed. */
@@ -63,6 +64,10 @@ function readableArgs(args: unknown): string | null {
     })
     .join("\n");
 }
+
+/** Les outils natifs qui ajoutent quelque chose de durable à Locaryn (miroir
+ *  de `OUTILS_D_INSTALLATION` côté moteur). */
+const INSTALL_TOOLS = new Set(["app_install_extension", "app_add_connector"]);
 
 function minimumAllowedScope(risk: RiskLevel): RiskScope {
   // RiskScope::minimum_for in Rust mirrors this:
@@ -133,8 +138,15 @@ export function ToolApprovalModal({
   // Une installation porte le motif que lui donne la table d'approbation
   // (`approval_decision`) : l'annoncer « Modifie le projet » trompait sur ce
   // qui allait arriver.
-  const installation = approval.reason.startsWith("Installation");
+  const installation =
+    approval.reason.startsWith("Installation") || INSTALL_TOOLS.has(approval.tool);
   const titre = installation ? "Installation à autoriser" : "Autorisation demandée";
+  // Ce qui s'installe, dit par son nom plutôt que par l'outil qui l'installe.
+  const source =
+    installation && approval.args && typeof approval.args === "object"
+      ? (approval.args as { source?: unknown }).source
+      : undefined;
+  const installName = typeof source === "string" && source.trim() ? extensionLabel(source) : null;
   const isRemote = approval.is_remote;
   const targetNeedsTyping = isCritical && confirmTargetLabel;
   const confirmOk =
@@ -200,7 +212,13 @@ export function ToolApprovalModal({
             {isRemote && <span className="locaryn-approval-level is-remote">Distant</span>}
           </div>
           <p className={`locaryn-approval-reason${expanded ? " is-open" : ""}`}>
-            <code className="locaryn-approval-tool">{approval.tool}</code>
+            {installName ? (
+              <strong className="locaryn-approval-tool" data-no-translate>
+                {installName}
+              </strong>
+            ) : (
+              <code className="locaryn-approval-tool">{approval.tool}</code>
+            )}
             {approval.reason}
           </p>
         </div>
@@ -225,7 +243,11 @@ export function ToolApprovalModal({
                     : ""
             }
           >
-            {scope === "once" ? "Autoriser" : `Autoriser (${SCOPE_LABEL[scope]})`}
+            {installation
+              ? "Installer"
+              : scope === "once"
+                ? "Autoriser"
+                : `Autoriser (${SCOPE_LABEL[scope]})`}
           </button>
         </div>
       </div>

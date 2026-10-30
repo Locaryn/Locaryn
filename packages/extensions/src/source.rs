@@ -31,6 +31,46 @@ fn github_get(http: &reqwest::Client, url: &str) -> reqwest::RequestBuilder {
         .header(reqwest::header::USER_AGENT, GITHUB_USER_AGENT)
 }
 
+/// Où en est le téléchargement d'un paquet : octets reçus, et total quand le
+/// serveur l'annonce.
+pub type DownloadProgress = dyn Fn(u64, Option<u64>) + Send + Sync;
+
+static PROGRESS: std::sync::RwLock<Option<std::sync::Arc<DownloadProgress>>> =
+    std::sync::RwLock::new(None);
+
+/// Brancher l'écoute de la progression des téléchargements de paquets.
+///
+/// Un paquet de morph peut peser des dizaines de mégaoctets : sans retour,
+/// l'installation ressemble à un clic qui n'a rien fait. L'hôte relaie ces
+/// valeurs à l'écran ; sans écouteur, rien n'est calculé de plus.
+pub fn set_download_progress(hook: Option<std::sync::Arc<DownloadProgress>>) {
+    match PROGRESS.write() {
+        Ok(mut slot) => *slot = hook,
+        Err(e) => tracing::warn!(erreur = %e, "écoute de la progression non branchée"),
+    }
+}
+
+fn progress_hook() -> Option<std::sync::Arc<DownloadProgress>> {
+    PROGRESS.read().ok().and_then(|slot| slot.clone())
+}
+
+/// Lire le corps d'une réponse en signalant la progression.
+async fn read_body(mut resp: reqwest::Response) -> Result<Vec<u8>, reqwest::Error> {
+    let total = resp.content_length();
+    let hook = progress_hook();
+    let mut out = Vec::with_capacity(total.unwrap_or(0).min(256 << 20) as usize);
+    if let Some(h) = &hook {
+        h(0, total);
+    }
+    while let Some(chunk) = resp.chunk().await? {
+        out.extend_from_slice(&chunk);
+        if let Some(h) = &hook {
+            h(out.len() as u64, total);
+        }
+    }
+    Ok(out)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SourceError {
     #[error("io error: {0}")]
@@ -511,7 +551,7 @@ async fn download_github_release_bundle(
     if !resp.status().is_success() {
         return None;
     }
-    resp.bytes().await.ok().map(|b| b.to_vec())
+    read_body(resp).await.ok()
 }
 
 /// `v1.2.0`, `v0.1.0-beta.5` : un tag de version, qui désigne une release.
@@ -555,9 +595,9 @@ async fn download_release_asset_directly(
             continue;
         };
         if resp.status().is_success() {
-            if let Ok(bytes) = resp.bytes().await {
+            if let Ok(bytes) = read_body(resp).await {
                 tracing::info!(paquet = %name, "paquet de release téléchargé directement");
-                return Some(bytes.to_vec());
+                return Some(bytes);
             }
         }
     }
@@ -592,11 +632,9 @@ async fn download_github_zip(
         let url = format!("https://codeload.github.com/{owner}/{repo}/zip/{cand}");
         match github_get(http, &url).send().await {
             Ok(resp) if resp.status().is_success() => {
-                let bytes = resp
-                    .bytes()
+                return read_body(resp)
                     .await
-                    .map_err(|e| SourceError::Http(e.to_string()))?;
-                return Ok(bytes.to_vec());
+                    .map_err(|e| SourceError::Http(e.to_string()));
             }
             Ok(resp) => last_status = Some(resp.status()),
             Err(e) => return Err(SourceError::Http(e.to_string())),
@@ -622,11 +660,9 @@ async fn download_github_zip(
                             .await
                             .map_err(|e| SourceError::Http(e.to_string()))?;
                         if resp.status().is_success() {
-                            let bytes = resp
-                                .bytes()
+                            return read_body(resp)
                                 .await
-                                .map_err(|e| SourceError::Http(e.to_string()))?;
-                            return Ok(bytes.to_vec());
+                                .map_err(|e| SourceError::Http(e.to_string()));
                         }
                     }
                 }

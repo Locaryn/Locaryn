@@ -458,7 +458,8 @@ export function MessageBubble({
               <div className="locaryn-msg-images">
                 {images.map((src, i) => (
                   <img
-                    key={src}
+                    // L'indice : la même image peut être jointe deux fois.
+                    key={`${i}:${src}`}
                     src={src}
                     alt="attachment"
                     className="locaryn-msg-image locaryn-msg-image-clickable"
@@ -535,7 +536,8 @@ export function MessageBubble({
         >
           {images?.map((src, i) => (
             <img
-              key={src}
+              // L'indice : deux variantes peuvent être identiques.
+              key={`${i}:${src}`}
               src={src}
               alt="génération"
               className={`locaryn-msg-image locaryn-msg-image-clickable${forged ? " locaryn-msg-image-pop" : ""}`}

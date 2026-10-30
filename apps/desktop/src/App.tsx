@@ -33,12 +33,19 @@ import {
   type Session,
   core,
   coreMode,
+  demoInstallEventName,
   getHfToken,
   partagerJetonHf,
 } from "./lib/core";
 import { parseDeepLink, setPendingInstall } from "./lib/deepLink";
 import { confirmer, pickFolder } from "./lib/dialog";
+import {
+  type InstallProgressEvent,
+  listenInstallProgress,
+  reportInstallProgress,
+} from "./lib/extensionInstallProgress";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
+import { MODEL_INSTALL_EVENT, type PluginModelInstallRequest } from "./lib/pluginBridge";
 import { useProfile } from "./lib/profile";
 import { setRunReveal } from "./lib/runPanel";
 import { suivreSousAgents } from "./lib/sousAgents";
@@ -150,6 +157,28 @@ export function App() {
   // Un jeton enregistré avant que le serveur sache le lire lui est transmis.
   useEffect(() => {
     if (getHfToken()) partagerJetonHf();
+  }, []);
+
+  // L'installation d'une extension se suit dans la bulle, d'où qu'elle parte.
+  useEffect(() => {
+    if (coreMode === "demo") {
+      const onDemo = (e: Event) =>
+        reportInstallProgress((e as CustomEvent<InstallProgressEvent>).detail);
+      window.addEventListener(demoInstallEventName, onDemo);
+      return () => window.removeEventListener(demoInstallEventName, onDemo);
+    }
+    let off: (() => void) | null = null;
+    let closed = false;
+    listenInstallProgress()
+      .then((un) => {
+        if (closed) un();
+        else off = un;
+      })
+      .catch((e) => console.warn("[Installation] progression non suivie :", e));
+    return () => {
+      closed = true;
+      off?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -432,6 +461,31 @@ export function App() {
     };
     window.addEventListener("locaryn:action:navigate", onNavigate);
     return () => window.removeEventListener("locaryn:action:navigate", onNavigate);
+  }, []);
+
+  // Un panneau d'extension peut proposer ses modèles recommandés : l'hôte les
+  // télécharge comme le marketplace, avec la même bulle de progression. Seules
+  // des adresses https passent ; le reste de la demande est ignoré.
+  const installModelRef = useRef(handleInstallModel);
+  installModelRef.current = handleInstallModel;
+  useEffect(() => {
+    const onInstall = (event: Event) => {
+      const req = (event as CustomEvent<PluginModelInstallRequest>).detail;
+      const https = (u: unknown) => typeof u === "string" && u.startsWith("https://");
+      if (!req || !https(req.tag)) {
+        req?.reject?.(new Error("Adresse de modèle refusée : seules les adresses https passent."));
+        return;
+      }
+      const downloads = (req.downloads ?? []).filter(
+        (d) => https(d.url) && typeof d.file === "string" && !/[\\/]|\.\./.test(d.file),
+      );
+      installModelRef
+        .current(req.tag, undefined, false, false, undefined, downloads)
+        .then(() => req.resolve())
+        .catch((e: unknown) => req.reject(e instanceof Error ? e : new Error(String(e))));
+    };
+    window.addEventListener(MODEL_INSTALL_EVENT, onInstall);
+    return () => window.removeEventListener(MODEL_INSTALL_EVENT, onInstall);
   }, []);
 
   // Retirer l'extension qui portait l'écran ouvert laisserait la personne

@@ -2577,6 +2577,61 @@ export const EN_EXACT: Record<string, string> = {
     "Step-by-step reasoning in a Llama 70B distillate ready for high-end GPUs. Local GGUF format.",
   "Le plus grand modèle de la famille Qwen2.5 Instruct, optimisé pour le dialogue et le travail long en GGUF local.":
     "The largest model in the Qwen2.5 Instruct family, optimised for dialogue and long-form work in local GGUF.",
+  "Générer l'image": "Generate image",
+  "Texte → Image": "Text → Image",
+  "Image → Image": "Image → Image",
+  Retouche: "Retouch",
+  Format: "Format",
+  "Modèle de diffusion": "Diffusion model",
+  Studio: "Studio",
+  "Non commité": "Uncommitted",
+  Historique: "History",
+  "Extension installée": "Extension installed",
+  "Installation de l'extension": "Installing extension",
+  "Que voulez-vous voir ?": "What do you want to see?",
+  Carré: "Square",
+  Paysage: "Landscape",
+  Portrait: "Portrait",
+  Rapide: "Fast",
+  "Plus beau": "Finest",
+  "Choisissez un modèle pour commencer": "Pick a model to get started",
+  "Catalogue complet": "Full catalogue",
+  Coffre: "Vault",
+  "Téléchargement du modèle": "Downloading model",
+  "Modèle prêt": "Model ready",
+  binaire: "binary",
+  "Aucun installé": "None installed",
+  "Aucun modèle de diffusion installé.": "No diffusion model installed.",
+  "Image générée": "Generated image",
+  "Téléchargement…": "Downloading…",
+  "Traitement en cours…": "Processing…",
+  "Le plus léger. Idéal pour essayer : une image en une à deux minutes.":
+    "The lightest. Perfect to try: one image in a minute or two.",
+  "Les plus belles images. Plus lourd et plus lent.":
+    "The most beautiful images. Heavier and slower.",
+  "Plus de détails, toujours raisonnable sur une carte graphique moyenne.":
+    "More detail, still comfortable on an average graphics card.",
+  "Un modèle est le « cerveau » qui dessine. Il se télécharge une fois, puis tout se fait sur votre ordinateur.":
+    "A model is the “brain” that draws. It downloads once, then everything happens on your computer.",
+  "Une photo d'un chat qui dort au soleil…": "A photo of a cat sleeping in the sun…",
+  "Votre ordinateur dessine l'image… cela peut prendre une à deux minutes.":
+    "Your computer is drawing the image… this can take a minute or two.",
+  "Décrivez une image à gauche, puis lancez la génération. Le résultat s'affichera ici.":
+    "Describe an image on the left, then generate. The result will appear here.",
+  "Diffusion en cours sur votre machine : de quelques secondes à plusieurs minutes selon le modèle.":
+    "Diffusion running on your machine: from a few seconds to several minutes depending on the model.",
+  "Installez un modèle à gauche pour commencer.": "Install a model on the left to get started.",
+  "Décrivez l'image à produire…": "Describe the image to create…",
+  Description: "Description",
+  "Génération d'image": "Image generation",
+  "Chercher à nouveau": "Search again",
+  Affiche: "Poster",
+  "Images de cette session": "Images from this session",
+  "Tout mettre à jour": "Update all",
+  Noyaux: "Cores",
+  "Une dernière étape": "One last step",
+  "Choisissez comment dessiner": "Choose how to draw",
+  "Aucun modèle proposé pour l'instant.": "No model suggested yet.",
 };
 
 export const EN_PATTERNS: Record<string, string> = {

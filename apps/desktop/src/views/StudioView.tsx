@@ -116,6 +116,23 @@ export function StudioView({ extensions = [] }: Props) {
     );
   }
 
+  // Un seul module : il s'ouvre directement, sous son propre nom. Une rangée
+  // d'onglets à une seule entrée n'offre aucun choix et repousse l'outil.
+  if (tabs.length === 1) {
+    const only = tabs[0];
+    return (
+      <div className="locaryn-view-container">
+        <div className="locaryn-view-header" style={{ flexShrink: 0 }}>
+          <h2 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon name={only.icon} size={20} />
+            {only.label}
+          </h2>
+        </div>
+        {renderContent()}
+      </div>
+    );
+  }
+
   return (
     <div className="locaryn-view-container">
       <div className="locaryn-view-header" style={{ flexShrink: 0 }}>
