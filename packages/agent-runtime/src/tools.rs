@@ -119,18 +119,20 @@ pub fn builtin_tools() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "write_file".into(),
-            description: "Create or overwrite a file in the project workspace with new content. You must provide the full, complete file content.".into(),
+            description: "Create a file, or replace a whole file, in the project workspace. You must provide the full, complete file content. To change part of an existing file, use edit_file instead.".into(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "path": { "type": "string" },
-                    "content": { "type": "string" }
+                    "content": { "type": "string" },
+                    "overwrite": { "type": "boolean", "description": "Confirm that content replaces a long existing file that it mostly shortens." }
                 },
                 "required": ["path", "content"]
             }),
             risk: Risk::Medium,
             required_permissions: vec![locaryn_shared_types::Permission::FilesWrite],
         },
+        crate::edition::spec(),
         ToolSpec {
             name: "search".into(),
             description: "Search the project workspace with ripgrep. Use this tool to find function definitions, variable usages, or text patterns across all files when you don't know the exact file path.".into(),
@@ -593,6 +595,7 @@ fn default_reason(spec: &ToolSpec, ctx: &ToolContext) -> String {
     match spec.name.as_str() {
         "read_file" => "Reads the contents of a file in the workspace.".into(),
         "write_file" => "Replaces the contents of a file. Revertible via git.".into(),
+        crate::edition::OUTIL => "Changes part of a file. Revertible via git.".into(),
         "search" => "Searches the workspace for text patterns (no mutation).".into(),
         "run_command" => "Runs a shell command in the project workspace.".into(),
         "update_server_description" => "Edits a stored SSH server description.".into(),
@@ -628,6 +631,15 @@ fn render_diff(spec: &ToolSpec, args: &serde_json::Value, ctx: &ToolContext) -> 
                 new.len(),
                 head,
                 tail,
+            ))
+        }
+        crate::edition::OUTIL => {
+            let texte = |cle: &str| args.get(cle).and_then(|v| v.as_str()).unwrap_or("");
+            Some(format!(
+                "EDIT {}\n  --- old ---\n{}\n  --- new ---\n{}\n",
+                texte("path"),
+                texte("old_string"),
+                texte("new_string"),
             ))
         }
         "run_command" => {
@@ -957,6 +969,7 @@ fn normalize_path(p: &Path) -> PathBuf {
 pub const NATIVE_TOOLS: &[&str] = &[
     "read_file",
     "write_file",
+    crate::edition::OUTIL,
     "search",
     "run_command",
     "generate_speech",
@@ -983,6 +996,7 @@ pub async fn dispatch_tool(
     match tool_name {
         "read_file" => exec_read_file(args, project_root).await,
         "write_file" => exec_write_file(args, project_root).await,
+        crate::edition::OUTIL => crate::edition::executer(args, project_root).await,
         "search" => exec_search(args, project_root).await,
         "run_command" => exec_run_command(args, project_root).await,
         "generate_speech" => exec_generate_speech(args).await,
@@ -1102,8 +1116,19 @@ async fn exec_write_file(args: &serde_json::Value, project_root: &Path) -> ToolR
         Some(c) => c,
         None => return err("missing required argument: content"),
     };
+    let force = args
+        .get("overwrite")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     match resolve_path(project_root, path) {
         Ok(full) => {
+            let avant = tokio::fs::metadata(&full)
+                .await
+                .map(|m| m.len() as usize)
+                .unwrap_or(0);
+            if let Some(refus) = crate::edition::garde_ecrasement(avant, content.len(), force) {
+                return err(&refus);
+            }
             // Le premier fichier écrit dans un projet sans dépôt en crée un :
             // chaque modification de l'agent peut alors se suivre et s'annuler.
             crate::git_suivi::assurer_depot(project_root).await;

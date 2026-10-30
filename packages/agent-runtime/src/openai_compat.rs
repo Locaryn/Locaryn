@@ -15,7 +15,10 @@ use std::time::Duration;
 
 const DEFAULT_MODEL: &str = "default";
 const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:8080";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
+/// Silence maximale entre deux morceaux de réponse. Pas de plafond sur la
+/// durée totale : à 12 jetons/s, écrire un gros fichier prend plus de dix
+/// minutes, et l'appel était coupé en pleine génération.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// An agent that talks to any OpenAI-compatible server (llama-server, LM Studio…).
 pub struct OpenAiCompatAgent {
@@ -26,16 +29,15 @@ pub struct OpenAiCompatAgent {
 
 impl OpenAiCompatAgent {
     pub fn new(endpoint: &str, model: &str) -> Self {
-        // `timeout` borne tout l'appel (utile pour un raisonnement long qui
-        // coule lentement), mais laissé seul il couvre aussi la connexion —
-        // et sur certaines machines, se connecter à un port loopback mort
-        // peut traîner bien au-delà de l'instant attendu (pare-feu, VPN,
-        // antivirus qui inspecte le trafic local). Sans plafond dédié, un
-        // moteur injoignable ne se signale qu'après dix minutes d'attente :
-        // `connect_timeout` referme cette phase seule à une durée raisonnable.
+        // `read_timeout` borne le silence, pas la durée : une réponse qui coule
+        // lentement continue tant qu'elle coule. La connexion a son propre
+        // plafond : sur certaines machines, se connecter à un port loopback
+        // mort traîne bien au-delà de l'instant attendu (pare-feu, VPN,
+        // antivirus qui inspecte le trafic local), et `connect_timeout`
+        // referme cette phase seule à une durée raisonnable.
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
-            .timeout(REQUEST_TIMEOUT)
+            .read_timeout(IDLE_TIMEOUT)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {

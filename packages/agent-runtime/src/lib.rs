@@ -10,6 +10,7 @@ pub mod coffre;
 pub mod compaction;
 pub mod context_window;
 pub mod documents;
+pub mod edition;
 pub mod embeddings;
 pub mod exec;
 pub mod free_chat_dir;
