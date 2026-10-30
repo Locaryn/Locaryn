@@ -6,7 +6,13 @@ import { type ModelTier, type TierPlan, loadTierPlan } from "../lib/onboardingMo
 import { NEEDS, type Suggestion, suggest, suggestForHardware } from "../lib/onboardingNeeds";
 import { plainSpeed } from "../lib/plainLanguage";
 import { PRESENTATION_KEY } from "../lib/presentation";
-import { type Need, type UiMode, updateProfile, useProfile } from "../lib/profile";
+import {
+  type Need,
+  ONBOARDING_VERSION,
+  type UiMode,
+  updateProfile,
+  useProfile,
+} from "../lib/profile";
 import { TXT, type Texts } from "./onboardingTexts";
 import "../styles/onboarding.css";
 
@@ -352,7 +358,12 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
         console.warn("[Accueil] présentation non mémorisée :", e);
       }
     }
-    updateProfile({ onboarded: true, mode: chosen, needs: chosenNeeds });
+    updateProfile({
+      onboarded: true,
+      onboardingVersion: ONBOARDING_VERSION,
+      mode: chosen,
+      needs: chosenNeeds,
+    });
   };
 
   const pickLevel = (m: UiMode) => {

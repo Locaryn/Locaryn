@@ -7,16 +7,23 @@
 // change à tout moment dans Compte → Apparence & Langue.
 
 import { useSyncExternalStore } from "react";
-import { PRESENTATION_KEY } from "./presentation";
 
 export type UiMode = "simple" | "expert";
 
 /** Ce que la personne dit vouloir faire. Sert à proposer les bons outils. */
 export type Need = "browser" | "computer" | "images" | "voice" | "phone";
 
+/**
+ * Version des questions de l'accueil. L'augmenter quand on en ajoute : toute
+ * personne qui a répondu à une version plus ancienne revoit l'accueil une fois.
+ */
+export const ONBOARDING_VERSION = 2;
+
 export interface Profile {
-  /** L'accueil a été traversé (ou ignoré : poste déjà utilisé). */
+  /** L'accueil de la version courante a été traversé. */
   onboarded: boolean;
+  /** Version de l'accueil à laquelle la personne a répondu (0 : aucune). */
+  onboardingVersion: number;
   mode: UiMode;
   needs: Need[];
   /** Réglages avancés dépliés dans les réglages (mode simple). */
@@ -25,7 +32,13 @@ export interface Profile {
 
 const KEY = "locaryn.profile.v1";
 
-const DEFAUT: Profile = { onboarded: false, mode: "expert", needs: [], advancedOpen: false };
+const DEFAUT: Profile = {
+  onboarded: false,
+  onboardingVersion: 0,
+  mode: "expert",
+  needs: [],
+  advancedOpen: false,
+};
 
 const NEEDS: Need[] = ["browser", "computer", "images", "voice", "phone"];
 
@@ -34,17 +47,16 @@ function lire(): Profile {
     const brut = window.localStorage.getItem(KEY);
     if (brut) {
       const p = JSON.parse(brut) as Partial<Profile>;
+      const version = typeof p.onboardingVersion === "number" ? p.onboardingVersion : 0;
       return {
-        onboarded: p.onboarded === true,
+        // Un accueil plus ancien que l'actuel ne compte pas : les nouvelles
+        // questions doivent être posées après la mise à jour.
+        onboarded: p.onboarded === true && version >= ONBOARDING_VERSION,
+        onboardingVersion: version,
         mode: p.mode === "simple" ? "simple" : "expert",
         needs: Array.isArray(p.needs) ? p.needs.filter((n): n is Need => NEEDS.includes(n)) : [],
         advancedOpen: p.advancedOpen === true,
       };
-    }
-    // Poste qui a déjà vu l'ancienne présentation : une mise à jour ne doit pas
-    // rejouer l'accueil ni changer l'interface qu'on connaît.
-    if (window.localStorage.getItem(PRESENTATION_KEY) === "1") {
-      return { ...DEFAUT, onboarded: true };
     }
   } catch (e) {
     console.warn("[Profil] lecture impossible, valeurs par défaut :", e);
