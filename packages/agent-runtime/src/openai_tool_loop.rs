@@ -820,6 +820,7 @@ pub async fn run_openai_tool_loop(
             let mut echelle = echelle_connue();
             let mut estimation_envoyee = estimation_premiere;
 
+            let mut relances_moteur: u8 = 0;
             for round in 0..MAX_TOOL_ROUNDS {
                 let resp = match pending_resp.take() {
                     Some(r) => Some(r),
@@ -884,6 +885,42 @@ pub async fn run_openai_tool_loop(
                         let posted = post_json(&client, &url, &body, bearer.as_deref()).await;
                         let resp = match posted {
                             Ok(r) => r,
+                            // Le moteur local est tombé (mémoire, plantage) ou
+                            // redémarre : le superviseur le relance en quelques
+                            // secondes. Abandonner tout de suite perdait la
+                            // réponse en plein travail.
+                            Err(e)
+                                if (e.is_connect() || e.is_request())
+                                    && relances_moteur < MAX_RELANCES_MOTEUR =>
+                            {
+                                relances_moteur += 1;
+                                let _ = tx
+                                    .send(StreamEvent::Log {
+                                        level: LogLevel::Warn,
+                                        msg: "Le moteur du modèle ne répond plus : attente de son redémarrage…"
+                                            .into(),
+                                        source: "openai_tool_loop".into(),
+                                    })
+                                    .await;
+                                let base = match url.find("/v1/").or_else(|| url.find("/api/")) {
+                                    Some(i) => url[..i].to_string(),
+                                    None => url.clone(),
+                                };
+                                if attendre_le_moteur(&client, &base, ATTENTE_MOTEUR).await {
+                                    continue;
+                                }
+                                let _ = tx
+                                    .send(StreamEvent::Log {
+                                        level: LogLevel::Warn,
+                                        msg: format!(
+                                            "Le moteur du modèle n'est pas revenu après {} s : {e}",
+                                            ATTENTE_MOTEUR.as_secs()
+                                        ),
+                                        source: "openai_tool_loop".into(),
+                                    })
+                                    .await;
+                                break None;
+                            }
                             Err(e) => {
                                 let _ = tx
                                     .send(StreamEvent::Log {
@@ -1394,6 +1431,38 @@ fn convert_native_to_openai_stream(resp: reqwest::Response) -> reqwest::Response
 /// POST JSON, with the optional Bearer header used by alternate cores
 /// (OpenClaw, Hermes…). `None` keeps the exact behaviour of a plain provider
 /// call — no header at all.
+/// Combien de fois, sur une même réponse, on attend qu'un moteur tombé revienne.
+const MAX_RELANCES_MOTEUR: u8 = 2;
+/// Le temps laissé au superviseur pour relancer le moteur et recharger le
+/// modèle (sonde toutes les 15 s, chargement d'un GGUF jusqu'à une minute).
+const ATTENTE_MOTEUR: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Attend qu'un moteur répondant à `base` serve de nouveau : `/health` pour
+/// llama-server (200 seulement une fois le modèle chargé), `/v1/models` pour
+/// les autres. Vrai s'il est revenu avant `delai`.
+async fn attendre_le_moteur(
+    client: &reqwest::Client,
+    base: &str,
+    delai: std::time::Duration,
+) -> bool {
+    let fin = tokio::time::Instant::now() + delai;
+    let base = base.trim_end_matches('/');
+    while tokio::time::Instant::now() < fin {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        for chemin in ["/health", "/v1/models"] {
+            let sonde = client
+                .get(format!("{base}{chemin}"))
+                .timeout(std::time::Duration::from_secs(3))
+                .send()
+                .await;
+            if matches!(&sonde, Ok(r) if r.status().is_success()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 async fn post_json(
     client: &reqwest::Client,
     url: &str,
@@ -1873,6 +1942,35 @@ mod tests_annonce {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un moteur qui revient (ici : qui répond 200 sur /health) est attendu ;
+    /// un port fermé ne bloque que le délai donné.
+    #[tokio::test]
+    async fn l_attente_du_moteur_voit_son_retour() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let ecoute = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let adresse = format!("http://{}", ecoute.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((mut flux, _)) = ecoute.accept().await {
+                let mut tampon = [0u8; 1024];
+                let _ = flux.read(&mut tampon).await;
+                let _ = flux
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok",
+                    )
+                    .await;
+            }
+        });
+        let client = reqwest::Client::new();
+        assert!(attendre_le_moteur(&client, &adresse, std::time::Duration::from_secs(10)).await);
+
+        let ferme = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mort = format!("http://{}", ferme.local_addr().unwrap());
+        drop(ferme);
+        let debut = std::time::Instant::now();
+        assert!(!attendre_le_moteur(&client, &mort, std::time::Duration::from_secs(3)).await);
+        assert!(debut.elapsed() < std::time::Duration::from_secs(12));
+    }
 
     #[test]
     fn la_reflexion_ne_repart_pas_au_modele() {
