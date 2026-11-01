@@ -65,10 +65,10 @@ jobs:
           - os: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
             label: linux-arm64
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
             label: macos-arm64
-          - os: macos-14
+          - os: macos-15
             target: x86_64-apple-darwin
             label: macos-x64
     steps:
@@ -223,7 +223,7 @@ jobs:
             args: ""
           # Un seul artefact macOS qui tourne sur les deux architectures :
           # plus simple à publier, et personne n'a à deviner sa puce.
-          - os: macos-14
+          - os: macos-15
             label: macos-universal
             args: "--target universal-apple-darwin"
     env:
