@@ -15,9 +15,22 @@
 //
 // Revenir au français restaure les textes d'origine.
 
+import { DE } from "./i18nDe";
 import { EN_EXACT, EN_PATTERNS } from "./i18nEn";
+import { ES } from "./i18nEs";
 
-type Lang = "fr" | "en";
+export type Lang = "fr" | "en" | "es" | "de";
+
+/** Les langues au-delà de l'anglais : clés anglaises, un texte absent reste en anglais. */
+const AU_DELA: Partial<Record<Lang, Record<string, string>>> = { es: ES, de: DE };
+
+/** La langue visée tant que l'observateur tourne. */
+let cible: Lang = "en";
+
+/** Le texte anglais dans la langue visée, s'il y est traduit. */
+export function localiser(en: string, lang: Lang = cible): string {
+  return AU_DELA[lang]?.[en] ?? en;
+}
 
 const ATTRS = ["title", "placeholder", "aria-label", "alt"] as const;
 
@@ -45,6 +58,9 @@ function normaliser(s: string): string {
 export function traduire(brut: string): string | null {
   const cle = normaliser(brut);
   if (cle.length < 2 || !/[A-Za-zÀ-ÿ]/.test(cle)) return null;
+  // Un composant qui a déjà rendu l'anglais (lang ≠ fr) : poser la langue visée dessus.
+  const deja = AU_DELA[cible]?.[cle];
+  if (deja !== undefined) return entourer(brut, deja);
   let en = EN_EXACT[cle];
   if (en === undefined && cle.length < 600) {
     for (const m of MOTIFS) {
@@ -60,10 +76,14 @@ export function traduire(brut: string): string | null {
     }
   }
   if (en === undefined) return null;
-  // Garder les blancs autour : ils séparent souvent deux morceaux de JSX.
+  return entourer(brut, localiser(en));
+}
+
+/** Garder les blancs autour : ils séparent souvent deux morceaux de JSX. */
+function entourer(brut: string, texte: string): string {
   const avant = /^\s*/.exec(brut)?.[0] ?? "";
   const apres = /\s*$/.exec(brut)?.[0] ?? "";
-  return avant + en + apres;
+  return avant + texte + apres;
 }
 
 function exclu(el: Element | null): boolean {
@@ -181,6 +201,12 @@ function arreter() {
 
 /** Appliquer la langue choisie à toute l'interface. */
 export function appliquerLangue(lang: Lang) {
-  if (lang === "en") demarrer();
-  else arreter();
+  if (lang === "fr") {
+    arreter();
+    return;
+  }
+  // Passer de l'espagnol à l'allemand : repartir des textes d'origine.
+  if (observateur && cible !== lang) arreter();
+  cible = lang;
+  demarrer();
 }

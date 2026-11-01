@@ -9,7 +9,7 @@ import { DO_NOT_TRANSLATE, LANGUAGES, useI18n } from "../lib/i18n";
  * d'infrastructure.
  */
 export function LanguagePane() {
-  const { lang, setLang } = useI18n();
+  const { langue: lang, setLang } = useI18n();
   return (
     <div className="locaryn-field">
       <div className="locaryn-field-label">Langue de l'interface</div>

@@ -74,7 +74,7 @@ function Choice(props: {
 }
 
 function LanguageStep({ tx }: { tx: Texts }) {
-  const { lang, setLang } = useI18n();
+  const { langue, setLang } = useI18n();
   return (
     <>
       <h2 className="lo-ob-title">{tx.languageTitle}</h2>
@@ -84,8 +84,8 @@ function LanguageStep({ tx }: { tx: Texts }) {
           <Choice
             key={l.id}
             index={i}
-            selected={lang === l.id}
-            onClick={() => setLang(l.id as Lang)}
+            selected={langue === l.id}
+            onClick={() => setLang(l.id)}
             icon="translate"
             title={`${l.flag}  ${l.label}`}
           />

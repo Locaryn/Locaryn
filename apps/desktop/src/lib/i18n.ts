@@ -7,9 +7,12 @@
 // them would be meaningless and would break search.
 
 import { useSyncExternalStore } from "react";
-import { appliquerLangue, traduire } from "./autoTranslate";
+import { type Lang as Langue, appliquerLangue, localiser, traduire } from "./autoTranslate";
 
+/** La langue des textes écrits dans le code : français, ou anglais pour tout le reste.
+ *  L'espagnol et l'allemand se posent ensuite sur l'anglais. */
 export type Lang = "fr" | "en";
+export type { Langue };
 
 const STORAGE_KEY = "locaryn.lang";
 
@@ -118,34 +121,50 @@ const EN: Record<string, string> = {
   "Aperçu seul": "Preview only",
 };
 
-/** Langue de départ : celle déjà choisie ; sinon l'anglais pour un poste neuf, et
- *  le français pour qui utilisait déjà l'application avant ce choix. */
-function initialLang(): Lang {
+const CONNUES: readonly Langue[] = ["fr", "en", "es", "de"];
+
+function estLang(v: string | null): v is Langue {
+  return v !== null && (CONNUES as readonly string[]).includes(v);
+}
+
+/** La langue du système (« de-CH » → « de »), l'anglais si elle n'est pas proposée. */
+export function langueSysteme(): Langue {
+  const langues =
+    typeof navigator === "undefined" ? [] : (navigator.languages ?? [navigator.language]);
+  for (const l of langues) {
+    const court = (l ?? "").slice(0, 2).toLowerCase();
+    if (estLang(court)) return court;
+  }
+  return "en";
+}
+
+/** Langue de départ : celle déjà choisie ; sinon celle du système. */
+function initialLang(): Langue {
   if (typeof localStorage === "undefined") return "fr";
   try {
     const kept = localStorage.getItem(STORAGE_KEY);
-    if (kept === "fr" || kept === "en") return kept;
-    return localStorage.getItem("locaryn.presentation.bureau.v1") === "1" ? "fr" : "en";
+    if (estLang(kept)) return kept;
+    return langueSysteme();
   } catch (e) {
-    console.warn("[Langue] stockage illisible, anglais par défaut :", e);
-    return "en";
+    console.warn("[Langue] stockage illisible, langue du système :", e);
+    return langueSysteme();
   }
 }
 
-let current: Lang = initialLang();
+let current: Langue = initialLang();
 
 const listeners = new Set<() => void>();
 
-function getLang(): Lang {
+function getLangue(): Langue {
   return current;
 }
 
-function setLang(l: Lang) {
+function setLang(l: Langue) {
   current = l;
   try {
     localStorage.setItem(STORAGE_KEY, l);
-  } catch {
-    // Private mode / storage disabled — the choice just won't persist.
+  } catch (e) {
+    console.warn("[Langue] choix non mémorisé :", e);
   }
   if (typeof document !== "undefined") document.documentElement.lang = l;
   // Toute l'interface suit, pas seulement les textes passés à `t()`.
@@ -155,10 +174,10 @@ function setLang(l: Lang) {
 
 // La langue gardée d'une session précédente s'applique dès que l'interface
 // existe.
-if (typeof document !== "undefined" && current === "en") {
+if (typeof document !== "undefined" && current !== "fr") {
   const lancer = () => {
-    document.documentElement.lang = "en";
-    appliquerLangue("en");
+    document.documentElement.lang = current;
+    appliquerLangue(current);
   };
   if (document.body) lancer();
   else document.addEventListener("DOMContentLoaded", lancer, { once: true });
@@ -173,16 +192,21 @@ function subscribe(fn: () => void): () => void {
  *  so an untranslated label degrades to French rather than to a missing key. */
 export function t(fr: string): string {
   if (current === "fr") return fr;
-  return EN[fr] ?? traduire(fr) ?? fr;
+  const en = EN[fr];
+  if (en !== undefined) return localiser(en, current);
+  return traduire(fr) ?? fr;
 }
 
 /** React hook: `const { t, lang, setLang } = useI18n()`. Re-renders on change. */
 export function useI18n() {
-  const lang = useSyncExternalStore(subscribe, getLang, getLang);
-  return { lang, setLang, t } as const;
+  const langue = useSyncExternalStore(subscribe, getLangue, getLangue);
+  const lang: Lang = langue === "fr" ? "fr" : "en";
+  return { lang, langue, setLang, t } as const;
 }
 
-export const LANGUAGES: { id: Lang; label: string; flag: string }[] = [
+export const LANGUAGES: { id: Langue; label: string; flag: string }[] = [
   { id: "fr", label: "Français", flag: "🇫🇷" },
   { id: "en", label: "English", flag: "🇬🇧" },
+  { id: "es", label: "Español", flag: "🇪🇸" },
+  { id: "de", label: "Deutsch", flag: "🇩🇪" },
 ];
