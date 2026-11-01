@@ -353,6 +353,11 @@ pub struct CloudLocalRuntime {
     /// donner.
     #[serde(default, rename = "available_models", alias = "availableModels")]
     pub available_models: Option<CloudAvailableModels>,
+    /// Les limites d'utilisation, quand la passerelle ne les sert pas en HTTP
+    /// (`usage_url`) : une commande sans shell, mêmes marqueurs que `start`,
+    /// qui imprime l'objet que `usage_url` aurait rendu (`windows`, `note`…).
+    #[serde(default, rename = "usage_command", alias = "usageCommand")]
+    pub usage_command: Vec<String>,
     /// Des commandes lancées une fois la passerelle prête, à chaque
     /// démarrage : régler ce que ses défauts règlent mal pour Locaryn (une
     /// file d'attente trop courte pour des sous-agents en parallèle…).

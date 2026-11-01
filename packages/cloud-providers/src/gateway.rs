@@ -869,6 +869,55 @@ pub async fn modeles_disponibles(
     liste
 }
 
+/// Les limites d'utilisation d'après la commande `usage_command` du
+/// manifeste. `None` : pas de commande, ou une sortie illisible.
+pub async fn usage_par_commande(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+) -> Option<serde_json::Value> {
+    let local = p.manifest.local.clone()?;
+    if local.usage_command.is_empty() {
+        return None;
+    }
+    let dir = dossier_de(p);
+    let (programme_, arguments) = resoudre(&local.usage_command, &local, &dir)?;
+    let env = environnement(host, p, &local, &dir).ok()?;
+    let dossier = dir.clone();
+    let sortie = tokio::task::spawn_blocking(move || {
+        let mut command = Command::new(&programme_);
+        command.args(&arguments).current_dir(&dossier);
+        for (k, v) in &env {
+            command.env(k, v);
+        }
+        quiet(&mut command);
+        command.output()
+    })
+    .await
+    .ok()?
+    .ok()?;
+    let texte = String::from_utf8_lossy(&sortie.stdout);
+    let valeur = premier_objet_json(&texte);
+    if valeur.is_none() {
+        tracing::warn!(fournisseur = %p.id, sortie = %queue(&sortie.stdout), erreurs = %queue(&sortie.stderr), "limites d'utilisation illisibles");
+    }
+    valeur
+}
+
+/// Le premier objet JSON d'une sortie, entouré ou non des messages de la
+/// commande (couleurs comprises).
+fn premier_objet_json(sortie: &str) -> Option<serde_json::Value> {
+    sortie
+        .char_indices()
+        .filter(|(_, c)| *c == '{')
+        .find_map(|(i, _)| {
+            serde_json::Deserializer::from_str(&sortie[i..])
+                .into_iter::<serde_json::Value>()
+                .next()?
+                .ok()
+                .filter(serde_json::Value::is_object)
+        })
+}
+
 /// La liste d'une sortie JSON, entourée ou non des messages de la commande.
 fn lire_disponibles(
     sortie: &str,
@@ -1150,6 +1199,18 @@ async fn rattraper_cle(
         dernieres.insert(p.id.clone(), std::time::Instant::now());
     }
     obtenir_cle(host, p, local, dir).await;
+}
+
+#[cfg(test)]
+mod tests_usage {
+    #[test]
+    fn l_objet_se_lit_apres_les_messages() {
+        let v = super::premier_objet_json("[2m[info][0m prêt
+{\"windows\":[]}
+").unwrap();
+        assert!(v.get("windows").is_some());
+        assert!(super::premier_objet_json("rien").is_none());
+    }
 }
 
 #[cfg(test)]
