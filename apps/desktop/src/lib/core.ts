@@ -2501,7 +2501,9 @@ export interface CoreApi {
   llmfitHardware(): Promise<LlmfitHardware>;
   /** Estimer d'un coup des fiches pas encore téléchargées. Les réponses
    *  reviennent dans l'ordre reçu. */
-  llmfitCatalog(entries: LlmfitCatalogEntry[]): Promise<ModelFit[]>;
+  /** `contexteCharge` : estimer comme le chargement (VRAM libre, sans
+   *  débordement), en gardant ce contexte en plus. */
+  llmfitCatalog(entries: LlmfitCatalogEntry[], contexteCharge?: number): Promise<ModelFit[]>;
   /** Charge un modèle et l'épingle. Rejette avec le message du garde-fou
    *  quand la mémoire manque, sauf si `force` est demandé explicitement. */
   loadChatModel(model: string, force?: boolean): Promise<ResidencyStatus>;
@@ -3059,7 +3061,8 @@ const tauriCore: CoreApi = {
   cloudProviderDashboardPassword: (provider) =>
     invoke<string | null>("cloud_provider_dashboard_password", { provider }),
   llmfitHardware: () => invoke<LlmfitHardware>("llmfit_hardware"),
-  llmfitCatalog: (entries) => invoke<ModelFit[]>("llmfit_catalog", { entries }),
+  llmfitCatalog: (entries, contexteCharge) =>
+    invoke<ModelFit[]>("llmfit_catalog", { entries, contexteCharge: contexteCharge ?? null }),
   loadChatModel: (model, force) =>
     invoke<ResidencyStatus>("load_chat_model", { model, force: force ?? null }),
   ejectChatModel: () => invoke<ResidencyStatus>("eject_chat_model"),

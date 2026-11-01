@@ -558,23 +558,38 @@ pub struct AttentionShape {
 pub async fn llmfit_catalog(
     core: State<'_, Core>,
     entries: Vec<CatalogEntry>,
+    contexte_charge: Option<u32>,
 ) -> Result<Vec<ModelFit>, String> {
     let level = CautionSetting::load(&core.data_dir).level;
     let mut options = run_options(&core, level);
-    // Le catalogue répond « ce PC peut-il le faire tourner », au contexte
-    // minimal utile : le moteur agrandit ensuite le contexte à la mémoire qui
-    // reste. Un contexte réglé à 128k rendait presque tout « trop lourd ».
-    options.context = locaryn_provider_supervisor::AUTO_FIT_MIN_CTX;
-    // Un modèle qui déborde un peu sur la RAM reste faisable : la pastille le
-    // montre (couches GPU) ; le chargement, lui, exige la VRAM libre.
-    options.strict_vram = false;
-    if level == CautionLevel::Prudent {
-        options.headroom = llmfit::Headroom::Equilibre;
-    }
-    // La capacité de la machine, pas la mémoire libre à l'instant : la
-    // question est « ce PC peut-il le faire tourner ». Le chargement, lui,
-    // contrôle la mémoire réellement libre.
-    let hardware = machine_pour_charger(&core).await.capacite();
+    let hardware = match contexte_charge {
+        // Estimer comme le chargement le fera : mémoire réellement libre,
+        // débordement refusé, prudence telle quelle — et ce contexte gardé
+        // en plus. Un modèle conseillé ne doit jamais déclencher l'alerte de
+        // VRAM ni laisser un contexte vide. Sert à l'accueil.
+        Some(ctx) => {
+            options.context = ctx.max(locaryn_provider_supervisor::AUTO_FIT_MIN_CTX);
+            machine_pour_charger(&core).await
+        }
+        None => {
+            // Le catalogue répond « ce PC peut-il le faire tourner », au
+            // contexte minimal utile : le moteur agrandit ensuite le contexte à
+            // la mémoire qui reste. Un contexte réglé à 128k rendait presque
+            // tout « trop lourd ».
+            options.context = locaryn_provider_supervisor::AUTO_FIT_MIN_CTX;
+            // Un modèle qui déborde un peu sur la RAM reste faisable : la
+            // pastille le montre (couches GPU) ; le chargement, lui, exige la
+            // VRAM libre.
+            options.strict_vram = false;
+            if level == CautionLevel::Prudent {
+                options.headroom = llmfit::Headroom::Equilibre;
+            }
+            // La capacité de la machine, pas la mémoire libre à l'instant : la
+            // question est « ce PC peut-il le faire tourner ». Le chargement,
+            // lui, contrôle la mémoire réellement libre.
+            machine_pour_charger(&core).await.capacite()
+        }
+    };
     Ok(entries
         .into_iter()
         .map(|entry| {
