@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type CloudUsage, type CloudUsageWindow, core } from "../../lib/core";
+import { ACTIVE_MODEL_CHANGED, type CloudUsage, type CloudUsageWindow, core } from "../../lib/core";
 
 /** « dans 2 h 13 », « dans 4 j » : quand la fenêtre repart de zéro. */
 export function avant(iso: string | null | undefined): string | null {
@@ -32,6 +32,29 @@ export function etatSansPourcentage(w: CloudUsageWindow): string {
 }
 
 /**
+ * Les fenêtres du fournisseur qui sert ce modèle. Une passerelle (OmniRoute…)
+ * publie celles de tous ses comptes, préfixées `fournisseur:` ; le modèle
+ * `nvidia/…` ne doit montrer que celles de NVIDIA — la jauge affichait le
+ * quota d'un autre compte. Sans préfixe reconnu, tout reste.
+ */
+export function pourLeModele(fenetres: CloudUsageWindow[], model: string): CloudUsageWindow[] {
+  const prefixe = model.split("/")[0]?.toLowerCase() ?? "";
+  const avecCompte = (w: CloudUsageWindow) => (w.id ?? "").includes(":");
+  const duModele = fenetres.filter(
+    (w) => avecCompte(w) && (w.id ?? "").split(":")[0].toLowerCase() === prefixe,
+  );
+  if (!prefixe || duModele.length === 0) return fenetres;
+  return [...fenetres.filter((w) => !avecCompte(w)), ...duModele];
+}
+
+/** Le texte de la pastille : le mot « Quota » dit ce que c'est, à côté de la
+ *  jauge de mémoire qui montre aussi un anneau. */
+function textePastille(pct: number | null, hebdo: boolean, atteinte: boolean): string {
+  if (pct === null) return atteinte ? "Quota atteint" : "Quota OK";
+  return `Quota${hebdo ? " semaine" : ""} ${Math.round(pct)} %`;
+}
+
+/**
  * La jauge des limites d'un abonnement (Claude, Codex…).
  *
  * Elle n'existe que pour un modèle payant dont le morph publie ses quotas :
@@ -39,28 +62,51 @@ export function etatSansPourcentage(w: CloudUsageWindow): string {
  * anneau montre la fenêtre la plus entamée ; le clic ouvre le détail de
  * chaque fenêtre (5 heures, semaine…) et quand elle repart de zéro.
  */
-export function UsageGauge({ generating }: { generating: boolean }) {
+export function UsageGauge({
+  generating,
+  model,
+  remote,
+}: {
+  generating: boolean;
+  /** Le modèle actif : en changer relit aussitôt les limites. */
+  model: string;
+  /** Un modèle local n'a pas de quota : rien ne s'affiche. */
+  remote: boolean;
+}) {
   const [usage, setUsage] = useState<CloudUsage | null>(null);
   const [ouvert, setOuvert] = useState(false);
   const boite = useRef<HTMLDivElement>(null);
+  /** La dernière lecture demandée : une réponse plus ancienne est jetée. */
+  const tour = useRef(0);
 
   const lire = useCallback(() => {
+    const n = ++tour.current;
     core
       .cloudUsage()
-      .then(setUsage)
-      .catch(() => setUsage(null));
+      .then((u) => {
+        if (n === tour.current) setUsage(u);
+      })
+      .catch((e: unknown) => {
+        console.warn("[Quota] limites illisibles :", e);
+        if (n === tour.current) setUsage(null);
+      });
   }, []);
 
+  // Changer de modèle : effacer l'ancien quota tout de suite, puis relire —
+  // celui de NVIDIA restait affiché une minute sous Claude.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `model` déclenche la relecture.
   useEffect(() => {
+    setUsage(null);
+    setOuvert(false);
+    if (!remote) return;
     lire();
     const t = window.setInterval(lire, 60_000);
-    const surModele = () => lire();
-    window.addEventListener("locaryn:active-model-changed", surModele);
+    window.addEventListener(ACTIVE_MODEL_CHANGED, lire);
     return () => {
       window.clearInterval(t);
-      window.removeEventListener("locaryn:active-model-changed", surModele);
+      window.removeEventListener(ACTIVE_MODEL_CHANGED, lire);
     };
-  }, [lire]);
+  }, [lire, model, remote]);
 
   // Une réponse finie a consommé du quota : on relit.
   const avantGen = useRef(generating);
@@ -78,11 +124,13 @@ export function UsageGauge({ generating }: { generating: boolean }) {
     return () => document.removeEventListener("mousedown", dehors);
   }, [ouvert]);
 
-  const toutes = usage?.windows ?? [];
+  const toutes = pourLeModele(usage?.windows ?? [], model);
   const fenetres = toutes.filter((w) => typeof w.used_percent === "number");
   // Connue sans pourcentage : Claude n'en donne qu'à l'approche de la limite.
   const sansPct = toutes.filter((w) => typeof w.used_percent !== "number" && w.status);
-  if (!usage || (fenetres.length === 0 && sansPct.length === 0 && !usage.credits)) return null;
+  if (!remote || !usage || (fenetres.length === 0 && sansPct.length === 0 && !usage.credits)) {
+    return null;
+  }
 
   const pire = fenetres.reduce((m, w) => Math.max(m, w.used_percent ?? 0), 0);
   const atteinte = sansPct.some((w) => w.status === "rejected");
@@ -91,12 +139,7 @@ export function UsageGauge({ generating }: { generating: boolean }) {
   // fenêtre la plus entamée, pour qu'une limite de 5 h proche se voie aussi.
   const montre = hebdo?.used_percent ?? pire;
   const teinte = atteinte ? "danger" : niveau(pire);
-  const texte =
-    fenetres.length === 0
-      ? atteinte
-        ? "Limite"
-        : "OK"
-      : `${hebdo ? "Semaine " : ""}${Math.round(montre)} %`;
+  const texte = textePastille(fenetres.length === 0 ? null : montre, !!hebdo, atteinte);
   const r = 7;
   const c = 2 * Math.PI * r;
 
@@ -107,7 +150,7 @@ export function UsageGauge({ generating }: { generating: boolean }) {
         className={`locaryn-usage-pill is-${teinte}`}
         onClick={() => setOuvert((o) => !o)}
         aria-expanded={ouvert}
-        title={`Limites de ${usage.provider ?? "l'abonnement"} : ${texte}`}
+        title={`Quota d'utilisation de ${usage.provider ?? "l'abonnement"} (pas la mémoire de la conversation) : ${texte}`}
       >
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
           <circle cx="9" cy="9" r={r} className="locaryn-usage-rail" />

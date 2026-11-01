@@ -71,6 +71,7 @@ import {
   slashAuCurseur,
 } from "../lib/slashCommands";
 import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
+import { useCloudContext } from "../lib/useCloudContext";
 import { useWelcome } from "../lib/welcome";
 import { estConsigneInterne, runWorkflow } from "../lib/workflow";
 
@@ -2902,7 +2903,12 @@ ${preview}`,
    * et les jetons utilisés restent affichés : la conversation, elle, est
    * toujours là.
    */
-  const ctxWindow: number | null = contextStatus?.running ?? null;
+  // Un modèle distant a sa propre fenêtre, publiée par son catalogue : celle
+  // du moteur local resté chargé est celle d'un autre modèle.
+  const fenetreDistante = useCloudContext(activeModel, !isLocalModel);
+  const ctxWindow: number | null = isLocalModel
+    ? (contextStatus?.running ?? null)
+    : fenetreDistante;
   // Reduire sous ce qui est deja utilise : la conversation ne tiendrait plus.
   // On ne bloque pas — on propose de compresser, c'est l'utilisateur qui decide.
   const [compressProposal, setCompressProposal] = useState<{
@@ -3704,7 +3710,7 @@ ${preview}`,
             {/* Mode simplifié : la mémoire de la conversation, dite avec des mots. */}
             <ConversationMemory
               used={usedTokens}
-              window={ctxUsage?.window ?? ctxWindow}
+              window={isLocalModel ? (ctxUsage?.window ?? ctxWindow) : ctxWindow}
               compressing={compressing}
               onCompress={
                 sessionId
@@ -3797,7 +3803,7 @@ ${preview}`,
             {/* Limites de l'abonnement (Claude, Codex…), à droite de la jauge
                 de contexte : seulement pour un modèle dont le morph publie ses
                 quotas. */}
-            <UsageGauge generating={streaming} />
+            <UsageGauge generating={streaming} model={activeModel} remote={!isLocalModel} />
           </div>
         </div>
       </div>
