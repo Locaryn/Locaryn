@@ -1842,12 +1842,16 @@ ${d.texte}`
     // sonde lente ne doit pas retarder l'envoi.
     setAttente("attend");
     setCompactage(false);
-    void core
-      .modelResidency()
-      .then((r) => setAttente((prev) => (prev === "attend" && !r.loaded ? "charge" : prev)))
-      .catch(() => {
-        // Residence inconnue : on garde l'attente courte, qui ne promet rien.
-      });
+    // Un modèle distant (catalogue, API) n'a rien à monter en mémoire ici : la
+    // sonde ne parle que du moteur local, qui dirait « pas chargé » à tort.
+    if (isLocalModel) {
+      void core
+        .modelResidency()
+        .then((r) => setAttente((prev) => (prev === "attend" && !r.loaded ? "charge" : prev)))
+        .catch(() => {
+          // Residence inconnue : on garde l'attente courte, qui ne promet rien.
+        });
+    }
     setFollowups([]);
     fullTextRef.current = "";
     const idMessage = nextId("msg");
