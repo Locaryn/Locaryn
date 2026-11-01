@@ -161,10 +161,10 @@ function useNewDestinations(ids: string[]): ReadonlySet<string> {
   return popping;
 }
 
-function sessionLabel(s: Session, index: number) {
+function sessionLabel(s: Session) {
   if (s.title) return s.title;
   const d = new Date(s.created_at);
-  return `Chat ${index + 1} — ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  return `Conversation du ${d.toLocaleDateString()} à ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 /**
@@ -730,7 +730,7 @@ export function LeftPanel({
                     <SessionRow
                       key={s.id}
                       session={s}
-                      label={sessionLabel(s, idx)}
+                      label={sessionLabel(s)}
                       bullet="chat"
                       active={activeSession?.id === s.id}
                       etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
@@ -929,7 +929,7 @@ export function LeftPanel({
                             <SessionRow
                               key={s.id}
                               session={s}
-                              label={sessionLabel(s, idx)}
+                              label={sessionLabel(s)}
                               bullet="dot"
                               active={activeSession?.id === s.id}
                               etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}

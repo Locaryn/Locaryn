@@ -843,6 +843,41 @@ export function App() {
     if (activeSession?.id === s.id) setActiveSession({ ...activeSession, title });
   }
 
+  /** Poser un titre dans toutes les listes où la conversation paraît. */
+  function appliquerTitre(sessionId: string, title: string) {
+    const maj = (list: Session[]) => list.map((x) => (x.id === sessionId ? { ...x, title } : x));
+    setStandaloneSessions(maj);
+    setSessionsByProject((prev) =>
+      Object.fromEntries(Object.entries(prev).map(([id, list]) => [id, maj(list)])),
+    );
+    setSessions(maj);
+    setActiveSession((current) => (current?.id === sessionId ? { ...current, title } : current));
+  }
+
+  /** Le modèle des petites tâches nomme la conversation d'après sa première
+   *  demande. Sans modèle choisi, le titre reste la date et l'heure de début. */
+  function nommerEnFond(sessionId: string, premiereDemande: string) {
+    core
+      .generateSessionTitle(sessionId, premiereDemande)
+      .then((title) => appliquerTitre(sessionId, title))
+      .catch((e: unknown) => {
+        console.warn("Titre de la conversation non généré :", e);
+      });
+  }
+
+  /** Premier message d'une conversation créée vide (bouton « + » d'un projet,
+   *  nouvelle conversation) : elle n'a pas encore de titre. */
+  function handlePremierMessage(sessionId: string, texte: string) {
+    const toutes = [
+      ...standaloneSessions,
+      ...sessions,
+      ...Object.values(sessionsByProject).flat(),
+      ...(activeSession ? [activeSession] : []),
+    ];
+    const s = toutes.find((x) => x.id === sessionId);
+    if (s && !s.title && !s.ephemeral) nommerEnFond(sessionId, texte);
+  }
+
   /** Renommer avec le modèle chargé, d'après ce que la conversation contient. */
   async function handleRenameSessionByAi(s: Session) {
     const tache = taskCenter.add({ type: "edit", label: "Renommer avec l'IA" });
@@ -911,27 +946,8 @@ export function App() {
       }
       setActiveSession(s);
 
-      // Ask the LLM for a concise title in the background.
-      core
-        .generateSessionTitle(s.id, firstPrompt)
-        .then((title) => {
-          const newS = { ...s, title };
-          if (!chosenProject) {
-            setStandaloneSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
-          } else {
-            setSessionsByProject((prev) => ({
-              ...prev,
-              [project.id]: (prev[project.id] ?? []).map((x) => (x.id === s.id ? newS : x)),
-            }));
-            if (activeProject?.id === project.id) {
-              setSessions((prev) => prev.map((x) => (x.id === s.id ? newS : x)));
-            }
-          }
-          setActiveSession((current) => (current?.id === s.id ? newS : current));
-        })
-        .catch((e) => {
-          console.warn("Title generation failed:", e);
-        });
+      // Le modèle nomme la conversation en fond.
+      nommerEnFond(s.id, firstPrompt);
 
       return s;
     } catch (e) {
@@ -1419,6 +1435,7 @@ export function App() {
                 : null
             }
             onCreateSessionForPrompt={handleCreateSessionForPrompt}
+            onFirstMessage={handlePremierMessage}
             attention={attention}
             onAttentionAnswer={(id, reponse) => void repondreAttention(id, reponse)}
             onAttentionDismiss={(id) => void ecarterAttention(id)}

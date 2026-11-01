@@ -195,6 +195,9 @@ type Props = {
     firstPrompt: string,
     targetProjectId?: string | null,
   ) => Promise<Session | null>;
+  /** Premier message d'une conversation qui existait déjà (créée vide) :
+   *  l'occasion de la nommer. */
+  onFirstMessage?: (sessionId: string, text: string) => void;
   /** Slash commands: open the application settings. */
   onOpenSettings?: () => void;
   /** Slash commands: start a fresh conversation. */
@@ -575,6 +578,7 @@ export function ChatPanel({
   ephemeral,
   onOpenMarketplace,
   onCreateSessionForPrompt,
+  onFirstMessage,
   onOpenSettings,
   onNewChat,
   onAddProject,
@@ -1855,6 +1859,11 @@ ${d.texte}`
     setFollowups([]);
     fullTextRef.current = "";
     const idMessage = nextId("msg");
+    // Une conversation créée vide reçoit sa première demande : elle se nomme
+    // maintenant. Celle créée par ce message l'a déjà été à sa création.
+    if (sessionId && !items.some((i) => i.kind === "msg" && i.role === "user")) {
+      onFirstMessage?.(sid, text);
+    }
     // Les pièces jointes telles qu'envoyées (contenu compris) : éditer le
     // message les remet dans le champ au lieu de les perdre.
     if (imgs.length > 0) piecesEnvoyees.current.set(idMessage, imgs);

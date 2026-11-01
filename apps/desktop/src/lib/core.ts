@@ -2522,6 +2522,8 @@ export interface CoreApi {
   permissionsWebRetenues(): Promise<PermissionWebRetenue[]>;
   /** Oublier une autorisation retenue, ou toutes sans argument. */
   permissionsWebOublier(origin?: string, kind?: string): Promise<void>;
+  /** L'app Android de cette version : adresse et QR de téléchargement. */
+  appTelephone(): Promise<{ url: string; qr_svg: string }>;
   /** Les journaux rassemblés (machine, fin de chaque journal), masqués. */
   journauxRassembler(): Promise<string>;
   journauxDossier(): Promise<string>;
@@ -3097,6 +3099,7 @@ const tauriCore: CoreApi = {
   repondrePermissionWeb: (id, allow, remember) =>
     invoke<void>("repondre_permission_web", { id, allow, remember }),
   permissionsWebRetenues: () => invoke<PermissionWebRetenue[]>("permissions_web_retenues"),
+  appTelephone: () => invoke<{ url: string; qr_svg: string }>("app_telephone"),
   permissionsWebOublier: (origin, kind) =>
     invoke<void>("permissions_web_oublier", { origin: origin ?? null, kind: kind ?? null }),
   journauxRassembler: () => invoke<string>("journaux_rassembler"),
@@ -5825,6 +5828,13 @@ Contenu de démonstration, avec **du gras** et une liste :
     return [];
   },
   async permissionsWebOublier() {},
+  async appTelephone() {
+    return {
+      url: "https://github.com/Locaryn/Locaryn/releases",
+      qr_svg:
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#fff"/><path d="M1 1h3v3h-3zM6 1h3v3h-3zM1 6h3v3h-3zM6 6h1v1h-1z" fill="#000"/></svg>',
+    };
+  },
   async decisionsEtat() {
     return { installe: false, en_cours: false, dossier: "", appareil: null, version: null };
   },

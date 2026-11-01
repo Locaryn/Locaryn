@@ -14,6 +14,7 @@ import { HuggingFaceSettings } from "../components/HuggingFaceSettings";
 import { ModeleAutrePc } from "../components/ModeleAutrePc";
 import { PairingCodes } from "../components/PairingCodes";
 import { PerformancePanel } from "../components/PerformancePanel";
+import { PhoneSimpleSettings } from "../components/PhoneSimpleSettings";
 import {
   API_FOURNISSEUR_EVENT,
   OUVRIR_CLES_API_EVENT,
@@ -152,6 +153,7 @@ export type Section =
   | "performance"
   | "huggingface"
   | "server"
+  | "phone"
   | "secrets"
   | "storage"
   | "about";
@@ -180,7 +182,17 @@ type Props = {
 };
 
 /** Ce que l'interface simplifiée montre d'emblée ; le reste se range sous « avancés ». */
-const SIMPLE_SECTIONS: ReadonlySet<Section> = new Set(["account", "server", "storage", "about"]);
+const SIMPLE_SECTIONS: ReadonlySet<Section> = new Set([
+  "account",
+  "phone",
+  "server",
+  "storage",
+  "about",
+]);
+
+/** Sections propres à l'interface simplifiée : en mode avancé, leur contenu vit
+ *  ailleurs (le téléphone, dans « Serveur & fonctions »). */
+const SIMPLE_ONLY: ReadonlySet<Section> = new Set(["phone"]);
 
 /** Les écrans que le rail n'affiche plus en interface simplifiée : ils vivent ici. */
 const ADVANCED_LINKS: { view: string; icon: IconName; label: string; desc: string }[] = [
@@ -252,6 +264,12 @@ const SECTIONS: SectionDef[] = [
     icon: "lock",
     label: "Coffre",
     desc: "Mots de passe que le modèle utilise sans les voir",
+  },
+  {
+    id: "phone",
+    icon: "device-mobile",
+    label: "Téléphone",
+    desc: "Utiliser Locaryn depuis votre téléphone",
   },
   {
     id: "server",
@@ -388,7 +406,9 @@ export function SettingsView({
     if (accountSection === "api-keys" && !apiActive) setAccountSection("profile");
   }, [accountSection, apiActive]);
 
-  const visibleSections = simple ? SECTIONS.filter((s) => SIMPLE_SECTIONS.has(s.id)) : SECTIONS;
+  const visibleSections = simple
+    ? SECTIONS.filter((s) => SIMPLE_SECTIONS.has(s.id))
+    : SECTIONS.filter((s) => !SIMPLE_ONLY.has(s.id));
   const current = SECTIONS.find((s) => s.id === section) || SECTIONS[0];
   // Dans le compte, le volet porte le nom de la sous-section : le titre doit
   // dire ce qu'on regarde, pas la famille dont ça vient.
@@ -615,6 +635,8 @@ export function SettingsView({
               <PairingCodes />
             </div>
           )}
+
+          {section === "phone" && <PhoneSimpleSettings />}
 
           {section === "secrets" && <SecretsSettings />}
           {section === "storage" && <StorageSettings onOpenMarketplace={onOpenMarketplace} />}

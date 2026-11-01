@@ -15823,3 +15823,159 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-mcp-card-arrete .locaryn-box-desc {
   opacity: 0.65;
 }
+
+/* Téléphone, en interface simplifiée. */
+.locaryn-phone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 760px;
+}
+.locaryn-phone-intro {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.locaryn-phone-intro h3 {
+  margin: 0 0 4px;
+  font-size: var(--text-lg, 1.1rem);
+}
+.locaryn-phone-intro p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+}
+.locaryn-phone-colonnes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+.locaryn-phone-sous-titre {
+  margin: 0 0 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.locaryn-phone-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+.locaryn-phone-liste li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.locaryn-phone-liste li > :first-child {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-dim);
+}
+.locaryn-phone-colonnes > div:first-child .locaryn-phone-liste li > :first-child {
+  color: var(--accent);
+}
+.locaryn-phone-etapes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.locaryn-phone-etape {
+  display: flex;
+  gap: 12px;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.locaryn-phone-etape-n {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.locaryn-phone-etape-faite .locaryn-phone-etape-n {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.locaryn-phone-etape-corps {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.locaryn-phone-etape-corps h4 {
+  margin: 4px 0 0;
+  font-size: var(--text-md);
+}
+.locaryn-phone-etape-corps p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.locaryn-phone-etape-corps button {
+  min-height: 40px;
+}
+.locaryn-phone-qr {
+  width: 100%;
+  max-width: 168px;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.locaryn-phone-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.locaryn-phone-qr-ligne,
+.locaryn-phone-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+.locaryn-phone-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+}
+.locaryn-phone-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+}
+.locaryn-phone-form input {
+  min-height: 40px;
+}
+.locaryn-phone-code {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.locaryn-phone-code-valeur {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.6rem;
+  letter-spacing: 0.2em;
+  font-weight: 600;
+}

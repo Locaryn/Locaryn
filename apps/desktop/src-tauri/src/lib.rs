@@ -35,6 +35,7 @@ mod model_recommendations;
 mod model_residency;
 mod notifications;
 mod permissions_web;
+mod telephone;
 mod presse_papiers;
 mod project_context;
 mod rapports;
@@ -1771,23 +1772,7 @@ async fn generate_session_title(
         .timeout(std::time::Duration::from_secs(300))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("model returned {}", resp.status()));
-    }
-    let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let raw = val["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("");
-    // Le même nettoyage que pour les autres titres : bloc de réflexion (même
-    // jamais fermé), guillemets, phrase trop longue. Un modèle qui raisonnait
-    // jusqu'au bout de ses jetons donnait « <think> » comme titre.
-    let title = locaryn_agent_runtime::titling::nettoyer(raw).ok_or("empty title generated")?;
+    let title = demander_titre(&client, &url, body).await?;
 
     core.storage
         .sessions
@@ -1796,6 +1781,68 @@ async fn generate_session_title(
         .map_err(|e| e.to_string())?;
 
     Ok(title)
+}
+
+/// Combien de temps un titre attend que le modèle soit prêt : le premier
+/// message lance souvent son chargement, et la demande de titre part avec lui.
+const TITRE_ATTENTE_MAX: std::time::Duration = std::time::Duration::from_secs(360);
+const TITRE_PAUSE: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Le moteur n'est pas encore prêt (il démarre ou charge le modèle) : on
+/// réessaie plutôt que d'abandonner le titre.
+fn titre_a_reessayer(statut: Option<reqwest::StatusCode>) -> bool {
+    match statut {
+        None => true,
+        Some(s) => {
+            s == reqwest::StatusCode::SERVICE_UNAVAILABLE
+                || s == reqwest::StatusCode::BAD_GATEWAY
+                || s == reqwest::StatusCode::TOO_MANY_REQUESTS
+        }
+    }
+}
+
+/// Demander le titre, en attendant que le moteur soit prêt, et redemander une
+/// fois avec plus de place si la première réponse n'a rien donné d'utilisable.
+async fn demander_titre(
+    client: &reqwest::Client,
+    url: &str,
+    mut body: serde_json::Value,
+) -> Result<String, String> {
+    let debut = std::time::Instant::now();
+    let mut seconde_chance = true;
+    loop {
+        let essai = match client.post(url).json(&body).send().await {
+            Ok(r) if r.status().is_success() => Ok(r),
+            Ok(r) => Err((Some(r.status()), format!("model returned {}", r.status()))),
+            Err(e) => Err((e.status(), e.to_string())),
+        };
+        let resp = match essai {
+            Ok(r) => r,
+            Err((statut, erreur)) => {
+                if titre_a_reessayer(statut) && debut.elapsed() < TITRE_ATTENTE_MAX {
+                    tokio::time::sleep(TITRE_PAUSE).await;
+                    continue;
+                }
+                return Err(erreur);
+            }
+        };
+        let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        let raw = val["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("");
+        // Le même nettoyage que pour les autres titres : bloc de réflexion (même
+        // jamais fermé), guillemets, phrase trop longue. Un modèle qui raisonnait
+        // jusqu'au bout de ses jetons donnait « <think> » comme titre.
+        if let Some(titre) = locaryn_agent_runtime::titling::nettoyer(raw) {
+            return Ok(titre);
+        }
+        if !seconde_chance {
+            return Err("empty title generated".into());
+        }
+        // Un modèle qui commence par réfléchir épuise 40 jetons sans titre.
+        seconde_chance = false;
+        body["max_tokens"] = serde_json::json!(160);
+    }
 }
 
 #[tauri::command]
@@ -7519,6 +7566,7 @@ pub fn run() {
             laya_runtime::laya_etat,
             journaux::journaux_rassembler,
             permissions_web::repondre_permission_web,
+            telephone::app_telephone,
             permissions_web::permissions_web_retenues,
             permissions_web::permissions_web_oublier,
             journaux::journaux_dossier,
