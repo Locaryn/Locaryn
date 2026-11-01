@@ -371,7 +371,6 @@ pub async fn lancer(
         history: Vec::new(),
         mcp_state: Some(core.mcp.clone()),
         extra_system: None,
-        git_contributeur: None,
         project_context: None,
         capabilities: crate::extensions::active_capabilities(&core).await,
         tools: None,

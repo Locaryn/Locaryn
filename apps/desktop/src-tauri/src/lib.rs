@@ -2554,12 +2554,6 @@ async fn envoyer_message(
         // répondre : c'est ici que la promesse se tient. Les portées que cette
         // installation ne peut pas honorer sont écartées à la lecture — sans
         // serveur, une fiche « partagée » n'existe pas.
-        // La préférence d'attribution Git : les commits du modèle portent
-        // la mention « Co-Authored-By: Locaryn » tant que la personne ne l'a
-        // pas décochée.
-        git_contributeur: locaryn_config::load(None)
-            .map(|c| Some(c.assistance.commit_contributeur))
-            .unwrap_or(None),
         project_context: match project_id {
             Some(p) => project_context::contexte_pour_le_modele(&core, p).await,
             None => None,

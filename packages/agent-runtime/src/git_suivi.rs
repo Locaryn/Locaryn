@@ -53,9 +53,13 @@ fn motif_commit() -> &'static regex::Regex {
 
 /// Ajouter Locaryn en co-auteur aux `git commit` d'une commande de l'agent,
 /// avec `--trailer` (Git 2.32 et plus) : le message du modèle reste tel quel.
-/// Rien n'est ajouté si la ligne y est déjà.
+/// Rien n'est ajouté si la ligne y est déjà, ni si l'une des deux cases qui
+/// la règlent (Réglages → Général, Profil) est décochée.
 pub fn avec_co_auteur(commande: &str) -> String {
-    if !locaryn_config::git::co_auteur() {
+    let profil = locaryn_config::load(None)
+        .map(|c| c.assistance.commit_contributeur)
+        .unwrap_or(true);
+    if !locaryn_config::git::co_auteur() || !profil {
         return commande.to_string();
     }
     ajouter_co_auteur(commande)
