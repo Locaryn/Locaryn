@@ -53,6 +53,8 @@ export interface AppTask {
   transcript?: string;
   /** Les outils qu'il a appelés, dans l'ordre. */
   tools?: string[];
+  /** Le temps qui lui est accordé, en secondes. */
+  limiteS?: number;
 }
 
 /**

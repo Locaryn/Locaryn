@@ -21,6 +21,20 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Le nom réservé au modèle chargé sur cette machine.
 pub const LOCAL: &str = "local";
 
+/// Le temps laissé à un sous-agent quand la conversation n'en dit rien.
+pub const MINUTES_DEFAUT: u64 = 20;
+/// Le plus long qu'on accepte : au-delà, un sous-agent bloqué tournait des heures.
+pub const MINUTES_MAX: u64 = 120;
+
+/// Le temps accordé, borné : `None` ou 0 → la valeur par défaut.
+fn duree_accordee(minutes: Option<u64>) -> std::time::Duration {
+    let m = minutes
+        .filter(|m| *m > 0)
+        .unwrap_or(MINUTES_DEFAUT)
+        .min(MINUTES_MAX);
+    std::time::Duration::from_secs(m * 60)
+}
+
 /// Ce que l'interface reçoit d'un sous-agent, au fil de son travail.
 #[derive(Debug, Clone, Serialize)]
 pub struct EvenementSousAgent {
@@ -35,6 +49,8 @@ pub struct EvenementSousAgent {
     /// Phase `accord` : la demande d'autorisation, telle que le fil l'émet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accord: Option<serde_json::Value>,
+    /// Le temps accordé, en secondes : la tuile montre ce qu'il reste.
+    pub limite_s: u64,
 }
 
 /// Où envoyer les requêtes d'un modèle choisi.
@@ -146,14 +162,67 @@ async fn compte_deconnecte(h: &cloud::Host<'_>, fournisseur: &str) -> bool {
     }
 }
 
-/// Lire le fil d'un sous-agent jusqu'au bout, et dire comment il a fini.
-async fn suivre<F>(mut flux: locaryn_agent_runtime::EventStream, emettre: &F)
+/// Ce qu'un fil a laissé en route.
+#[derive(Default)]
+struct Lecture {
+    texte: String,
+    erreur: Option<String>,
+    /// Le temps accordé est écoulé avant la fin du fil.
+    expire: bool,
+}
+
+/// Lire le fil d'un sous-agent jusqu'au bout ou jusqu'à la limite de temps,
+/// et dire comment il a fini.
+async fn suivre<F>(
+    flux: locaryn_agent_runtime::EventStream,
+    limite: std::time::Duration,
+    emettre: &F,
+) where
+    F: Fn(&'static str, String, Option<serde_json::Value>),
+{
+    let lu = lire_fil(flux, tokio::time::Instant::now() + limite, emettre).await;
+    let compte_rendu = locaryn_agent_runtime::compaction::sans_marqueurs(&lu.texte);
+    let minutes = limite.as_secs() / 60;
+    match (compte_rendu.trim().is_empty(), lu.expire) {
+        (true, true) => emettre(
+            "echec",
+            format!("temps écoulé ({minutes} min) avant le moindre compte rendu"),
+            None,
+        ),
+        (true, false) => emettre("echec", raison_du_vide(lu.erreur, &lu.texte), None),
+        (false, true) => emettre(
+            "fin",
+            format!(
+                "Temps écoulé ({minutes} min) : compte rendu partiel.
+
+{compte_rendu}"
+            ),
+            None,
+        ),
+        (false, false) => emettre("fin", compte_rendu, None),
+    }
+}
+
+/// Lire les événements jusqu'à la fin du fil ou l'échéance.
+async fn lire_fil<F>(
+    mut flux: locaryn_agent_runtime::EventStream,
+    echeance: tokio::time::Instant,
+    emettre: &F,
+) -> Lecture
 where
     F: Fn(&'static str, String, Option<serde_json::Value>),
 {
-    let mut texte = String::new();
-    let mut erreur: Option<String> = None;
-    while let Some(ev) = flux.next().await {
+    let mut lu = Lecture::default();
+    loop {
+        let ev = match tokio::time::timeout_at(echeance, flux.next()).await {
+            Ok(Some(ev)) => ev,
+            Ok(None) => break,
+            Err(_) => {
+                lu.expire = true;
+                break;
+            }
+        };
+        let (texte, erreur) = (&mut lu.texte, &mut lu.erreur);
         match ev {
             StreamEvent::Token { text } => {
                 texte.push_str(&text);
@@ -167,16 +236,11 @@ where
                 level: locaryn_events::LogLevel::Error,
                 msg,
                 ..
-            } => erreur = Some(msg),
+            } => *erreur = Some(msg),
             _ => {}
         }
     }
-    let compte_rendu = locaryn_agent_runtime::compaction::sans_marqueurs(&texte);
-    if compte_rendu.trim().is_empty() {
-        emettre("echec", raison_du_vide(erreur, &texte), None);
-    } else {
-        emettre("fin", compte_rendu, None);
-    }
+    lu
 }
 
 /// Pourquoi un sous-agent n'a rien rendu. « N'a rien rendu », seul, ne
@@ -249,6 +313,7 @@ pub fn arreter(app: &AppHandle, parent: uuid::Uuid) -> usize {
             phase: "echec",
             texte: "arrêté avec la conversation".into(),
             accord: None,
+            limite_s: 0,
         };
         if let Err(e) = app.emit("sous-agent", ev) {
             tracing::warn!(error = %e, "arrêt de sous-agent non transmis");
@@ -340,7 +405,9 @@ pub async fn lancer(
     tache: String,
     modele: String,
     nom: String,
+    minutes: Option<u64>,
 ) -> Result<String, String> {
+    let limite = duree_accordee(minutes);
     let core = app.state::<Core>();
     let cible = cible(&core, &modele).await?;
     let id = uuid::Uuid::new_v4().to_string();
@@ -420,6 +487,7 @@ pub async fn lancer(
                 phase,
                 texte,
                 accord,
+                limite_s: limite.as_secs(),
             };
             if let Err(e) = app.emit("sous-agent", ev) {
                 tracing::warn!(error = %e, "événement de sous-agent non transmis");
@@ -430,7 +498,7 @@ pub async fn lancer(
     let libelle = cible.libelle.clone();
     let (id_fin, parent_fin) = (id.clone(), parent);
     let tache_de_fond = tokio::spawn(async move {
-        suivre(flux, &emettre).await;
+        suivre(flux, limite, &emettre).await;
         retirer(parent_fin, &id_fin);
     });
     inscrire(
@@ -443,8 +511,9 @@ pub async fn lancer(
         },
     );
 
+    let minutes = limite.as_secs() / 60;
     Ok(format!(
-        "Sous-agent « {nom} » lancé (id {id}) avec {libelle}. Il travaille en arrière-plan ; son \
+        "Sous-agent « {nom} » lancé (id {id}) avec {libelle}, {minutes} min au plus. Il travaille en arrière-plan ; son \
          compte rendu arrivera dans cette conversation. Continue en attendant."
     ))
 }
@@ -491,5 +560,15 @@ mod tests {
         assert_eq!(raison_du_vide(Some("HTTP 504".into()), "x"), "HTTP 504");
         assert!(raison_du_vide(None, "").contains("aucun texte"));
         assert!(raison_du_vide(None, "<think>je réfléchis</think>").contains("raisonnement"));
+    }
+
+    /// Rien ou 0 : le défaut ; trop : le plafond.
+    #[test]
+    fn le_temps_accorde_est_borne() {
+        let min = |m: Option<u64>| duree_accordee(m).as_secs() / 60;
+        assert_eq!(min(None), MINUTES_DEFAUT);
+        assert_eq!(min(Some(0)), MINUTES_DEFAUT);
+        assert_eq!(min(Some(5)), 5);
+        assert_eq!(min(Some(10_000)), MINUTES_MAX);
     }
 }

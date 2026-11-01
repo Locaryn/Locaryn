@@ -19,6 +19,8 @@ export interface EvenementSousAgent {
   phase: "debut" | "jeton" | "outil" | "accord" | "fin" | "echec";
   texte: string;
   accord?: Record<string, unknown>;
+  /** Le temps accordé, en secondes (0 : inconnu). */
+  limite_s?: number;
 }
 
 /** Le compte rendu d'un sous-agent, pour la conversation qui l'a lancé. */
@@ -57,7 +59,10 @@ function recevoir(ev: EvenementSousAgent): void {
   const t = taskCenter.snapshot().find((x) => x.id === tache);
   switch (ev.phase) {
     case "debut":
-      taskCenter.update(tache, { transcript: `Tâche : ${ev.texte}\n\n` });
+      taskCenter.update(tache, {
+        transcript: `Tâche : ${ev.texte}\n\n`,
+        limiteS: ev.limite_s || undefined,
+      });
       break;
     case "jeton":
       taskCenter.update(tache, {

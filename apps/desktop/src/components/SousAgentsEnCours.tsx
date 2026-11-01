@@ -16,9 +16,29 @@ function activite(t: AppTask): string {
   return ligne.length > 140 ? `…${ligne.slice(-140)}` : ligne;
 }
 
-function duree(depuis: number, maintenant: number): string {
-  const s = Math.max(0, Math.round((maintenant - depuis) / 1000));
+function enClair(secondes: number): string {
+  const s = Math.max(0, Math.round(secondes));
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")}`;
+}
+
+/** « 3 min 12 · reste 16 min » quand la limite est connue. */
+function temps(t: AppTask, maintenant: number): string {
+  const ecoule = (maintenant - t.createdAt) / 1000;
+  if (!t.limiteS) return enClair(ecoule);
+  const reste = Math.max(0, t.limiteS - ecoule);
+  return `${enClair(ecoule)} · reste ${reste < 60 ? enClair(reste) : `${Math.ceil(reste / 60)} min`}`;
+}
+
+/** Un tour = un appel d'outil : le modèle a agi, puis relit le résultat. */
+function tours(t: AppTask): string {
+  const n = t.tools?.length ?? 0;
+  return `${n} tour${n > 1 ? "s" : ""}`;
+}
+
+/** La part du temps accordé déjà passée, ou `null` sans limite connue. */
+function avancement(t: AppTask, maintenant: number): number | null {
+  if (!t.limiteS) return null;
+  return Math.min(100, Math.round((maintenant - t.createdAt) / 10 / t.limiteS));
 }
 
 /**
@@ -53,9 +73,11 @@ export function SousAgentsEnCours({ sessionId }: { sessionId: string }) {
             <Icon name="robot" size={14} />
             <span className="locaryn-sous-agent-nom">{t.label}</span>
             {t.model && <span className="locaryn-sous-agent-modele">{t.model}</span>}
-            <span className="locaryn-sous-agent-duree">{duree(t.createdAt, maintenant)}</span>
+            <span className="locaryn-sous-agent-duree">
+              {tours(t)} · {temps(t, maintenant)}
+            </span>
           </div>
-          <LoProgress value={null} />
+          <LoProgress value={avancement(t, maintenant)} />
           <div className="locaryn-sous-agent-activite">{activite(t)}</div>
         </div>
       ))}

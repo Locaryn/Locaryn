@@ -419,7 +419,7 @@ pub async fn usage_of(host: &Host<'_>, id: &str) -> Option<serde_json::Value> {
         .http
         .get(&url)
         .timeout(std::time::Duration::from_secs(8));
-    if let Some(k) = stored_key(host, &id) {
+    if let Some(k) = stored_key(host, id) {
         req = req.bearer_auth(k);
     }
     let mut v: serde_json::Value = req.send().await.ok()?.json().await.ok()?;

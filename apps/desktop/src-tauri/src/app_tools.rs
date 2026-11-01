@@ -188,7 +188,8 @@ pub(crate) fn specs_app() -> Vec<ToolSpec> {
                 "properties": {
                     "tache": { "type": "string", "description": "Ce que le sous-agent doit faire, complet : il ne voit pas la conversation." },
                     "modele": { "type": "string", "description": "`local` (défaut) ou `<catalogue>:<modèle>` rendu par lister_modeles." },
-                    "nom": { "type": "string", "description": "Un nom court pour le reconnaître." }
+                    "nom": { "type": "string", "description": "Un nom court pour le reconnaître." },
+                    "minutes": { "type": "integer", "description": "Temps accordé en minutes (défaut 20, 120 au plus). À l'échéance, il rend ce qu'il a." }
                 }
             }),
             Risk::Low,
@@ -252,6 +253,7 @@ impl HostTools for AppTools {
                             .and_then(Value::as_str)
                             .unwrap_or("")
                             .to_string(),
+                        args.get("minutes").and_then(Value::as_u64),
                     )
                     .await,
                 ),
