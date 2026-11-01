@@ -42,6 +42,7 @@ mod reveler;
 mod skills;
 mod snippets;
 mod sous_agents;
+mod taches_fond;
 mod telephone;
 mod trust_source;
 mod workspace;
@@ -1721,29 +1722,18 @@ async fn generate_session_title(
         .await
         .map_err(|e| e.to_string())?;
 
-    // « Aucun » est un choix de la personne : on ne nomme rien. Sinon le modèle
-    // des petites tâches est celui déjà chargé, ou celui qu'elle a désigné.
-    let choisi = locaryn_config::load(None)
-        .ok()
-        .and_then(|c| c.assistance.micro_model);
-    if choisi.is_none() && !explicite {
-        return Err("Le nommage automatique est désactivé dans les réglages.".into());
-    }
-    let active_provider = core.storage.providers.active().await.ok().flatten();
-    let provider = active_provider.ok_or("no active provider")?;
-    if moteur_supervise(&provider.engine) {
-        let _ = core.supervisor.ensure_running(&provider.engine).await;
-    }
-    let model_name = match (&choisi, explicite) {
-        (_, true) | (None, _) => provider.model.clone().unwrap_or_default(),
-        (Some(c), false) => locaryn_config::micro_effectif(c, provider.model.as_deref()),
-    };
-
+    // Le modèle des petites tâches, un moteur local déjà chargé, ou le
+    // fournisseur de la conversation s'il est autorisé à nommer (dossier du
+    // fournisseur). Aucun : pas de titre, l'écran garde la date.
+    let cible = taches_fond::cible(&core, taches_fond::Tache::Titre, explicite)
+        .await
+        .ok_or("Aucun modèle pour nommer la conversation.")?;
+    let model_name = cible.modele.clone();
     let url = format!(
         "{}/v1/chat/completions",
-        provider.endpoint.trim_end_matches('/')
+        cible.endpoint.trim_end_matches('/')
     );
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "model": model_name,
         "messages": [
             {
@@ -1767,12 +1757,16 @@ async fn generate_session_title(
     // et 30 secondes ne suffisaient pas à un 27B sur une petite carte, dont
     // le titre n'arrivait jamais. C'est une tâche de fond, rien n'attend après
     // elle : mieux vaut un titre tardif que pas de titre.
-    let client = reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(300))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let title = demander_titre(&client, &url, body).await?;
+    if cible.distant {
+        // Réglages propres à llama.cpp : un fournisseur peut les refuser. Un
+        // modèle qui raisonne d'office a besoin de place avant le titre.
+        if let Some(o) = body.as_object_mut() {
+            o.remove("reasoning_budget");
+            o.remove("chat_template_kwargs");
+            o.insert("max_tokens".into(), serde_json::json!(400));
+        }
+    }
+    let title = demander_titre(&cible.http, &url, body).await?;
 
     core.storage
         .sessions
@@ -7711,6 +7705,8 @@ pub fn run() {
             travel_mode::run_composer_tool,
             travel_mode::suggest_project,
             travel_mode::merge_sessions,
+            taches_fond::taches_distantes,
+            taches_fond::taches_distantes_ecrire,
             travel_mode::micro_model,
             travel_mode::consigne_systeme,
             travel_mode::definir_consigne_systeme,

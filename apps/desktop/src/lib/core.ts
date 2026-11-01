@@ -156,6 +156,19 @@ export interface ServeurModeles {
   url: string;
 }
 
+/** Un fournisseur autorisé pour une tâche de fond, et avec quel modèle. */
+export interface TacheDistante {
+  actif: boolean;
+  /** `null` : le modèle de la conversation. */
+  modele: string | null;
+}
+
+/** Les tâches de fond qu'un fournisseur a le droit de faire (coupées par défaut). */
+export interface TachesDistantes {
+  memoire: TacheDistante;
+  titres: TacheDistante;
+}
+
 export interface CloudModel {
   id: string;
   name: string;
@@ -2536,6 +2549,9 @@ export interface CoreApi {
   cloudUsage(): Promise<CloudUsage | null>;
   /** Les limites d'un fournisseur précis, même s'il ne sert pas la conversation. */
   cloudUsageOf(providerId: string): Promise<CloudUsage | null>;
+  /** Les tâches de fond autorisées chez un fournisseur. */
+  tachesDistantes(providerId: string): Promise<TachesDistantes>;
+  tachesDistantesEcrire(providerId: string, reglages: TachesDistantes): Promise<void>;
   setCautionLevel(level: CautionLevel): Promise<void>;
   getInferenceConfig(): Promise<InferenceConfig>;
   setInferenceConfig(config: InferenceConfig, consent?: boolean): Promise<void>;
@@ -3114,6 +3130,9 @@ const tauriCore: CoreApi = {
   decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
   cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
   cloudUsageOf: (providerId) => invoke<CloudUsage | null>("cloud_usage_of", { providerId }),
+  tachesDistantes: (providerId) => invoke<TachesDistantes>("taches_distantes", { providerId }),
+  tachesDistantesEcrire: (providerId, reglages) =>
+    invoke<void>("taches_distantes_ecrire", { providerId, reglages }),
   setCautionLevel: (level) => invoke<void>("set_caution_level", { level }),
 
   getInferenceConfig: () => invoke<InferenceConfig>("get_inference_config"),
@@ -5815,6 +5834,13 @@ Contenu de démonstration, avec **du gras** et une liste :
   async cloudUsageOf() {
     return null;
   },
+  async tachesDistantes() {
+    return {
+      memoire: { actif: false, modele: null },
+      titres: { actif: false, modele: null },
+    };
+  },
+  async tachesDistantesEcrire() {},
   async ouvrirChemin() {},
   async journauxRassembler() {
     return "Locaryn (démo) — aucun journal dans l'aperçu web.";

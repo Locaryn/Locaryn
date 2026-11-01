@@ -11,6 +11,7 @@ import {
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
 import { DynamicPluginWidget } from "../extensions/DynamicPluginWidget";
 import { getSlotContributions } from "../extensions/SlotRegistry";
+import { ProviderBackgroundTasks } from "./ProviderBackgroundTasks";
 import { UsageCarte, UsageResume, useProviderUsage } from "./ProviderUsage";
 
 /**
@@ -204,6 +205,7 @@ export function CloudProviderScreen({
       </div>
 
       <UsageCarte usage={usage} />
+      <ProviderBackgroundTasks provider={provider} />
 
       {contribution ? (
         <>

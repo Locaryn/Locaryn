@@ -170,7 +170,13 @@ pub async fn run_memory_command(
         });
     }
 
-    let (endpoint, modele) = endpoint_et_micro_modele(&core).await?;
+    let cible = crate::taches_fond::cible(&core, crate::taches_fond::Tache::Memoire, false)
+        .await
+        .ok_or_else(|| {
+            "Aucun modèle pour gérer la mémoire : chargez un modèle local, ou autorisez le \
+             fournisseur pour la classification mémoire dans son dossier."
+                .to_string()
+        })?;
     let fiches: Vec<FicheResumee> = entries
         .iter()
         .map(|e| FicheResumee {
@@ -181,9 +187,14 @@ pub async fn run_memory_command(
         })
         .collect();
 
-    let client = reqwest::Client::new();
-    let actions =
-        titling::ask_memory_command(&endpoint, &client, &modele, instruction, &fiches).await;
+    let actions = titling::ask_memory_command(
+        &cible.endpoint,
+        &cible.http,
+        &cible.modele,
+        instruction,
+        &fiches,
+    )
+    .await;
 
     if actions.is_empty() {
         return Ok(MemoryCommandResult {
@@ -260,47 +271,6 @@ pub async fn run_memory_command(
         applied,
         entries,
     })
-}
-
-/// Le point d'entrée compatible OpenAI actif, et le modèle à charger pour une
-/// micro-tâche — le même calcul que pour les autres tâches secondaires
-/// (titrage, plongements) : le modèle dédié s'il est configuré, sinon celui
-/// déjà chargé pour ne pas échanger de modèle en VRAM pour une tâche courte.
-async fn endpoint_et_micro_modele(core: &Core) -> Result<(String, String), String> {
-    let providers = core
-        .storage
-        .providers
-        .list()
-        .await
-        .map_err(|e| e.to_string())?;
-    let actif = providers
-        .into_iter()
-        .find(|p| {
-            p.is_active
-                && matches!(
-                    p.engine,
-                    locaryn_shared_types::ProviderEngine::LlamaCpp
-                        | locaryn_shared_types::ProviderEngine::OpenAiCompat
-                        | locaryn_shared_types::ProviderEngine::Extension(_)
-                )
-        })
-        .ok_or_else(|| {
-            "Aucun moteur d'inférence actif. Démarrez-en un pour pouvoir gérer la mémoire par \
-             instruction."
-                .to_string()
-        })?;
-
-    let micro = locaryn_config::load(None)
-        .ok()
-        .and_then(|c| c.assistance.micro_model)
-        .filter(|m| !m.trim().is_empty());
-    let modele = match micro {
-        Some(choisi) => locaryn_config::micro_effectif(&choisi, actif.model.as_deref()),
-        None => actif
-            .model
-            .ok_or_else(|| "Le moteur actif n'annonce aucun modèle.".to_string())?,
-    };
-    Ok((actif.endpoint, modele))
 }
 
 // ============================================================================

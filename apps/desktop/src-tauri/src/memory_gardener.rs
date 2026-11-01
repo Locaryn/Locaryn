@@ -215,28 +215,35 @@ pub fn lancer(app: AppHandle) {
     });
 }
 
-/// Le modèle de micro-tâches et l'endpoint du moteur de conversation, quand un
-/// modèle local est chargé et répond. `None` : rien à faire, et rien n'est
+/// Le modèle qui trie : le moteur local déjà chargé, ou un fournisseur que la
+/// personne a autorisé pour ce tri. `None` : rien à faire, et rien n'est
 /// rechargé pour ça.
-async fn moteur_pret(core: &Core) -> Option<(String, String)> {
-    let sup = &core.supervisor;
-    let p = core.storage.providers.active().await.ok().flatten()?;
-    if p.engine != ProviderEngine::LlamaCpp || !sup.is_healthy(&p.engine).await {
-        return None;
+async fn moteur_pret(core: &Core) -> Option<crate::taches_fond::Cible> {
+    crate::taches_fond::cible(core, crate::taches_fond::Tache::Memoire, false).await
+}
+
+/// Personne ne se sert du modèle depuis deux minutes. Le moteur local le dit
+/// lui-même ; pour un fournisseur, c'est le dernier message écrit.
+async fn assez_inactif(core: &Core, cible: &crate::taches_fond::Cible) -> bool {
+    if !cible.distant {
+        let moteur = ProviderEngine::LlamaCpp;
+        return matches!(core.supervisor.residency(&moteur).await, Some((inactif, _, _)) if inactif >= ATTENTE_AVANT_TRI);
     }
-    let micro = locaryn_config::load(None)
-        .ok()
-        .and_then(|c| c.assistance.micro_model)
-        .filter(|m| !m.trim().is_empty())
-        .unwrap_or_else(|| locaryn_config::MICRO_MODEL_ACTIF.to_string());
-    let micro = locaryn_config::micro_effectif(&micro, p.model.as_deref());
-    Some((p.endpoint, micro))
+    let seuil = chrono::Utc::now() - chrono::Duration::seconds(ATTENTE_AVANT_TRI as i64);
+    match collecter(core, Some(seuil)).await {
+        Ok(recents) => recents.is_empty(),
+        Err(e) => {
+            tracing::debug!(erreur = %e, "activité récente illisible");
+            false
+        }
+    }
 }
 
 /// Lire un échange et retenir ce qu'il apprend. Rend le nombre de faits.
-async fn apprendre(core: &Core, endpoint: &str, micro: &str, echange: &str) -> u32 {
+async fn apprendre(core: &Core, c: &crate::taches_fond::Cible, echange: &str) -> u32 {
     let faits =
-        locaryn_agent_runtime::titling::ask_for_memory(endpoint, &core.http, micro, echange).await;
+        locaryn_agent_runtime::titling::ask_for_memory(&c.endpoint, &c.http, &c.modele, echange)
+            .await;
     let mut appris = 0;
     for f in faits {
         match core
@@ -288,7 +295,7 @@ fn phrases_perimees(data_dir: &std::path::Path) -> bool {
 
 /// Écrire les phrases d'accueil des deux styles d'après la mémoire. Rend le
 /// nombre de phrases obtenues ; un style qui échoue garde ses anciennes phrases.
-async fn ecrire_phrases(core: &Core, endpoint: &str, micro: &str) -> u32 {
+async fn ecrire_phrases(core: &Core, c: &crate::taches_fond::Cible) -> u32 {
     use locaryn_agent_runtime::titling::{ask_for_suggestions, StyleSuggestion};
     let memoire = core
         .storage
@@ -301,7 +308,7 @@ async fn ecrire_phrases(core: &Core, endpoint: &str, micro: &str) -> u32 {
     let mut phrases = lire_phrases(&core.data_dir);
     let mut ecrites = 0;
     for style in [StyleSuggestion::Simple, StyleSuggestion::Expert] {
-        let v = ask_for_suggestions(endpoint, &core.http, micro, &memoire, style).await;
+        let v = ask_for_suggestions(&c.endpoint, &c.http, &c.modele, &memoire, style).await;
         if v.is_empty() {
             continue;
         }
@@ -332,16 +339,10 @@ async fn un_passage(core: &Core) -> Result<(), String> {
     if sup.utilisateur_occupe() {
         return Ok(());
     }
-    let Some((endpoint, micro)) = moteur_pret(core).await else {
+    let Some(cible) = moteur_pret(core).await else {
         return Ok(());
     };
-    let Some(p) = core.storage.providers.active().await.ok().flatten() else {
-        return Ok(());
-    };
-    let Some((inactif, _, _)) = sup.residency(&p.engine).await else {
-        return Ok(());
-    };
-    if inactif < ATTENTE_AVANT_TRI {
+    if !assez_inactif(core, &cible).await {
         return Ok(());
     }
 
@@ -361,7 +362,7 @@ async fn un_passage(core: &Core) -> Result<(), String> {
             // Une personne a repris la main : ce qui est lu est gardé, le
             // reste attendra le prochain passage.
             _ = stop.cancelled() => return Ok(()),
-            n = apprendre(core, &endpoint, &micro, &e.texte) => n,
+            n = apprendre(core, &cible, &e.texte) => n,
         };
         appris += faits;
         etat.dernier = Some(e.quand);
@@ -382,7 +383,7 @@ async fn un_passage(core: &Core) -> Result<(), String> {
         tokio::select! {
             biased;
             _ = stop.cancelled() => {}
-            n = ecrire_phrases(core, &endpoint, &micro) => {
+            n = ecrire_phrases(core, &cible) => {
                 if n > 0 {
                     tracing::info!(phrases = n, "phrases d'accueil préparées");
                 }
@@ -403,10 +404,11 @@ pub async fn trier_maintenant(core: &Core) -> Result<(), String> {
     if progression().running {
         return Err("Un tri est déjà en cours.".into());
     }
-    let Some((endpoint, micro)) = moteur_pret(core).await else {
+    let Some(cible) = moteur_pret(core).await else {
         return Err(
-            "Aucun modèle local n'est chargé. Envoyez un message pour le charger, puis relancez \
-             le tri."
+            "Aucun modèle local n'est chargé, et aucun fournisseur n'est autorisé pour le tri \
+             (dossier du fournisseur, dans la liste des modèles). Envoyez un message à un modèle \
+             local pour le charger, puis relancez le tri."
                 .into(),
         );
     };
@@ -425,7 +427,7 @@ pub async fn trier_maintenant(core: &Core) -> Result<(), String> {
     // Tant que ce garde vit, le modèle sert : aucune éjection. À sa chute, le
     // compte à rebours repart.
     let garde = core.supervisor.utilisation();
-    let resultat = trier(core, &endpoint, &micro, echanges).await;
+    let resultat = trier(core, &cible, echanges).await;
     drop(garde);
 
     let delai = core.supervisor.idle_timeout_secs();
@@ -443,14 +445,13 @@ pub async fn trier_maintenant(core: &Core) -> Result<(), String> {
 
 async fn trier(
     core: &Core,
-    endpoint: &str,
-    micro: &str,
+    cible: &crate::taches_fond::Cible,
     echanges: Vec<Echange>,
 ) -> Result<(), String> {
     let mut vues: HashSet<uuid::Uuid> = HashSet::new();
     let mut dernier = None;
     for e in echanges {
-        let faits = apprendre(core, endpoint, micro, &e.texte).await;
+        let faits = apprendre(core, cible, &e.texte).await;
         let premiere = vues.insert(e.session);
         dernier = Some(e.quand);
         progression_modifier(|p| {
@@ -482,7 +483,7 @@ async fn trier(
     });
 
     progression_modifier(|p| p.phase = "Écriture des phrases d'accueil".into());
-    let ecrites = ecrire_phrases(core, endpoint, micro).await;
+    let ecrites = ecrire_phrases(core, cible).await;
     progression_modifier(|p| {
         p.tasks_done += 3;
         p.suggestions_written = ecrites;
