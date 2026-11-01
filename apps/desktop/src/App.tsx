@@ -262,6 +262,9 @@ export function App() {
 
   const theme = useTheme();
   const profile = useProfile();
+  /** Accueil et interface simplifiée : le téléchargement se suit dans la bulle
+   *  en bas à droite, pas dans la barre d'état. */
+  const bulleTelechargement = !profile.onboarded || profile.mode === "simple";
 
   const [downloadProgress, setDownloadProgress] = useState<{
     tag: string;
@@ -1148,7 +1151,7 @@ export function App() {
           }}
         />
       )}
-      <DownloadBubble visible={!profile.onboarded || profile.mode === "simple"} />
+      <DownloadBubble visible={bulleTelechargement} />
       <TopBar
         onToggleRail={() => setLeftOpen((v) => !v)}
         activeView={activeView}
@@ -1684,7 +1687,8 @@ export function App() {
           <RunningTask />
         </div>
         <div className="locaryn-footer-actions">
-          {downloadProgress && (
+          {/* La bulle montre déjà ce téléchargement : pas de second suivi. */}
+          {downloadProgress && !bulleTelechargement && (
             <>
               <span
                 className="locaryn-footer-text"

@@ -1,10 +1,14 @@
 import { Icon } from "@locaryn/ui-core";
+import { useEffect, useState } from "react";
 import { INSTALL_LABEL_PREFIX } from "../lib/extensionInstallProgress";
 import { useI18n } from "../lib/i18n";
 import { type AppTask, useTasks } from "../lib/taskCenter";
 import "../styles/onboarding.css";
 
 const isInstall = (t: AppTask) => t.label.startsWith(INSTALL_LABEL_PREFIX);
+
+/** Le temps où la bulle annonce la fin, avant de disparaître. */
+const FIN_VISIBLE_MS = 6000;
 
 function titleFor(install: boolean, done: boolean, fr: boolean): string {
   if (install) {
@@ -28,7 +32,21 @@ export function DownloadBubble({ visible }: { visible: boolean }) {
   const { lang } = useI18n();
   const tasks = useTasks().filter((t) => t.type === "download" && (visible || isInstall(t)));
   const running = tasks.find((t) => t.status === "running");
-  const lastDone = tasks.find((t) => t.status === "done" && Date.now() - t.updatedAt < 6000);
+  const lastDone = tasks.find(
+    (t) => t.status === "done" && Date.now() - t.updatedAt < FIN_VISIBLE_MS,
+  );
+  // Une tâche finie n'émet plus rien : sans ce minuteur, aucun rendu ne
+  // venait retirer la bulle, qui restait à 100 %.
+  const [, relire] = useState(0);
+  const finDuDernier = lastDone ? lastDone.updatedAt + FIN_VISIBLE_MS : null;
+  useEffect(() => {
+    if (finDuDernier === null) return;
+    const t = window.setTimeout(
+      () => relire((n) => n + 1),
+      Math.max(0, finDuDernier - Date.now()) + 50,
+    );
+    return () => window.clearTimeout(t);
+  }, [finDuDernier]);
   const shown = running ?? lastDone;
   if (!shown) return null;
 
