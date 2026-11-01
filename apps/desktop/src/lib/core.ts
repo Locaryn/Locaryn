@@ -2028,7 +2028,7 @@ export interface CoreApi {
   /** Rename a session. */
   updateSessionTitle(sessionId: string, title: string): Promise<void>;
   /** Ask the LLM to generate and persist a concise title for a session. */
-  generateSessionTitle(sessionId: string, firstPrompt: string): Promise<string>;
+  generateSessionTitle(sessionId: string, firstPrompt: string, explicit?: boolean): Promise<string>;
   /** Permanently delete a session and its messages. */
   deleteSession(sessionId: string): Promise<void>;
   /** Ranger aux archives, ou en ressortir. Rien n'est perdu. */
@@ -2516,6 +2516,12 @@ export interface CoreApi {
   /** Les réserves de mémoire de chaque niveau, sur cette machine. */
   cautionReserves(): Promise<CautionReserves>;
   decisionsEtat(): Promise<EtatDecisions>;
+  /** Répondre à une demande d'autorisation d'une page (micro, caméra…). */
+  repondrePermissionWeb(id: number, allow: boolean, remember: boolean): Promise<void>;
+  /** Les autorisations de pages retenues. */
+  permissionsWebRetenues(): Promise<PermissionWebRetenue[]>;
+  /** Oublier une autorisation retenue, ou toutes sans argument. */
+  permissionsWebOublier(origin?: string, kind?: string): Promise<void>;
   /** Les journaux rassemblés (machine, fin de chaque journal), masqués. */
   journauxRassembler(): Promise<string>;
   journauxDossier(): Promise<string>;
@@ -2570,6 +2576,18 @@ export function partagerJetonHf(token: string = getHfToken()): void {
     // Hors de l'application (aperçu web) : rien à partager.
   });
 }
+
+/** Une demande d'autorisation d'une page, posée par l'app (événement
+ *  `web-permission-request`). */
+export type DemandePermissionWeb = {
+  id: number;
+  kind: string;
+  /** Vide quand c'est l'app elle-même (une extension) qui demande. */
+  origin: string;
+  webview: string;
+};
+
+export type PermissionWebRetenue = { origin: string; kind: string; allow: boolean };
 
 const tauriCore: CoreApi = {
   health: () => invoke<Health>("core_health"),
@@ -2629,8 +2647,12 @@ const tauriCore: CoreApi = {
     invoke<Session>("create_session", { projectId, title: title ?? null, coreId: coreId ?? null }),
   updateSessionTitle: (sessionId, title) =>
     invoke<void>("update_session_title", { sessionId, title }),
-  generateSessionTitle: (sessionId, firstPrompt) =>
-    invoke<string>("generate_session_title", { sessionId, firstPrompt }),
+  generateSessionTitle: (sessionId, firstPrompt, explicit) =>
+    invoke<string>("generate_session_title", {
+      sessionId,
+      firstPrompt,
+      explicit: explicit ?? null,
+    }),
   deleteSession: (sessionId) => invoke<void>("delete_session", { id: sessionId }),
   archiveSession: (sessionId, archived) =>
     invoke<void>("archive_session", { id: sessionId, archived }),
@@ -3072,6 +3094,11 @@ const tauriCore: CoreApi = {
   cautionLevel: () => invoke<CautionLevel>("caution_level"),
   cautionReserves: () => invoke<CautionReserves>("caution_reserves"),
   decisionsEtat: () => invoke<EtatDecisions>("laya_etat"),
+  repondrePermissionWeb: (id, allow, remember) =>
+    invoke<void>("repondre_permission_web", { id, allow, remember }),
+  permissionsWebRetenues: () => invoke<PermissionWebRetenue[]>("permissions_web_retenues"),
+  permissionsWebOublier: (origin, kind) =>
+    invoke<void>("permissions_web_oublier", { origin: origin ?? null, kind: kind ?? null }),
   journauxRassembler: () => invoke<string>("journaux_rassembler"),
   journauxDossier: () => invoke<string>("journaux_dossier"),
   rapportsEtat: () => invoke<{ disponible: boolean; actif: boolean }>("rapports_etat"),
@@ -5793,6 +5820,11 @@ Contenu de démonstration, avec **du gras** et une liste :
     return { disponible: false, actif };
   },
   async rapportsEnvoyer() {},
+  async repondrePermissionWeb() {},
+  async permissionsWebRetenues() {
+    return [];
+  },
+  async permissionsWebOublier() {},
   async decisionsEtat() {
     return { installe: false, en_cours: false, dossier: "", appareil: null, version: null };
   },

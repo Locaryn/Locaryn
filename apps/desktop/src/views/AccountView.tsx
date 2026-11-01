@@ -6,6 +6,7 @@ import { InterfaceModeSetting } from "../components/InterfaceModeSetting";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
 import { NotificationSettings } from "../components/NotificationSettings";
+import { WebPermissionsSettings } from "../components/WebPermissionsSettings";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { type LocalProfile, type Project, type Session, core } from "../lib/core";
@@ -301,7 +302,11 @@ export function AccountView({
         ) : section === "models" ? (
           <ModelPreferencesSettings activeCapabilities={activeCapabilities} />
         ) : section === "permissions" ? (
-          <DefaultPermissionsSettings />
+          <>
+            <DefaultPermissionsSettings />
+            <div style={{ height: 16 }} />
+            <WebPermissionsSettings />
+          </>
         ) : section === "notifications" ? (
           <NotificationSettings />
         ) : section === "memory" ? (

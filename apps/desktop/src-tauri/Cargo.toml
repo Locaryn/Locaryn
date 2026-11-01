@@ -69,3 +69,9 @@ base64 = "0.22"
 # Disk capacity reporting for the storage settings (free space per volume).
 sysinfo = { version = "0.32", default-features = false, features = ["disk", "system"] }
 tauri-plugin-single-instance = "2"
+
+# Les demandes d'autorisation des pages (micro, caméra…) passent par l'app :
+# mêmes versions que celles de wry, pour parler à la même vue WebView2.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.38"
+windows-core = "0.61"

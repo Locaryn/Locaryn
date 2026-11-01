@@ -20,6 +20,8 @@ type Props = {
   etat?: "attente" | "erreur" | null;
   onSelect: () => void;
   onRename: (title: string) => void;
+  /** Renommer avec le modèle chargé. Absent : l'action ne s'affiche pas. */
+  onRenameAi?: () => Promise<void>;
   onArchive: () => void;
   /** Projets où la ranger. Vide : l'action ne s'affiche pas. */
   projects: { id: string; name: string }[];
@@ -59,6 +61,7 @@ export function SessionRow({
   etat = null,
   onSelect,
   onRename,
+  onRenameAi,
   onArchive,
   projects,
   onMove,
@@ -74,6 +77,7 @@ export function SessionRow({
   const [showSubmenu, setShowSubmenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
+  const [nommage, setNommage] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -186,8 +190,11 @@ export function SessionRow({
               dans un projet, sur ce poste ou lancée depuis le téléphone : deux
               dessins pour la même chose se lisaient comme deux sortes. */}
           {bullet !== "" && <Icon name="chat" size={14} />}{" "}
-          <span className="locaryn-session-label" title={label}>
-            {label}
+          <span
+            className={`locaryn-session-label${nommage ? " locaryn-session-label-nommage" : ""}`}
+            title={label}
+          >
+            {nommage ? "Nommage…" : label}
           </span>
           {session.ephemeral && <span className="locaryn-ephemeral-dot" title="Éphémère" />}
           {etat && (
@@ -228,6 +235,24 @@ export function SessionRow({
           >
             Renommer
           </button>
+          {onRenameAi && (
+            <button
+              type="button"
+              className="locaryn-ctx-item"
+              disabled={nommage}
+              onClick={() => {
+                setMenu(null);
+                setShowSubmenu(false);
+                setNommage(true);
+                void onRenameAi().finally(() => setNommage(false));
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Icon name="sparkle" size={14} />
+                <span>Renommer avec l'IA</span>
+              </span>
+            </button>
+          )}
           {projects.length > 0 && (
             <div
               className="locaryn-ctx-submenu-parent"

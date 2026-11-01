@@ -34,6 +34,7 @@ mod model_abilities;
 mod model_recommendations;
 mod model_residency;
 mod notifications;
+mod permissions_web;
 mod presse_papiers;
 mod project_context;
 mod rapports;
@@ -1701,7 +1702,11 @@ async fn generate_session_title(
     core: State<'_, Core>,
     session_id: Uuid,
     first_prompt: String,
+    // Demandé par la personne (« Renommer avec l'IA ») : le modèle chargé
+    // nomme même quand le nommage automatique est coupé.
+    explicit: Option<bool>,
 ) -> Result<String, String> {
+    let explicite = explicit.unwrap_or(false);
     let session = core
         .storage
         .sessions
@@ -1717,18 +1722,21 @@ async fn generate_session_title(
 
     // « Aucun » est un choix de la personne : on ne nomme rien. Sinon le modèle
     // des petites tâches est celui déjà chargé, ou celui qu'elle a désigné.
-    let Some(choisi) = locaryn_config::load(None)
+    let choisi = locaryn_config::load(None)
         .ok()
-        .and_then(|c| c.assistance.micro_model)
-    else {
+        .and_then(|c| c.assistance.micro_model);
+    if choisi.is_none() && !explicite {
         return Err("Le nommage automatique est désactivé dans les réglages.".into());
-    };
+    }
     let active_provider = core.storage.providers.active().await.ok().flatten();
     let provider = active_provider.ok_or("no active provider")?;
     if moteur_supervise(&provider.engine) {
         let _ = core.supervisor.ensure_running(&provider.engine).await;
     }
-    let model_name = locaryn_config::micro_effectif(&choisi, provider.model.as_deref());
+    let model_name = match (&choisi, explicite) {
+        (_, true) | (None, _) => provider.model.clone().unwrap_or_default(),
+        (Some(c), false) => locaryn_config::micro_effectif(c, provider.model.as_deref()),
+    };
 
     let url = format!(
         "{}/v1/chat/completions",
@@ -7510,6 +7518,9 @@ pub fn run() {
             airllm::airllm_status,
             laya_runtime::laya_etat,
             journaux::journaux_rassembler,
+            permissions_web::repondre_permission_web,
+            permissions_web::permissions_web_retenues,
+            permissions_web::permissions_web_oublier,
             journaux::journaux_dossier,
             rapports::rapports_etat,
             rapports::rapports_regler,

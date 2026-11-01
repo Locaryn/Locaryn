@@ -133,10 +133,12 @@ export async function loadTierPlan(): Promise<TierPlan> {
     }),
     // Estimé comme au chargement : un modèle conseillé ne doit ni déclencher
     // l'alerte de VRAM ni laisser la conversation sans contexte.
-    core.llmfitCatalog(rungs.map(entryOf), MIN_BEGINNER_CTX).catch((e) => {
-      console.warn("[Accueil] estimation indisponible :", e);
-      return [] as ModelFit[];
-    }),
+    core
+      .llmfitCatalog(rungs.map(entryOf), MIN_BEGINNER_CTX)
+      .catch((e) => {
+        console.warn("[Accueil] estimation indisponible :", e);
+        return [] as ModelFit[];
+      }),
   ]);
   const choices = pickTiers(rungs, fits);
   const recommended: ModelTier = choices.find((c) => c.tier === "balanced")?.tooHeavy

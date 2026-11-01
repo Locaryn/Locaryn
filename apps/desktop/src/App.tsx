@@ -19,6 +19,7 @@ import { SupportDialog } from "./components/SupportDialog";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
 import { TopBar } from "./components/TopBar";
 import { UpdateDialog } from "./components/UpdateDialog";
+import { WebPermissionPrompt } from "./components/WebPermissionPrompt";
 import { ExtensionScreen } from "./components/extensions/ExtensionScreen";
 import { useTheme } from "./hooks/useTheme";
 import { etatDeSession } from "./lib/attention";
@@ -51,6 +52,7 @@ import { setRunReveal } from "./lib/runPanel";
 import { suivreSousAgents } from "./lib/sousAgents";
 import { keepIfEqual } from "./lib/stableState";
 import { taskCenter } from "./lib/taskCenter";
+import { extraitPourTitre } from "./lib/titreConversation";
 import { VUE_RECHOISIE } from "./lib/vues";
 import { KINDS, type WorkspaceKind, openTab, setWorkspaceOpen, toggleTab } from "./lib/workspace";
 import { BottomPanel } from "./panels/BottomPanel";
@@ -841,6 +843,20 @@ export function App() {
     if (activeSession?.id === s.id) setActiveSession({ ...activeSession, title });
   }
 
+  /** Renommer avec le modèle chargé, d'après ce que la conversation contient. */
+  async function handleRenameSessionByAi(s: Session) {
+    const tache = taskCenter.add({ type: "edit", label: "Renommer avec l'IA" });
+    try {
+      const extrait = extraitPourTitre(await core.listMessages(s.id));
+      if (!extrait) throw new Error("La conversation est encore vide.");
+      const titre = await core.generateSessionTitle(s.id, extrait, true);
+      await handleRenameSession(s, titre);
+      taskCenter.done(tache);
+    } catch (e) {
+      taskCenter.fail(tache, String(e).replace(/^Error:\s*/, ""));
+    }
+  }
+
   /** Une conversation dont rien ne sera gardé. */
   async function handleNewEphemeralChat() {
     try {
@@ -1342,6 +1358,7 @@ export function App() {
                 onSessionArchived={handleArchiveSession}
                 onSessionMoved={handleMoveSession}
                 onSessionRenamed={handleRenameSession}
+                onSessionRenamedByAi={handleRenameSessionByAi}
                 onSessionsMerged={handleMergeSessions}
                 onNewEphemeralChat={handleNewEphemeralChat}
                 activeView={activeView}
@@ -1624,6 +1641,8 @@ export function App() {
           l'application entiere. */}
         <UpdateDialog />
         <SupportDialog />
+        {/* Micro, caméra, position… : demandés par l'app, pas par la bulle de Windows. */}
+        <WebPermissionPrompt />
         {/* Un chargement refusé par la prudence choisie se dit dans une fenêtre. */}
         <ModeleTropLourd onOpenSettings={() => setActiveView("settings")} />
         {/* Le clic droit de l'application, à la place du menu du navigateur. */}

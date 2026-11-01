@@ -49,6 +49,8 @@ type Props = {
   onSessionMoved?: (s: Session, projectId: string) => void;
   /** Renommée à la main. */
   onSessionRenamed?: (s: Session, title: string) => void;
+  /** Renommer avec le modèle chargé, d'après le contenu de la conversation. */
+  onSessionRenamedByAi?: (s: Session) => Promise<void>;
   /** Ouvrir une conversation dont rien ne sera gardé. */
   onNewEphemeralChat?: () => void;
   /** Called after a project is archived so the app can refresh its list. */
@@ -272,6 +274,7 @@ export function LeftPanel({
   onSessionArchived,
   onSessionMoved,
   onSessionRenamed,
+  onSessionRenamedByAi,
   activeView,
   onSelectView,
   activeCapabilities = [],
@@ -735,6 +738,7 @@ export function LeftPanel({
                       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
                       onSelect={() => onSelectSession(s)}
                       onRename={(t) => onSessionRenamed?.(s, t)}
+                      onRenameAi={onSessionRenamedByAi ? () => onSessionRenamedByAi(s) : undefined}
                       onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
                       onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
                       acceptsMerge={Boolean(onSessionsMerged)}
@@ -933,6 +937,9 @@ export function LeftPanel({
                               projects={projects.map((proj) => ({ id: proj.id, name: proj.name }))}
                               onSelect={() => onSelectSession(s)}
                               onRename={(t) => onSessionRenamed?.(s, t)}
+                              onRenameAi={
+                                onSessionRenamedByAi ? () => onSessionRenamedByAi(s) : undefined
+                              }
                               onArchive={() => partirPuis(s, () => onSessionArchived?.(s))}
                               onMove={(pid) => partirPuis(s, () => onSessionMoved?.(s, pid))}
                               acceptsMerge={Boolean(onSessionsMerged)}

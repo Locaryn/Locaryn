@@ -15703,3 +15703,78 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-msg-row-assistant:hover .locaryn-msg-heure {
   opacity: 1;
 }
+
+/* Demande d'autorisation d'une page (micro, caméra…), posée par l'app. */
+.locaryn-permission-web {
+  width: calc(100vw - 32px);
+  max-width: 420px;
+}
+.locaryn-permission-web .locaryn-gate-head h3 {
+  color: var(--text);
+  line-height: 1.35;
+}
+.locaryn-permission-web-qui {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.locaryn-permission-web-pourquoi {
+  margin: 0 0 14px;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.locaryn-permission-web-retenir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+.locaryn-permission-web .locaryn-gate-actions button {
+  min-height: 40px;
+  min-width: 96px;
+}
+.locaryn-web-perm-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.locaryn-web-perm-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border);
+}
+.locaryn-web-perm-qui {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.locaryn-web-perm-oui {
+  color: var(--accent);
+}
+.locaryn-web-perm-non {
+  color: var(--text-dim);
+}
+.locaryn-session-label-nommage {
+  color: var(--text-dim);
+  animation: locaryn-nommage 1.2s ease-in-out infinite;
+}
+@keyframes locaryn-nommage {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-session-label-nommage {
+    animation: none;
+  }
+}

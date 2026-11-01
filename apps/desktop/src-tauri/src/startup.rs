@@ -101,7 +101,7 @@ pub fn open_splash(app: &AppHandle) -> tauri::Result<()> {
 /// Créer la fenêtre principale, masquée : elle charge l'interface pendant que
 /// l'écran de lancement reste devant.
 pub fn build_main_window(app: &AppHandle) -> tauri::Result<()> {
-    WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("index.html".into()))
+    let fenetre = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("index.html".into()))
         .title("Locaryn")
         .inner_size(1400.0, 900.0)
         .min_inner_size(1000.0, 600.0)
@@ -115,6 +115,10 @@ pub fn build_main_window(app: &AppHandle) -> tauri::Result<()> {
         // navigateur ne recevait aucun fichier.
         .disable_drag_drop_handler()
         .build()?;
+    let app_vue = app.clone();
+    fenetre.with_webview(move |vue| {
+        crate::permissions_web::brancher(app_vue, MAIN_LABEL.to_string(), vue)
+    })?;
     arm_deadline(app.clone());
     Ok(())
 }
