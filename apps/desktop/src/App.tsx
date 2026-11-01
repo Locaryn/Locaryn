@@ -620,7 +620,10 @@ export function App() {
   async function bootstrap() {
     try {
       const b = await core.bootstrap();
-      setActiveProject(b.project);
+      // Aucun dossier de travail au démarrage : le dernier projet ouvert ne
+      // doit pas devenir celui de la prochaine conversation sans qu'on l'ait
+      // choisi. On l'ouvre depuis la barre latérale ou la pastille du chat.
+      setActiveProject(null);
       // Start on the home screen rather than inside a chat: the first prompt
       // creates (and auto-names) the conversation.
       setActiveSession(null);
@@ -645,10 +648,7 @@ export function App() {
       const groupedSessions = Object.fromEntries(groupedEntries) as Record<string, Session[]>;
       setSessionsByProject(groupedSessions);
 
-      const initialProject =
-        b.project && b.project.id !== free?.id ? b.project : (realProjects[0] ?? null);
-      setActiveProject(initialProject);
-      setSessions(initialProject ? (groupedSessions[initialProject.id] ?? []) : []);
+      setSessions([]);
 
       if (free) {
         setStandaloneSessions(await core.listSessions(free.id).catch(() => []));

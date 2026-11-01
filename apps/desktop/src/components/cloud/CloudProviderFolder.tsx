@@ -11,6 +11,7 @@ import {
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
 import { DynamicPluginWidget } from "../extensions/DynamicPluginWidget";
 import { getSlotContributions } from "../extensions/SlotRegistry";
+import { UsageCarte, UsageResume, useProviderUsage } from "./ProviderUsage";
 
 /**
  * Les dossiers de fournisseurs distants.
@@ -94,6 +95,7 @@ export function CloudProviderTile({
   provider: CloudProvider;
   onOpen: () => void;
 }) {
+  const usage = useProviderUsage(provider.id);
   return (
     <button
       type="button"
@@ -125,6 +127,8 @@ export function CloudProviderTile({
               ? "Clé enregistrée. Ouvrez pour choisir un modèle."
               : "Collez votre clé pour utiliser vos modèles payants ici."}
       </p>
+
+      <UsageResume usage={usage} />
 
       <div className="locaryn-cloud-folder-tags">
         {/* « Pas de clé » sur une passerelle qui n'en a pas besoin se lirait
@@ -183,6 +187,7 @@ export function CloudProviderScreen({
   const contribution = getSlotContributions(extensions, "models.folder").find(
     (c) => c.extensionId === provider.extension_id || c.value === provider.id,
   );
+  const usage = useProviderUsage(provider.id);
 
   return (
     <section className="locaryn-cloud-screen">
@@ -197,6 +202,8 @@ export function CloudProviderScreen({
           </p>
         </div>
       </div>
+
+      <UsageCarte usage={usage} />
 
       {contribution ? (
         <>

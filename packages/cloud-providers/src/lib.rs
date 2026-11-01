@@ -397,6 +397,16 @@ pub async fn account(
 pub async fn usage_of_active(host: &Host<'_>) -> Option<serde_json::Value> {
     let active = host.storage.providers.active().await.ok().flatten()?;
     let id = ProviderRepo::cloud_provider_of(&active)?;
+    let mut v = usage_of(host, &id).await?;
+    if let Some(o) = v.as_object_mut() {
+        o.insert("model".into(), serde_json::json!(active.model));
+    }
+    Some(v)
+}
+
+/// Les limites d'un fournisseur, qu'il serve la conversation ou non : la
+/// liste des modèles les montre pour choisir celui à qui il reste le plus.
+pub async fn usage_of(host: &Host<'_>, id: &str) -> Option<serde_json::Value> {
     let p = declared(host).await.into_iter().find(|p| p.id == id)?;
     let url = p
         .manifest
@@ -413,7 +423,6 @@ pub async fn usage_of_active(host: &Host<'_>) -> Option<serde_json::Value> {
     let mut v: serde_json::Value = req.send().await.ok()?.json().await.ok()?;
     if let Some(o) = v.as_object_mut() {
         o.insert("provider".into(), serde_json::json!(p.label()));
-        o.insert("model".into(), serde_json::json!(active.model));
     }
     Some(v)
 }

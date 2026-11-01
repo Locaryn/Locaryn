@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { type CloudUsage, type CloudUsageWindow, core } from "../../lib/core";
 
 /** « dans 2 h 13 », « dans 4 j » : quand la fenêtre repart de zéro. */
-function avant(iso: string | null | undefined): string | null {
+export function avant(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return null;
@@ -15,19 +15,19 @@ function avant(iso: string | null | undefined): string | null {
   return `dans ${Math.round(h / 24)} j`;
 }
 
-function niveau(pct: number): "ok" | "warn" | "danger" {
+export function niveau(pct: number): "ok" | "warn" | "danger" {
   return pct >= 90 ? "danger" : pct >= 70 ? "warn" : "ok";
 }
 
 /** La fenêtre de la semaine : `seven_day…` (Claude), `secondary` ou « 7 jours »
  *  (Codex). C'est elle qui borne vraiment un abonnement. */
-function estHebdo(w: CloudUsageWindow): boolean {
+export function estHebdo(w: CloudUsageWindow): boolean {
   return /^seven_day/.test(w.id ?? "") || w.id === "secondary" || /^7 jours/.test(w.label);
 }
 
 /** Une fenêtre sans pourcentage (Claude ne le donne que près de la limite) :
  *  son état, en mots. */
-function etatSansPourcentage(w: CloudUsageWindow): string {
+export function etatSansPourcentage(w: CloudUsageWindow): string {
   return w.status === "rejected" ? "Limite atteinte" : "Dans la limite";
 }
 

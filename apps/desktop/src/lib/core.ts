@@ -2534,6 +2534,8 @@ export interface CoreApi {
   decisionsInstaller(): Promise<EtatDecisions>;
   /** Les limites de l'abonnement du modèle actif, `null` s'il n'en a pas. */
   cloudUsage(): Promise<CloudUsage | null>;
+  /** Les limites d'un fournisseur précis, même s'il ne sert pas la conversation. */
+  cloudUsageOf(providerId: string): Promise<CloudUsage | null>;
   setCautionLevel(level: CautionLevel): Promise<void>;
   getInferenceConfig(): Promise<InferenceConfig>;
   setInferenceConfig(config: InferenceConfig, consent?: boolean): Promise<void>;
@@ -3111,6 +3113,7 @@ const tauriCore: CoreApi = {
   ouvrirChemin: (chemin, action) => invoke<void>("open_path_with", { chemin, action }),
   decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
   cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
+  cloudUsageOf: (providerId) => invoke<CloudUsage | null>("cloud_usage_of", { providerId }),
   setCautionLevel: (level) => invoke<void>("set_caution_level", { level }),
 
   getInferenceConfig: () => invoke<InferenceConfig>("get_inference_config"),
@@ -5807,6 +5810,9 @@ Contenu de démonstration, avec **du gras** et une liste :
     return demoResidencyStatus();
   },
   async cloudUsage() {
+    return null;
+  },
+  async cloudUsageOf() {
     return null;
   },
   async ouvrirChemin() {},

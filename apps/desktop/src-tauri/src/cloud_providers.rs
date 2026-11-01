@@ -63,6 +63,16 @@ pub async fn cloud_usage(core: State<'_, Core>) -> Result<Option<serde_json::Val
     Ok(cloud::usage_of_active(&host(&core)).await)
 }
 
+/// Les limites d'un fournisseur précis (dossier ouvert dans la liste des
+/// modèles), `null` s'il n'en publie pas.
+#[tauri::command]
+pub async fn cloud_usage_of(
+    core: State<'_, Core>,
+    provider_id: String,
+) -> Result<Option<serde_json::Value>, String> {
+    Ok(cloud::usage_of(&host(&core), &provider_id).await)
+}
+
 /// Les autres PC Locaryn ajoutés comme fournisseurs de modèle.
 #[tauri::command]
 pub fn serveurs_modeles(core: State<'_, Core>) -> Vec<cloud::serveurs::ServeurModeles> {

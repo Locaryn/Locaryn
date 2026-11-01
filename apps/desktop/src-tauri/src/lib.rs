@@ -1876,19 +1876,10 @@ async fn bootstrap(core: State<'_, Core>) -> Result<Bootstrap, String> {
     projects.sort_by_key(|p| p.updated_at);
     let project = match projects.pop() {
         Some(p) => p,
-        None => {
-            let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-            let cwd_str = cwd.to_string_lossy().to_string();
-            let name = cwd
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "workspace".into());
-            core.storage
-                .projects
-                .create(&cwd_str, &name, TrustLevel::default())
-                .await
-                .map_err(|e| e.to_string())?
-        }
+        // Première installation : aucun dossier de travail n'est choisi à la
+        // place de la personne. Le dossier de lancement servait de projet, et
+        // chaque nouvelle conversation démarrait dans un dossier déjà plein.
+        None => free_chat_project(core.clone()).await?,
     };
 
     let sessions = core
@@ -7691,6 +7682,7 @@ pub fn run() {
             model_residency::caution_level,
             model_residency::caution_reserves,
             cloud_providers::cloud_usage,
+            cloud_providers::cloud_usage_of,
             cloud_providers::cloud_provider_account,
             model_residency::set_caution_level,
             open_models_folder,
