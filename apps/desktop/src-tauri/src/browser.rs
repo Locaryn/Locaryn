@@ -298,10 +298,8 @@ fn creer_une_fois(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Web
         )
         .map_err(|e| format!("navigateur impossible à créer : {e}"))?;
     let app_vue = app.clone();
-    v.with_webview(move |vue| {
-        crate::permissions_web::brancher(app_vue, LABEL.to_string(), vue)
-    })
-    .map_err(|e| e.to_string())?;
+    v.with_webview(move |vue| crate::permissions_web::brancher(app_vue, LABEL.to_string(), vue))
+        .map_err(|e| e.to_string())?;
     v.hide().map_err(|e| e.to_string())?;
     Ok(v)
 }

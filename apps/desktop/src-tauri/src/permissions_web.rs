@@ -74,7 +74,10 @@ fn ecrire(dossier: &Path, memoire: &Memoire) -> Result<(), String> {
 /// La décision retenue pour cette origine et ce type, s'il y en a une.
 fn decision_retenue(app: &AppHandle, origine: &str, type_: &str) -> Option<bool> {
     let core = app.try_state::<Core>()?;
-    lire(&core.data_dir).decisions.get(&cle(origine, type_)).copied()
+    lire(&core.data_dir)
+        .decisions
+        .get(&cle(origine, type_))
+        .copied()
 }
 
 fn retenir(app: &AppHandle, origine: &str, type_: &str, autoriser: bool) -> Result<(), String> {
@@ -105,7 +108,9 @@ fn origine_de(uri: &str) -> String {
 
 /// Les décisions retenues, pour les réglages.
 #[tauri::command]
-pub async fn permissions_web_retenues(core: tauri::State<'_, Core>) -> Result<Vec<DecisionRetenue>, String> {
+pub async fn permissions_web_retenues(
+    core: tauri::State<'_, Core>,
+) -> Result<Vec<DecisionRetenue>, String> {
     Ok(lire(&core.data_dir)
         .decisions
         .into_iter()
@@ -213,11 +218,9 @@ mod imp {
             plateforme.controller().CoreWebView2().and_then(|coeur| {
                 let mut jeton = 0i64;
                 let gestionnaire =
-                    PermissionRequestedEventHandler::create(Box::new(move |_, args| {
-                        match args {
-                            Some(args) => demande(&app, &vue, &args),
-                            None => Ok(()),
-                        }
+                    PermissionRequestedEventHandler::create(Box::new(move |_, args| match args {
+                        Some(args) => demande(&app, &vue, &args),
+                        None => Ok(()),
                     }));
                 coeur.add_PermissionRequested(&gestionnaire, &mut jeton)
             })
@@ -322,7 +325,10 @@ mod tests {
     fn l_app_elle_meme_n_a_pas_d_origine() {
         assert_eq!(origine_de("http://tauri.localhost/index.html"), "");
         assert_eq!(origine_de("tauri://localhost/"), "");
-        assert_eq!(origine_de("https://meet.exemple.fr/salle?x=1"), "https://meet.exemple.fr");
+        assert_eq!(
+            origine_de("https://meet.exemple.fr/salle?x=1"),
+            "https://meet.exemple.fr"
+        );
         assert_eq!(origine_de("pas une adresse"), "");
     }
 
@@ -333,7 +339,10 @@ mod tests {
         let mut m = lire(&dossier);
         m.decisions.insert(cle("https://a.fr", "camera"), false);
         ecrire(&dossier, &m).unwrap();
-        assert_eq!(lire(&dossier).decisions.get(&cle("https://a.fr", "camera")), Some(&false));
+        assert_eq!(
+            lire(&dossier).decisions.get(&cle("https://a.fr", "camera")),
+            Some(&false)
+        );
         std::fs::remove_dir_all(&dossier).unwrap();
     }
 }
