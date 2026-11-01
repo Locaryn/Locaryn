@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type CloudUsage, core } from "../../lib/core";
+import { type CloudUsage, type CloudUsageWindow, core } from "../../lib/core";
 
 /** « dans 2 h 13 », « dans 4 j » : quand la fenêtre repart de zéro. */
 function avant(iso: string | null | undefined): string | null {
@@ -17,6 +17,18 @@ function avant(iso: string | null | undefined): string | null {
 
 function niveau(pct: number): "ok" | "warn" | "danger" {
   return pct >= 90 ? "danger" : pct >= 70 ? "warn" : "ok";
+}
+
+/** La fenêtre de la semaine : `seven_day…` (Claude), `secondary` ou « 7 jours »
+ *  (Codex). C'est elle qui borne vraiment un abonnement. */
+function estHebdo(w: CloudUsageWindow): boolean {
+  return /^seven_day/.test(w.id ?? "") || w.id === "secondary" || /^7 jours/.test(w.label);
+}
+
+/** Une fenêtre sans pourcentage (Claude ne le donne que près de la limite) :
+ *  son état, en mots. */
+function etatSansPourcentage(w: CloudUsageWindow): string {
+  return w.status === "rejected" ? "Limite atteinte" : "Dans la limite";
 }
 
 /**
@@ -66,10 +78,25 @@ export function UsageGauge({ generating }: { generating: boolean }) {
     return () => document.removeEventListener("mousedown", dehors);
   }, [ouvert]);
 
-  const fenetres = (usage?.windows ?? []).filter((w) => typeof w.used_percent === "number");
-  if (!usage || (fenetres.length === 0 && !usage.credits)) return null;
+  const toutes = usage?.windows ?? [];
+  const fenetres = toutes.filter((w) => typeof w.used_percent === "number");
+  // Connue sans pourcentage : Claude n'en donne qu'à l'approche de la limite.
+  const sansPct = toutes.filter((w) => typeof w.used_percent !== "number" && w.status);
+  if (!usage || (fenetres.length === 0 && sansPct.length === 0 && !usage.credits)) return null;
 
   const pire = fenetres.reduce((m, w) => Math.max(m, w.used_percent ?? 0), 0);
+  const atteinte = sansPct.some((w) => w.status === "rejected");
+  const hebdo = fenetres.find(estHebdo);
+  // La pastille montre la semaine quand on la connaît ; la teinte suit la
+  // fenêtre la plus entamée, pour qu'une limite de 5 h proche se voie aussi.
+  const montre = hebdo?.used_percent ?? pire;
+  const teinte = atteinte ? "danger" : niveau(pire);
+  const texte =
+    fenetres.length === 0
+      ? atteinte
+        ? "Limite"
+        : "OK"
+      : `${hebdo ? "Semaine " : ""}${Math.round(montre)} %`;
   const r = 7;
   const c = 2 * Math.PI * r;
 
@@ -77,10 +104,10 @@ export function UsageGauge({ generating }: { generating: boolean }) {
     <div className="locaryn-usage" ref={boite}>
       <button
         type="button"
-        className={`locaryn-usage-pill is-${niveau(pire)}`}
+        className={`locaryn-usage-pill is-${teinte}`}
         onClick={() => setOuvert((o) => !o)}
         aria-expanded={ouvert}
-        title={`Limites de ${usage.provider ?? "l'abonnement"} : ${Math.round(pire)} % utilisés`}
+        title={`Limites de ${usage.provider ?? "l'abonnement"} : ${texte}`}
       >
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
           <circle cx="9" cy="9" r={r} className="locaryn-usage-rail" />
@@ -89,11 +116,11 @@ export function UsageGauge({ generating }: { generating: boolean }) {
             cy="9"
             r={r}
             className="locaryn-usage-arc"
-            strokeDasharray={`${(Math.min(pire, 100) / 100) * c} ${c}`}
+            strokeDasharray={`${(Math.min(atteinte ? 100 : montre, 100) / 100) * c} ${c}`}
             transform="rotate(-90 9 9)"
           />
         </svg>
-        <span>{Math.round(pire)} %</span>
+        <span>{texte}</span>
       </button>
       {ouvert && (
         <div className="locaryn-usage-pop" role="dialog" aria-label="Limites d'utilisation">
@@ -109,6 +136,17 @@ export function UsageGauge({ generating }: { generating: boolean }) {
               </div>
               <div className={`locaryn-usage-bar is-${niveau(w.used_percent ?? 0)}`}>
                 <span style={{ width: `${Math.min(100, w.used_percent ?? 0)}%` }} />
+              </div>
+              {avant(w.resets_at) && (
+                <div className="locaryn-usage-reset">Repart de zéro {avant(w.resets_at)}</div>
+              )}
+            </div>
+          ))}
+          {sansPct.map((w) => (
+            <div key={w.id ?? w.label} className="locaryn-usage-row">
+              <div className="locaryn-usage-row-head">
+                <span>{w.label}</span>
+                <span className="locaryn-usage-pct">{etatSansPourcentage(w)}</span>
               </div>
               {avant(w.resets_at) && (
                 <div className="locaryn-usage-reset">Repart de zéro {avant(w.resets_at)}</div>

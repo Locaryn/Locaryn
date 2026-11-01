@@ -6253,20 +6253,21 @@ struct ContextStatus {
 #[tauri::command]
 async fn context_status(core: State<'_, Core>) -> Result<ContextStatus, String> {
     let configured = InferenceConfig::load(&core.data_dir).context_length;
-    let endpoint = core
-        .storage
-        .providers
-        .active()
-        .await
-        .ok()
-        .flatten()
-        .map(|p| p.endpoint);
-    let running = match endpoint {
-        Some(url) => locaryn_agent_runtime::tool_budget::server_context(&core.http, &url)
+    let active = core.storage.providers.active().await.ok().flatten();
+    let mut running = match active.as_ref().map(|p| p.endpoint.as_str()) {
+        Some(url) => locaryn_agent_runtime::tool_budget::server_context(&core.http, url)
             .await
             .map(|n| n.min(u32::MAX as usize) as u32),
         None => None,
     };
+    // Un modèle distant (OmniRoute, NVIDIA NIM…) ne publie pas `/props` : sa
+    // fenêtre est celle que son catalogue annonce. Sans elle, la jauge
+    // restait sur « X ».
+    if running.is_none() {
+        running = active
+            .as_ref()
+            .and_then(|p| contexte_du_catalogue(&core, p));
+    }
     let cap = std::fs::read_to_string(core.data_dir.join("model_ctx_capacity.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
@@ -6278,6 +6279,21 @@ async fn context_status(core: State<'_, Core>) -> Result<ContextStatus, String> 
         running,
         cap,
     })
+}
+
+/// La fenêtre de contexte du modèle distant actif, d'après le catalogue que
+/// son fournisseur a publié (`context_length`). `None` : modèle local, ou
+/// catalogue muet sur ce point.
+fn contexte_du_catalogue(core: &Core, p: &locaryn_shared_types::Provider) -> Option<u32> {
+    let fournisseur = locaryn_storage::repos::ProviderRepo::cloud_provider_of(p)?;
+    let modele = p.model.as_deref()?;
+    locaryn_cloud_providers::CachedCatalog::load(&core.data_dir, &fournisseur)?
+        .models
+        .iter()
+        .find(|m| m.id == modele)
+        .map(|m| m.context_length)
+        .filter(|n| *n > 0)
+        .map(|n| n.min(u64::from(u32::MAX)) as u32)
 }
 
 /// Fenetre de contexte maximale que le moteur courant peut offrir, pour

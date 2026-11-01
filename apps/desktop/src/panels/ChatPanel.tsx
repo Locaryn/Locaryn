@@ -3686,10 +3686,6 @@ ${preview}`,
               </button>
             )}
 
-            {/* Limites de l'abonnement (Claude, Codex…) : seulement pour un
-                modèle payant dont le morph publie ses quotas. */}
-            <UsageGauge generating={streaming} />
-
             {/* Mode simplifié : la mémoire de la conversation, dite avec des mots. */}
             <ConversationMemory
               used={usedTokens}
@@ -3782,6 +3778,11 @@ ${preview}`,
                 </span>
               </div>
             </div>
+
+            {/* Limites de l'abonnement (Claude, Codex…), à droite de la jauge
+                de contexte : seulement pour un modèle dont le morph publie ses
+                quotas. */}
+            <UsageGauge generating={streaming} />
           </div>
         </div>
       </div>

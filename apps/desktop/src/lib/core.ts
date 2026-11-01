@@ -1492,6 +1492,9 @@ export interface CloudUsageWindow {
   label: string;
   used_percent: number | null;
   resets_at?: string | null;
+  /** État rapporté sans pourcentage (« allowed », « allowed_warning »,
+   *  « rejected ») : Claude ne chiffre l'usage qu'à l'approche de la limite. */
+  status?: string | null;
 }
 /** Les limites d'utilisation du fournisseur actif, telles que son morph les
  *  publie (`usage_url`). */
