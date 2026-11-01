@@ -57,10 +57,22 @@ function entryOf(r: Rung): LlmfitCatalogEntry {
   return { id: r.tag, parameters_b: r.params, quant: "Q4_K_M", size_gb: r.storageGb };
 }
 
-/** Un palier peut servir : il tient vraiment et ne rampe pas. */
+/**
+ * Le contexte qu'un débutant doit garder une fois le modèle chargé, en jetons.
+ * Les consignes et les outils de l'agent en prennent déjà 7 à 8k ; l'estimation
+ * se fait au contexte minimal du moteur (8k), si bien qu'un modèle qui remplit
+ * la carte passait pour adapté et ne laissait plus rien pour la conversation.
+ */
+export const MIN_BEGINNER_CTX = 16384;
+
+/** Un palier peut servir : il tient sur la carte avec un vrai contexte, et ne
+ *  rampe pas. */
 function usable(fit: ModelFit | undefined): boolean {
   if (!fit) return false;
   if (fit.verdict === "refuse" || fit.verdict === "risque") return false;
+  // Sans carte graphique, tout tourne en RAM : c'est elle qui borne le contexte.
+  const contexte = fit.free_vram_gb > 0 ? fit.max_gpu_context : fit.max_context;
+  if (contexte < MIN_BEGINNER_CTX) return false;
   return fit.tokens_per_second >= USABLE_TPS;
 }
 
