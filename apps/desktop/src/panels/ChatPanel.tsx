@@ -11,6 +11,7 @@ import { SousAgentsEnCours } from "../components/SousAgentsEnCours";
 import { REPONSE_FINIE_EVENT } from "../components/SupportDialog";
 import { ToolApprovalModal } from "../components/ToolApprovalModal";
 import { ContextDetails, type ContextUsage } from "../components/chat/ContextDetails";
+import { ConversationMemory } from "../components/chat/ConversationMemory";
 import { FichiersDuTour } from "../components/chat/FichiersDuTour";
 import {
   type MessageAttachment,
@@ -3684,6 +3685,22 @@ ${preview}`,
             {/* Limites de l'abonnement (Claude, Codex…) : seulement pour un
                 modèle payant dont le morph publie ses quotas. */}
             <UsageGauge generating={streaming} />
+
+            {/* Mode simplifié : la mémoire de la conversation, dite avec des mots. */}
+            <ConversationMemory
+              used={usedTokens}
+              window={ctxUsage?.window ?? ctxWindow}
+              compressing={compressing}
+              onCompress={
+                sessionId
+                  ? () =>
+                      void compressConversation().then((ok) =>
+                        direBulle(ok ? "Conversation résumée" : "Rien à résumer pour l'instant"),
+                      )
+                  : undefined
+              }
+              onNewChat={onNewChat}
+            />
 
             {/* Context gauge — clic : le détail ; maintenir : compresser */}
             <div className="locaryn-ctx-gauge-zone" data-expert-only>

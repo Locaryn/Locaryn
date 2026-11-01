@@ -512,6 +512,15 @@ export const EN_EXACT: Record<string, string> = {
   "Choisir un modèle à charger en mémoire": "Choose a model to load into memory",
   "Choisir un projet": "Choose a project",
   "Choisir une archive ZIP…": "Choose a ZIP archive…",
+  "Mémoire libre": "Memory free",
+  "Mémoire à moitié pleine": "Memory half full",
+  "Bientôt pleine": "Almost full",
+  "Mémoire pleine": "Memory full",
+  "Mémoire de la conversation": "Conversation memory",
+  "Résumer la conversation": "Summarize the conversation",
+  "Résumé en cours…": "Summarizing…",
+  "Conversation résumée": "Conversation summarized",
+  "Rien à résumer pour l'instant": "Nothing to summarize yet",
   "Choisissez ici les modèles utilisés par les tâches secondaires de Locaryn. Le modèle de conversation reste configurable depuis le chat.":
     "Choose here the models used by Locaryn's secondary tasks. The conversation model stays configurable from the chat.",
   "Choisissez une image PNG, JPG, WEBP ou BMP. Locaryn en conserve une copie locale, même si l'original est déplacé.":

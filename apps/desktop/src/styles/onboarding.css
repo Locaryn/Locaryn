@@ -575,6 +575,10 @@
 .locaryn-app[data-ui="simple"] [data-expert-only] {
   display: none !important;
 }
+/* Et ce qui ne sert qu'à l'interface simplifiée s'efface en mode expert. */
+.locaryn-app:not([data-ui="simple"]) [data-simple-only] {
+  display: none !important;
+}
 
 /* ═══ Tri forcé de la mémoire ═══ */
 
