@@ -10,9 +10,9 @@ import {
 } from "../../lib/core";
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
 import { DynamicPluginWidget } from "../extensions/DynamicPluginWidget";
+import { ExtensionSlot } from "../extensions/ExtensionSlot";
 import { getSlotContributions } from "../extensions/SlotRegistry";
-import { ProviderBackgroundTasks } from "./ProviderBackgroundTasks";
-import { UsageCarte, UsageResume, useProviderUsage } from "./ProviderUsage";
+import type { ResolvedSlotContribution } from "../extensions/SlotRegistry";
 
 /**
  * Les dossiers de fournisseurs distants.
@@ -26,6 +26,11 @@ import { UsageCarte, UsageResume, useProviderUsage } from "./ProviderUsage";
  * Ce fichier tient les trois morceaux : la tuile, la page qui s'ouvre derrière,
  * et le tableau de bord de secours quand l'extension n'apporte pas le sien.
  */
+
+/** Une contribution apportée par l'extension de ce fournisseur, ou qui le vise. */
+function duFournisseur(c: ResolvedSlotContribution, provider: CloudProvider): boolean {
+  return c.extensionId === provider.extension_id || c.value === provider.id;
+}
 
 /** Les fournisseurs distants actifs, relus à la demande. */
 export function useCloudProviders(): {
@@ -96,7 +101,6 @@ export function CloudProviderTile({
   provider: CloudProvider;
   onOpen: () => void;
 }) {
-  const usage = useProviderUsage(provider.id);
   return (
     <button
       type="button"
@@ -129,7 +133,13 @@ export function CloudProviderTile({
               : "Collez votre clé pour utiliser vos modèles payants ici."}
       </p>
 
-      <UsageResume usage={usage} />
+      {/* Ce que l'extension du fournisseur veut montrer sur sa tuile. */}
+      <ExtensionSlot
+        name="models.folder.tile"
+        context={{ providerId: provider.id }}
+        filter={(c) => duFournisseur(c, provider)}
+        style={{ display: "flex" }}
+      />
 
       <div className="locaryn-cloud-folder-tags">
         {/* « Pas de clé » sur une passerelle qui n'en a pas besoin se lirait
@@ -188,8 +198,6 @@ export function CloudProviderScreen({
   const contribution = getSlotContributions(extensions, "models.folder").find(
     (c) => c.extensionId === provider.extension_id || c.value === provider.id,
   );
-  const usage = useProviderUsage(provider.id);
-
   return (
     <section className="locaryn-cloud-screen">
       <div className="locaryn-cloud-screen-head">
@@ -204,8 +212,14 @@ export function CloudProviderScreen({
         </div>
       </div>
 
-      <UsageCarte usage={usage} />
-      <ProviderBackgroundTasks provider={provider} />
+      {/* En tête du dossier : ce que l'extension du fournisseur y ajoute
+          (quota, réglages…), au-dessus de son catalogue. */}
+      <ExtensionSlot
+        name="models.folder.header"
+        context={{ providerId: provider.id }}
+        filter={(c) => duFournisseur(c, provider)}
+        style={{ display: "block" }}
+      />
 
       {contribution ? (
         <>

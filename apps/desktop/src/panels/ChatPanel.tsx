@@ -24,7 +24,6 @@ import { ReasoningPicker } from "../components/chat/ReasoningPicker";
 import { type EtatEtape, type Suivi, TaskTracker } from "../components/chat/TaskTracker";
 import { type Brouillon, ToolDraft } from "../components/chat/ToolDraft";
 import { type ToolEntry, ToolRun } from "../components/chat/ToolRun";
-import { UsageGauge } from "../components/chat/UsageGauge";
 import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
@@ -2905,10 +2904,10 @@ ${preview}`,
    */
   // Un modèle distant a sa propre fenêtre, publiée par son catalogue : celle
   // du moteur local resté chargé est celle d'un autre modèle.
-  const fenetreDistante = useCloudContext(activeModel, !isLocalModel);
+  const distant = useCloudContext(activeModel, !isLocalModel);
   const ctxWindow: number | null = isLocalModel
     ? (contextStatus?.running ?? null)
-    : fenetreDistante;
+    : distant.fenetre;
   // Reduire sous ce qui est deja utilise : la conversation ne tiendrait plus.
   // On ne bloque pas — on propose de compresser, c'est l'utilisateur qui decide.
   const [compressProposal, setCompressProposal] = useState<{
@@ -3800,10 +3799,19 @@ ${preview}`,
               </div>
             </div>
 
-            {/* Limites de l'abonnement (Claude, Codex…), à droite de la jauge
-                de contexte : seulement pour un modèle dont le morph publie ses
-                quotas. */}
-            <UsageGauge generating={streaming} model={activeModel} remote={!isLocalModel} />
+            {/* Pastilles apportées par les extensions, à droite de la jauge de
+                mémoire (un quota d'abonnement, par exemple). L'application ne
+                dessine rien ici : elle donne le modèle actif et son fournisseur. */}
+            <ExtensionSlot
+              name="composer.status"
+              context={{
+                model: activeModel,
+                remote: !isLocalModel,
+                provider: distant.fournisseur,
+                generating: streaming,
+                sessionId,
+              }}
+            />
           </div>
         </div>
       </div>

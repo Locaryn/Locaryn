@@ -6300,7 +6300,7 @@ async fn context_status(core: State<'_, Core>) -> Result<ContextStatus, String> 
             .map(|n| n.min(u32::MAX as usize) as u32),
         None => None,
     };
-    // Un modèle distant (OmniRoute, NVIDIA NIM…) ne publie pas `/props` : sa
+    // Un modèle distant (passerelle, API d'un fournisseur) ne publie pas `/props` : sa
     // fenêtre est celle que son catalogue annonce. Sans elle, la jauge
     // restait sur « X ».
     if running.is_none() {

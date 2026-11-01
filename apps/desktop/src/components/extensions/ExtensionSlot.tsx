@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { type InstalledExtension, core } from "../../lib/core";
 import { DynamicPluginWidget } from "./DynamicPluginWidget";
-import { getSlotContributions } from "./SlotRegistry";
+import { type ResolvedSlotContribution, getSlotContributions } from "./SlotRegistry";
 
 interface Props {
   name: string;
@@ -17,6 +17,8 @@ interface Props {
   itemClassName?: string;
   style?: React.CSSProperties;
   children?: React.ReactNode;
+  /** Ne garder que certaines contributions (celles d'un fournisseur précis). */
+  filter?: (c: ResolvedSlotContribution) => boolean;
 }
 
 export function ExtensionSlot({
@@ -27,6 +29,7 @@ export function ExtensionSlot({
   itemClassName,
   style,
   children,
+  filter,
 }: Props) {
   const [extensions, setExtensions] = useState<InstalledExtension[]>(propExtensions || []);
 
@@ -56,7 +59,8 @@ export function ExtensionSlot({
     };
   }, [propExtensions]);
 
-  const contributions = getSlotContributions(extensions, name);
+  const toutes = getSlotContributions(extensions, name);
+  const contributions = filter ? toutes.filter(filter) : toutes;
 
   if (contributions.length === 0) {
     return children ? <>{children}</> : null;

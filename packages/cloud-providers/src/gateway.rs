@@ -778,7 +778,7 @@ enum Attente {
 
 /// L'attente au-delà du délai déclaré, tant que le processus lancé vit.
 ///
-/// OmniRoute prépare son catalogue avant de servir quoi que ce soit : 20 s
+/// Une passerelle peut préparer son catalogue avant de servir quoi que ce soit : 20 s
 /// d'habitude, plus de trois minutes au lancement de l'application quand tout
 /// démarre en même temps. Abandonner à la fin du délai déclaré laissait une
 /// passerelle qui finissait par répondre sans clé ni réglages

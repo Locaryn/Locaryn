@@ -3,7 +3,7 @@
 //!
 //! Avec un modèle local, rien ne change : le modèle des petites tâches choisi
 //! dans les réglages, ou celui déjà chargé. Avec un modèle d'un fournisseur
-//! (Claude, NVIDIA par une passerelle…), ces tâches consommeraient un
+//! distant (abonnement, passerelle, clé d'API), ces tâches consommeraient un
 //! abonnement ou des crédits pour presque rien. Elles ne s'y font donc que si
 //! la personne l'a autorisé dans le dossier de ce fournisseur — coupé par
 //! défaut — avec le modèle de la conversation ou un modèle choisi. Sinon un
@@ -237,7 +237,7 @@ mod tests {
     fn coupe_par_defaut() {
         let d = dossier("defaut");
         let carte = lire(&d);
-        let r = carte.get("omniroute").cloned().unwrap_or_default();
+        let r = carte.get("fournisseur-a").cloned().unwrap_or_default();
         assert!(!r.pour(Tache::Titre).actif);
         assert!(!r.pour(Tache::Memoire).actif);
     }
@@ -247,12 +247,12 @@ mod tests {
         let d = dossier("relit");
         let mut carte = BTreeMap::new();
         carte.insert(
-            "claude".to_string(),
+            "fournisseur-b".to_string(),
             Reglages {
                 memoire: Autorisation::default(),
                 titres: Autorisation {
                     actif: true,
-                    modele: Some("claude-haiku-5-5".into()),
+                    modele: Some("petit-modele".into()),
                 },
             },
         );

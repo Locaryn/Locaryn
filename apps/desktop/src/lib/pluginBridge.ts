@@ -3,7 +3,9 @@ import {
   type CloudModel,
   type CloudProvider,
   type CloudProviderStatus,
+  type CloudUsage,
   type ConnectionInfo,
+  type TachesDistantes,
   core,
 } from "./core";
 import { getProfile } from "./profile";
@@ -102,6 +104,13 @@ export interface LocarynPluginAPI {
       action: "status" | "login" | "logout" | "code",
       code?: string,
     ) => Promise<Record<string, unknown>>;
+    /** Les limites d'utilisation que le manifeste publie (`usage_url` ou
+     *  `usage_command`), `null` s'il n'en publie pas. */
+    usage: (provider: string) => Promise<CloudUsage | null>;
+    /** Les tâches de fond de l'application (tri de la mémoire, nommage) que ce
+     *  fournisseur a le droit de faire. Coupées par défaut. */
+    backgroundTasks: (provider: string) => Promise<TachesDistantes>;
+    setBackgroundTasks: (provider: string, reglages: TachesDistantes) => Promise<void>;
   };
   ui: {
     showToast: (message: string, type?: "info" | "success" | "warning" | "error") => void;
@@ -291,6 +300,10 @@ class PluginBridgeManager {
           action: "status" | "login" | "logout" | "code",
           code?: string,
         ) => core.cloudProviderAccount(provider, action, code),
+        usage: (provider: string) => core.cloudUsageOf(provider),
+        backgroundTasks: (provider: string) => core.tachesDistantes(provider),
+        setBackgroundTasks: (provider: string, reglages: TachesDistantes) =>
+          core.tachesDistantesEcrire(provider, reglages),
         select: async (provider: string, model: string) => {
           await core.cloudProviderSelect(provider, model);
           // Le sélecteur de modèle du chat écoute : sans ce signal, le nom

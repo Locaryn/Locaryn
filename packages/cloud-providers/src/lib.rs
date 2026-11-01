@@ -349,8 +349,8 @@ pub fn key_for_active_provider(
 // Vue d'ensemble
 // ============================================================================
 
-/// Le compte d'un fournisseur qui tourne sur la machine (un pont vers le CLI
-/// Claude Code, Codex…) : savoir s'il est connecté, ouvrir la connexion, la
+/// Le compte d'un fournisseur qui tourne sur la machine (un pont vers un CLI
+/// d'assistant) : savoir s'il est connecté, ouvrir la connexion, la
 /// fermer. L'hôte appelle `{api_url}/auth/{action}` sur la boucle locale ; le
 /// panneau du morph n'ouvre aucune connexion lui-même.
 pub async fn account(
