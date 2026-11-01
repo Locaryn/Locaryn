@@ -408,7 +408,12 @@ pub async fn usage_of_active(host: &Host<'_>) -> Option<serde_json::Value> {
 /// liste des modèles les montre pour choisir celui à qui il reste le plus.
 pub async fn usage_of(host: &Host<'_>, id: &str) -> Option<serde_json::Value> {
     let p = declared(host).await.into_iter().find(|p| p.id == id)?;
-    let Some(url) = p.manifest.usage_url.clone().filter(|u| !u.trim().is_empty()) else {
+    let Some(url) = p
+        .manifest
+        .usage_url
+        .clone()
+        .filter(|u| !u.trim().is_empty())
+    else {
         let mut v = gateway::usage_par_commande(host, &p).await?;
         if let Some(o) = v.as_object_mut() {
             o.insert("provider".into(), serde_json::json!(p.label()));

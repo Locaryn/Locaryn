@@ -1205,9 +1205,12 @@ async fn rattraper_cle(
 mod tests_usage {
     #[test]
     fn l_objet_se_lit_apres_les_messages() {
-        let v = super::premier_objet_json("[2m[info][0m prêt
+        let v = super::premier_objet_json(
+            "[2m[info][0m prêt
 {\"windows\":[]}
-").unwrap();
+",
+        )
+        .unwrap();
         assert!(v.get("windows").is_some());
         assert!(super::premier_objet_json("rien").is_none());
     }
