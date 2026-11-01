@@ -39,6 +39,22 @@ function fieldLabel(key: string, field: ExtensionField): string {
 type EnvRow = { id: string; key: string; value: string };
 
 let envSeq = 0;
+/** Ce qu'un bouton d'action montre : le champ `message` d'un résultat JSON,
+ *  sinon le texte tel quel. Un outil de morph répond en JSON ; la personne
+ *  doit lire des étapes, pas un objet. */
+export function messageDeResultat(texte: string): string {
+  try {
+    const v: unknown = JSON.parse(texte);
+    if (v && typeof v === "object" && "message" in v) {
+      const m = (v as { message: unknown }).message;
+      if (typeof m === "string" && m.trim()) return m;
+    }
+  } catch {
+    // Pas du JSON : le texte est déjà lisible.
+  }
+  return texte;
+}
+
 function nextEnvId(): string {
   envSeq += 1;
   return `env-${envSeq}`;
@@ -160,7 +176,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
     if (!field.tool) return;
     setActionBusy(key);
     try {
-      const text = await core.invokeExtensionTool(field.tool, {});
+      const text = messageDeResultat(await core.invokeExtensionTool(field.tool, {}));
       setActionResult((prev) => ({ ...prev, [key]: { ok: true, text } }));
     } catch (e) {
       setActionResult((prev) => ({ ...prev, [key]: { ok: false, text: String(e) } }));
