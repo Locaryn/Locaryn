@@ -19,6 +19,49 @@ function connectorCategoryLabel(type: ConnectorType): string {
   return isMcpType(type) ? "Connecteur MCP" : "Connecteur";
 }
 
+type EtatConnecteur = "connecte" | "attente" | "arrete";
+
+/** Connecté, démarré mais son application n'est pas ouverte, ou arrêté. */
+function etatMcp(m: McpServerInfo): EtatConnecteur {
+  if (!m.running) return "arrete";
+  return m.companion && !m.companion.running ? "attente" : "connecte";
+}
+
+const ORDRE_ETAT: Record<EtatConnecteur, number> = { connecte: 0, attente: 1, arrete: 2 };
+
+/** Les connectés d'abord : ce sont ceux que le modèle peut utiliser. */
+function trierMcp(liste: McpServerInfo[]): McpServerInfo[] {
+  return [...liste].sort((a, b) => ORDRE_ETAT[etatMcp(a)] - ORDRE_ETAT[etatMcp(b)]);
+}
+
+function resumeMcp(liste: McpServerInfo[]): string {
+  const n = (e: EtatConnecteur) => liste.filter((m) => etatMcp(m) === e).length;
+  const morceaux = [
+    `${n("connecte")} connecté${n("connecte") > 1 ? "s" : ""}`,
+    n("attente") > 0 ? `${n("attente")} en attente de son application` : "",
+    n("arrete") > 0 ? `${n("arrete")} arrêté${n("arrete") > 1 ? "s" : ""}` : "",
+  ];
+  return morceaux.filter(Boolean).join(" · ");
+}
+
+/** L'état écrit en toutes lettres, pas seulement une couleur. */
+function EtatMcp({ server }: { server: McpServerInfo }) {
+  const etat = etatMcp(server);
+  const libelle =
+    etat === "connecte"
+      ? "Connecté"
+      : etat === "attente"
+        ? `${server.companion?.name ?? "Application"} fermé`
+        : "Arrêté";
+  const icone = etat === "connecte" ? "check-circle" : etat === "attente" ? "warning" : "minus";
+  return (
+    <span className={`locaryn-mcp-etat locaryn-mcp-etat-${etat}`}>
+      <Icon name={icone} size={13} />
+      {libelle}
+    </span>
+  );
+}
+
 export function ConnectorsSettings() {
   const [tab, setTab] = useState<"browse" | "installed">("browse");
   const [categoryFilter, setCategoryFilter] = useState<ConnectorFilter>("all");
@@ -403,24 +446,17 @@ export function ConnectorsSettings() {
             </div>
           ) : null}
 
+          {mcpServers.length > 0 && <p className="locaryn-mcp-resume">{resumeMcp(mcpServers)}</p>}
           {mcpServers.length > 0 && (
             <div className="locaryn-model-grid" style={{ marginBottom: "28px" }}>
-              {mcpServers.map((m) => (
-                <div key={m.name} className="locaryn-box-card">
+              {trierMcp(mcpServers).map((m) => (
+                <div key={m.name} className={`locaryn-box-card locaryn-mcp-card-${etatMcp(m)}`}>
                   <div className="locaryn-box-head">
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span
-                        className={`locaryn-health-dot ${
-                          m.running && m.companion?.running !== false
-                            ? "locaryn-health-ok"
-                            : "locaryn-health-off"
-                        }`}
-                      />
-                      <div>
-                        <h3 className="locaryn-box-name">{m.name}</h3>
-                        <span className="locaryn-box-brand">{m.transport}</span>
-                      </div>
+                    <div>
+                      <h3 className="locaryn-box-name">{m.name}</h3>
+                      <span className="locaryn-box-brand">{m.transport}</span>
                     </div>
+                    <EtatMcp server={m} />
                   </div>
                   <code className="locaryn-connector-cmd">{m.target}</code>
                   {m.env && Object.keys(m.env).length > 0 && (
