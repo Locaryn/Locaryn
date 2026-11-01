@@ -167,6 +167,17 @@ class PluginBridgeManager {
     this.currentSessionId = null;
   }
 
+  /** Prévenir les extensions d'un événement de l'application (`chat.reply`…). */
+  public emit(eventName: string, data?: unknown): void {
+    for (const fn of this.eventListeners.get(eventName) ?? []) {
+      try {
+        fn(data);
+      } catch (err) {
+        console.error(`[Locaryn Plugin Bridge] Error in listener for ${eventName}:`, err);
+      }
+    }
+  }
+
   public async dispatchSubmit(text: string): Promise<boolean> {
     for (const handler of [...this.submitHandlers]) {
       try {

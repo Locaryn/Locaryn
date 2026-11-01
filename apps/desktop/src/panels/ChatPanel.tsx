@@ -596,6 +596,9 @@ export function ChatPanel({
   const welcome = useWelcome();
   const { lang } = useI18n();
   const [items, setItems] = useState<ChatItem[]>([]);
+  // Lu après coup, quand une réponse finit : sa dernière version rendue.
+  const itemsRef = useRef<ChatItem[]>(items);
+  itemsRef.current = items;
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   /** Les pièces jointes de chaque message envoyé, pour les rendre à l'édition. */
@@ -2050,6 +2053,9 @@ ${d.texte}`
             (it) => it.kind !== "brouillon",
           ),
         );
+        // `chat.reply` : la réponse finie, pour les extensions (lecture à voix
+        // haute, conversation vocale…). Après le rendu, pour lire le texte final.
+        window.setTimeout(() => annoncerReponse(sid, itemsRef.current), 0);
         // Les fichiers que cette réponse a touchés, cités sous elle.
         core
           .workspaceRecent(sid, t0)
@@ -3844,4 +3850,13 @@ ${preview}`,
       {ragOpen && projectId && <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />}
     </section>
   );
+}
+
+/** Dire aux extensions qu'une réponse est finie, avec son texte. Rien si le
+ *  dernier message n'est pas une réponse (arrêt avant le premier mot). */
+function annoncerReponse(sessionId: string, items: ChatItem[]): void {
+  const dernier = [...items].reverse().find((it) => it.kind === "msg");
+  if (!dernier || dernier.kind !== "msg" || dernier.role !== "assistant") return;
+  const text = dernier.text.trim();
+  if (text) pluginBridge.emit("chat.reply", { sessionId, text });
 }
