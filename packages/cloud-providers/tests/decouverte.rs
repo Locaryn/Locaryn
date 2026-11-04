@@ -145,6 +145,7 @@ impl Machine {
                 supports_tools: true,
                 ..Default::default()
             }],
+            format: locaryn_cloud_providers::catalog::FORMAT_CATALOGUE,
         }
         .save(&self.data_dir, "passerelle")
         .expect("catalogue écrit");

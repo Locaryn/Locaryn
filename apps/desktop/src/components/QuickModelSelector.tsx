@@ -180,28 +180,25 @@ export function QuickModelSelector({
     if (!isOpen) {
       setOpenFolder(null);
       setQuery("");
-      setVoirInutilisables(false);
     }
   }, [isOpen]);
 
   const openedProvider = cloudProviders.find((p) => p.id === openFolder) ?? null;
 
-  /* Les modèles que le compte ne sert pas restent cachés tant qu'on ne les
-     demande pas : une clé gratuite en sert trois sur plus de cinq cents
-     (Locaryn/Locaryn#90). */
-  const [voirInutilisables, setVoirInutilisables] = useState(false);
-  const inutilisables = useMemo(
-    () => cloudModels.filter((m) => m.available === false).length,
+  /* L'hôte ne renvoie que les modèles que le compte sert (Locaryn/Locaryn#122).
+     La conversation ne prend que ceux qui conversent : un modèle d'image,
+     présent parce qu'une extension d'image est installée, n'y répondrait pas. */
+  const modelesDuChat = useMemo(
+    () => cloudModels.filter((m) => (m.kind ?? "chat") === "chat" && m.available !== false),
     [cloudModels],
   );
   const filteredCloud = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const visibles = voirInutilisables
-      ? cloudModels
-      : cloudModels.filter((m) => m.available !== false);
-    if (!q) return visibles;
-    return visibles.filter((m) => `${m.id} ${m.name} ${m.description}`.toLowerCase().includes(q));
-  }, [cloudModels, query, voirInutilisables]);
+    if (!q) return modelesDuChat;
+    return modelesDuChat.filter((m) =>
+      `${m.id} ${m.name} ${m.description}`.toLowerCase().includes(q),
+    );
+  }, [modelesDuChat, query]);
 
   async function selectCloudModel(providerId: string, model: string) {
     setCloudError(null);
@@ -363,7 +360,7 @@ export function QuickModelSelector({
           className="locaryn-input"
           placeholder={
             openedProvider
-              ? `Rechercher parmi ${cloudModels.length - (voirInutilisables ? 0 : inutilisables)} modèles ${openedProvider.label}…`
+              ? `Rechercher parmi ${modelesDuChat.length} modèles ${openedProvider.label}…`
               : "Rechercher parmi vos modèles installés…"
           }
           value={query}
@@ -421,18 +418,6 @@ export function QuickModelSelector({
               })}
               {!cloudBusy && filteredCloud.length === 0 && !cloudError && (
                 <div className="locaryn-cloud-empty">Aucun modèle ne correspond.</div>
-              )}
-              {inutilisables > 0 && (
-                <button
-                  type="button"
-                  className="locaryn-chip"
-                  style={{ alignSelf: "center", minHeight: 40 }}
-                  onClick={() => setVoirInutilisables((v) => !v)}
-                >
-                  {voirInutilisables
-                    ? "Cacher les modèles non utilisables"
-                    : `Afficher ${inutilisables} modèles non utilisables avec ce compte`}
-                </button>
               )}
             </>
           )}

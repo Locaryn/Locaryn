@@ -41,6 +41,30 @@ pub struct CloudModel {
     /// échouera (`cloud_provider.local.available_models`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available: Option<bool>,
+    /// Ce que le modèle produit : `chat`, `image`, `video`, `music`, `3d`,
+    /// `speech`, `transcription`, `realtime`, `embedding`, `rerank`…
+    #[serde(default = "genre_conversation")]
+    pub kind: String,
+}
+
+fn genre_conversation() -> String {
+    GENRE_CONVERSATION.to_string()
+}
+
+/// Le genre des modèles qui conversent : le seul que le chat propose.
+pub const GENRE_CONVERSATION: &str = "chat";
+
+/// Le format du catalogue gardé. Un catalogue plus ancien n'a pas les genres :
+/// il est relu au lieu d'être servi, sinon des centaines de modèles d'image
+/// passeraient pour des modèles de conversation.
+pub const FORMAT_CATALOGUE: u32 = 2;
+
+impl CloudModel {
+    /// Un modèle que le chat peut proposer : il converse, et le compte peut
+    /// l'appeler.
+    pub fn pour_le_chat(&self) -> bool {
+        self.available != Some(false) && capacite_du_genre(&self.kind).is_none()
+    }
 }
 
 /// Le catalogue gardé sur disque.
@@ -48,6 +72,8 @@ pub struct CloudModel {
 pub struct CachedCatalog {
     pub updated_at: String,
     pub models: Vec<CloudModel>,
+    #[serde(default)]
+    pub format: u32,
 }
 
 impl CachedCatalog {
@@ -98,7 +124,7 @@ impl CachedCatalog {
 
     /// Le catalogue est-il encore frais pour cette fenêtre de fraîcheur ?
     pub fn is_fresh(&self, refresh_hours: u32) -> bool {
-        if self.models.is_empty() || refresh_hours == 0 {
+        if self.models.is_empty() || refresh_hours == 0 || self.format < FORMAT_CATALOGUE {
             return false;
         }
         chrono::DateTime::parse_from_rfc3339(&self.updated_at)
@@ -132,6 +158,7 @@ pub async fn models(
             let catalog = CachedCatalog {
                 updated_at: chrono::Utc::now().to_rfc3339(),
                 models,
+                format: FORMAT_CATALOGUE,
             };
             if let Err(e) = catalog.save(host.data_dir, &p.id) {
                 tracing::warn!(erreur = %e, "catalogue non enregistré");
@@ -305,8 +332,129 @@ pub fn parse_models(body: &serde_json::Value) -> Vec<CloudModel> {
                         .and_then(serde_json::Value::as_bool)
                         .unwrap_or(false),
                 available: None,
+                kind: genre(m, &id),
                 id,
             })
+        })
+        .collect()
+}
+
+/// Le genre d'un modèle, d'après ce que le catalogue publie.
+///
+/// Trois formes coexistent : un `type` explicite (avec un `subtype` pour
+/// l'audio), les modalités de sortie, ou la modalité « entrée->sortie » des
+/// catalogues façon OpenRouter. À défaut, quelques noms sans ambiguïté ; le
+/// reste converse.
+pub fn genre(m: &serde_json::Value, id: &str) -> String {
+    let texte = |champ: &str| {
+        m.get(champ)
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+    };
+    if let Some(t) = texte("type") {
+        return genre_declare(&t, texte("subtype").as_deref());
+    }
+    let sorties: Vec<String> = m
+        .get("output_modalities")
+        .and_then(|v| v.as_array())
+        .map(|l| {
+            l.iter()
+                .filter_map(|x| x.as_str())
+                .map(str::to_ascii_lowercase)
+                .collect()
+        })
+        .or_else(|| {
+            let modalite = m.get("architecture")?.get("modality")?.as_str()?;
+            let sortie = modalite.split("->").nth(1)?;
+            Some(
+                sortie
+                    .split('+')
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .collect(),
+            )
+        })
+        .unwrap_or_default();
+    if let Some(g) = genre_des_sorties(&sorties) {
+        return g.to_string();
+    }
+    genre_du_nom(id).to_string()
+}
+
+fn genre_declare(t: &str, sous_type: Option<&str>) -> String {
+    match (t, sous_type) {
+        ("chat" | "text" | "completion" | "responses" | "llm", _) => GENRE_CONVERSATION.into(),
+        ("image" | "images" | "image_generation", _) => "image".into(),
+        ("embedding" | "embeddings", _) => "embedding".into(),
+        ("audio", Some("speech" | "tts")) | ("speech" | "tts", _) => "speech".into(),
+        ("audio", Some("transcription" | "stt" | "asr")) | ("transcription", _) => {
+            "transcription".into()
+        }
+        (autre, _) => autre.into(),
+    }
+}
+
+fn genre_des_sorties(sorties: &[String]) -> Option<&'static str> {
+    if sorties.is_empty() || sorties.iter().any(|s| s == "text") {
+        return None;
+    }
+    let a = |nom: &str| sorties.iter().any(|s| s == nom);
+    Some(if a("image") {
+        "image"
+    } else if a("video") {
+        "video"
+    } else if a("audio") {
+        "speech"
+    } else if a("3d") || a("mesh") {
+        "3d"
+    } else {
+        return None;
+    })
+}
+
+fn genre_du_nom(id: &str) -> &'static str {
+    let id = id.to_ascii_lowercase();
+    if id.contains("realtime") {
+        "realtime"
+    } else if id.contains("embed") {
+        "embedding"
+    } else if id.contains("rerank") {
+        "rerank"
+    } else {
+        GENRE_CONVERSATION
+    }
+}
+
+/// La capacité d'extension qui se sert d'un genre de modèle ; `None` pour la
+/// conversation, que l'application sert elle-même.
+///
+/// Un modèle d'image n'a rien à faire dans la liste tant qu'aucune extension
+/// installée ne sait générer d'image. Le lien passe par la capacité déclarée,
+/// jamais par le nom d'une extension.
+pub fn capacite_du_genre(genre: &str) -> Option<&str> {
+    match genre {
+        GENRE_CONVERSATION | "" => None,
+        "image" => Some("image-gen"),
+        "video" => Some("video-gen"),
+        "music" => Some("music-gen"),
+        "3d" => Some("3d-gen"),
+        "speech" => Some("voice-tts"),
+        "transcription" => Some("speech-to-text"),
+        "realtime" => Some("voice-conversation"),
+        "embedding" | "rerank" => Some("rag-qa"),
+        autre => Some(autre),
+    }
+}
+
+/// Les modèles à proposer : ceux que le compte peut appeler, de la
+/// conversation ou d'un genre qu'une extension active sait utiliser.
+pub fn proposables(models: Vec<CloudModel>, capacites: &[String]) -> Vec<CloudModel> {
+    models
+        .into_iter()
+        .filter(|m| m.available != Some(false))
+        .filter(|m| match capacite_du_genre(&m.kind) {
+            None => true,
+            Some(c) => capacites.iter().any(|x| x == c),
         })
         .collect()
 }
@@ -345,6 +493,7 @@ mod tests {
         let brut = CachedCatalog {
             updated_at: String::new(),
             models: models.clone(),
+            format: FORMAT_CATALOGUE,
         };
         assert_eq!(
             brut.nombre_utilisables(),
@@ -359,6 +508,7 @@ mod tests {
         let marque = CachedCatalog {
             updated_at: String::new(),
             models,
+            format: FORMAT_CATALOGUE,
         };
         assert_eq!(marque.nombre_utilisables(), Some(1));
         assert_eq!(
@@ -403,6 +553,7 @@ mod tests {
         let frais = CachedCatalog {
             updated_at: chrono::Utc::now().to_rfc3339(),
             models: vec![CloudModel::default()],
+            format: FORMAT_CATALOGUE,
         };
         assert!(frais.is_fresh(12));
         assert!(
@@ -413,14 +564,87 @@ mod tests {
         let vieux = CachedCatalog {
             updated_at: (chrono::Utc::now() - chrono::Duration::hours(30)).to_rfc3339(),
             models: vec![CloudModel::default()],
+            format: FORMAT_CATALOGUE,
         };
         assert!(!vieux.is_fresh(12));
 
         let vide = CachedCatalog {
             updated_at: chrono::Utc::now().to_rfc3339(),
             models: Vec::new(),
+            format: FORMAT_CATALOGUE,
         };
         assert!(!vide.is_fresh(12));
+
+        let ancien = CachedCatalog {
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            models: vec![CloudModel::default()],
+            format: 0,
+        };
+        assert!(!ancien.is_fresh(12), "un catalogue sans genres est relu");
+    }
+
+    /// Le genre se lit dans les trois formes publiées, et à défaut le modèle
+    /// converse.
+    #[test]
+    fn le_genre_se_lit() {
+        let g = |v: serde_json::Value| genre(&v, v["id"].as_str().unwrap_or_default());
+        assert_eq!(
+            g(serde_json::json!({ "id": "a/flux", "type": "image" })),
+            "image"
+        );
+        assert_eq!(
+            g(serde_json::json!({ "id": "a/w", "type": "audio", "subtype": "transcription" })),
+            "transcription"
+        );
+        assert_eq!(
+            g(serde_json::json!({ "id": "a/veo", "output_modalities": ["video"] })),
+            "video"
+        );
+        assert_eq!(
+            g(
+                serde_json::json!({ "id": "a/vl", "input_modalities": ["text", "image"], "output_modalities": ["text"] })
+            ),
+            "chat"
+        );
+        assert_eq!(
+            g(serde_json::json!({ "id": "a/sd", "architecture": { "modality": "text->image" } })),
+            "image"
+        );
+        assert_eq!(
+            g(serde_json::json!({ "id": "openai/gpt-realtime" })),
+            "realtime"
+        );
+        assert_eq!(g(serde_json::json!({ "id": "meta/llama-4" })), "chat");
+    }
+
+    /// Un modèle refusé par le compte n'est jamais proposé ; un modèle
+    /// d'image l'est seulement si une extension active sait générer d'image.
+    #[test]
+    fn seuls_les_modeles_utilisables_et_utiles_sont_proposes() {
+        let m = |id: &str, kind: &str, available: Option<bool>| CloudModel {
+            id: id.into(),
+            kind: kind.into(),
+            available,
+            ..Default::default()
+        };
+        let catalogue = vec![
+            m("texte", "chat", Some(true)),
+            m("refuse", "chat", Some(false)),
+            m("image", "image", Some(true)),
+            m("inconnu", "", None),
+        ];
+        let ids = |l: Vec<CloudModel>| l.into_iter().map(|m| m.id).collect::<Vec<_>>();
+        assert_eq!(
+            ids(proposables(catalogue.clone(), &[])),
+            ["texte", "inconnu"]
+        );
+        assert_eq!(
+            ids(proposables(catalogue.clone(), &["image-gen".into()])),
+            ["texte", "image", "inconnu"]
+        );
+        assert!(catalogue[0].pour_le_chat());
+        assert!(!catalogue[1].pour_le_chat());
+        assert!(!catalogue[2].pour_le_chat());
     }
 
     /// Le nom de fichier du cache vient d'un manifeste : un identifiant tordu

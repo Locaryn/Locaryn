@@ -177,7 +177,11 @@ pub async fn cloud_provider_models(
 ) -> Result<Vec<CloudModel>, String> {
     let h = host(&core);
     let p = cloud::find(&h, &provider).await?;
-    cloud::catalog::models(&h, &p, refresh.unwrap_or(false)).await
+    let tous = cloud::catalog::models(&h, &p, refresh.unwrap_or(false)).await?;
+    // Ni modèle refusé par le compte, ni genre qu'aucune extension active ne
+    // sait utiliser (image, voix, musique…).
+    let capacites = crate::extensions::active_capabilities(&core).await;
+    Ok(cloud::catalog::proposables(tous, &capacites))
 }
 
 /// La passerelle répond-elle, et est-elle seulement installée ?

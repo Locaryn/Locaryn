@@ -159,7 +159,9 @@ pub async fn list_models(State(state): State<Arc<DaemonState>>) -> Response {
         let Some(cache) = cloud::CachedCatalog::load(&state.data_dir, &p.id) else {
             continue;
         };
-        for m in cache.models {
+        // Seulement ce qui converse et que le compte sert : un client qui
+        // choisirait un modèle d'image ou un modèle refusé échouerait.
+        for m in cache.models.into_iter().filter(|m| m.pour_le_chat()) {
             data.push(json!({
                 "id": format!("{}/{}", p.id, m.id),
                 "object": "model",
@@ -1089,6 +1091,7 @@ mod api_tests {
                 context_length: 1_000_000,
                 ..Default::default()
             }],
+            format: locaryn_cloud_providers::catalog::FORMAT_CATALOGUE,
         }
         .save(&data_dir, "passerelle")
         .expect("catalogue");

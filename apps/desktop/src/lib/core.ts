@@ -184,6 +184,9 @@ export interface CloudModel {
   /** `false` : publié par la passerelle, mais son fournisseur n'est pas
    *  connecté. Absent : la passerelle ne le dit pas. */
   available?: boolean;
+  /** Ce que le modèle produit : `chat`, `image`, `video`, `speech`… Seuls les
+   *  modèles `chat` se choisissent pour la conversation. */
+  kind?: string;
 }
 
 export interface Health {

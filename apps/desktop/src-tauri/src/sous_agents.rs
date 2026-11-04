@@ -118,10 +118,7 @@ pub async fn lister(core: &Core) -> String {
         // les gratuits. Trente suffisent pour choisir sans noyer la fenêtre.
         // Un modèle que la passerelle publie sans pouvoir le servir (son
         // fournisseur n'est pas connecté) échouerait : il n'est pas proposé.
-        let mut tries: Vec<_> = modeles
-            .iter()
-            .filter(|m| m.available != Some(false))
-            .collect();
+        let mut tries: Vec<_> = modeles.iter().filter(|m| m.pour_le_chat()).collect();
         tries.sort_by_key(|m| {
             (
                 !m.supports_tools,
