@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "../lib/core";
+import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
 import { clicApresGlisser, suivreAppui } from "../lib/sessionDrag";
 
 type Props = {
@@ -73,7 +74,8 @@ export function SessionRow({
   selected = false,
   onToggleSelect,
 }: Props) {
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  // Un seul menu ouvert dans toute l'application : voir `lib/menuUnique`.
+  const { menu, ouvrir, fermer } = useMenuUnique<{ x: number; y: number }>();
   const [showSubmenu, setShowSubmenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
@@ -84,26 +86,9 @@ export function SessionRow({
     if (editing) inputRef.current?.select();
   }, [editing]);
 
-  // Un menu ouvert se ferme au premier clic ailleurs, ou sur Échap : sinon il
-  // reste posé sur l'écran pendant qu'on fait autre chose.
+  // Le sous-menu se ferme avec son menu.
   useEffect(() => {
-    if (!menu) return;
-    const close = () => {
-      setMenu(null);
-      setShowSubmenu(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenu(null);
-        setShowSubmenu(false);
-      }
-    };
-    window.addEventListener("click", close);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("keydown", onKey);
-    };
+    if (!menu) setShowSubmenu(false);
   }, [menu]);
 
   function commitRename() {
@@ -130,8 +115,7 @@ export function SessionRow({
       onContextMenu={(e) => {
         e.preventDefault();
         if (selecting) return;
-        setShowSubmenu(false);
-        setMenu({ x: e.clientX, y: e.clientY });
+        ouvrir({ x: e.clientX, y: e.clientY });
       }}
     >
       {selecting && (
@@ -214,21 +198,20 @@ export function SessionRow({
 
       {menu && (
         <div
+          ref={focusPremiereEntree}
           className="locaryn-ctx"
           style={{ top: menu.y, left: menu.x }}
-          // Le menu ne doit pas se refermer sur son propre clic avant d'avoir
-          // déclenché l'action qu'on vient de choisir.
           onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
+          onKeyDown={navigationMenu}
           role="menu"
           tabIndex={-1}
         >
           <button
             type="button"
+            role="menuitem"
             className="locaryn-ctx-item"
             onClick={() => {
-              setMenu(null);
-              setShowSubmenu(false);
+              fermer();
               setDraft(label);
               setEditing(true);
             }}
@@ -238,11 +221,11 @@ export function SessionRow({
           {onRenameAi && (
             <button
               type="button"
+              role="menuitem"
               className="locaryn-ctx-item"
               disabled={nommage}
               onClick={() => {
-                setMenu(null);
-                setShowSubmenu(false);
+                fermer();
                 setNommage(true);
                 void onRenameAi().finally(() => setNommage(false));
               }}
@@ -261,6 +244,9 @@ export function SessionRow({
             >
               <button
                 type="button"
+                role="menuitem"
+                aria-haspopup="menu"
+                aria-expanded={showSubmenu}
                 className={`locaryn-ctx-item locaryn-ctx-item-has-sub${showSubmenu ? " locaryn-active" : ""}`}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -285,11 +271,11 @@ export function SessionRow({
                     <button
                       key={p.id}
                       type="button"
+                      role="menuitem"
                       className="locaryn-ctx-item"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setMenu(null);
-                        setShowSubmenu(false);
+                        fermer();
                         onMove(p.id);
                       }}
                     >
@@ -313,10 +299,10 @@ export function SessionRow({
           )}
           <button
             type="button"
+            role="menuitem"
             className="locaryn-ctx-item"
             onClick={() => {
-              setMenu(null);
-              setShowSubmenu(false);
+              fermer();
               onArchive();
             }}
           >

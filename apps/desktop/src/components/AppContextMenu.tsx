@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import { attachTerminalText } from "../lib/attachText";
 import { core, isTauri } from "../lib/core";
+import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
 import { ecrirePressePapiers, lirePressePapiers } from "../lib/pressePapiers";
 import { openTab } from "../lib/workspace";
 
@@ -116,8 +117,7 @@ function actionsPour(cible: HTMLElement): Action[] {
 }
 
 export function AppContextMenu() {
-  const [menu, setMenu] = useState<Menu | null>(null);
-  const ref = useRef<HTMLDivElement | null>(null);
+  const { menu, ouvrir, fermer } = useMenuUnique<Menu>();
 
   useEffect(() => {
     function surClicDroit(e: MouseEvent) {
@@ -128,38 +128,22 @@ export function AppContextMenu() {
       const actions = cible ? actionsPour(cible) : [];
       // Rester dans la fenêtre : un menu coupé au bord n'est plus cliquable.
       const x = Math.min(e.clientX, window.innerWidth - 240);
-      const y = Math.min(e.clientY, window.innerHeight - (actions.length * 36 + 16));
-      setMenu(actions.length > 0 ? { x, y, actions } : null);
-    }
-    function fermer(e: Event) {
-      if (e instanceof MouseEvent && ref.current?.contains(e.target as Node)) return;
-      setMenu(null);
-    }
-    function touche(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenu(null);
+      const y = Math.min(e.clientY, window.innerHeight - (actions.length * 40 + 16));
+      if (actions.length > 0) ouvrir({ x, y, actions });
     }
     document.addEventListener("contextmenu", surClicDroit);
-    document.addEventListener("mousedown", fermer);
-    window.addEventListener("blur", fermer);
-    window.addEventListener("resize", fermer);
-    document.addEventListener("keydown", touche);
-    return () => {
-      document.removeEventListener("contextmenu", surClicDroit);
-      document.removeEventListener("mousedown", fermer);
-      window.removeEventListener("blur", fermer);
-      window.removeEventListener("resize", fermer);
-      document.removeEventListener("keydown", touche);
-    };
-  }, []);
+    return () => document.removeEventListener("contextmenu", surClicDroit);
+  }, [ouvrir]);
 
   if (!menu) return null;
   return (
     <div
-      ref={ref}
+      ref={focusPremiereEntree}
       className="locaryn-ctx locaryn-app-ctx"
       style={{ top: menu.y, left: menu.x }}
       role="menu"
       tabIndex={-1}
+      onKeyDown={navigationMenu}
     >
       {menu.actions.map((a) => (
         <button
@@ -170,7 +154,7 @@ export function AppContextMenu() {
           // mousedown : garder la sélection et le focus du champ jusqu'à l'action.
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            setMenu(null);
+            fermer();
             void a.run();
           }}
         >

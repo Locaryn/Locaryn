@@ -9,6 +9,7 @@ import {
 } from "../components/cloud/CloudProviderFolder";
 import { type InstalledExtension, type ModelMetric, type StoredWeight, core } from "../lib/core";
 import { claimantOf, loadExtensionMarketplaces } from "../lib/extensionMarketplace";
+import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { VUE_RECHOISIE } from "../lib/vues";
 
@@ -144,27 +145,16 @@ export function InstalledModelsView({
     [installedModels],
   );
 
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    entry: StoredEntry;
-  } | null>(null);
+  const {
+    menu: contextMenu,
+    ouvrir: ouvrirMenu,
+    fermer: fermerMenu,
+  } = useMenuUnique<{ x: number; y: number; entry: StoredEntry }>();
+  const setContextMenu = (valeur: null) => {
+    if (valeur === null) fermerMenu();
+  };
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [debridedModels, setDebridedModels] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setContextMenu(null);
-    };
-    window.addEventListener("click", close);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [contextMenu]);
 
   useEffect(() => {
     core
@@ -561,7 +551,7 @@ export function InstalledModelsView({
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setContextMenu({ x: e.clientX, y: e.clientY, entry });
+                ouvrirMenu({ x: e.clientX, y: e.clientY, entry });
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -697,8 +687,9 @@ export function InstalledModelsView({
                 left: Math.max(10, Math.min(contextMenu.x, window.innerWidth - 260)),
                 zIndex: 99999,
               }}
+              ref={focusPremiereEntree}
               onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
+              onKeyDown={navigationMenu}
               role="menu"
               tabIndex={-1}
             >
@@ -708,6 +699,7 @@ export function InstalledModelsView({
               {contextMenu.entry.kind === "chat" && (
                 <button
                   type="button"
+                  role="menuitem"
                   className="locaryn-ctx-item"
                   onClick={() => {
                     const tag = contextMenu.entry.tag;
@@ -721,6 +713,7 @@ export function InstalledModelsView({
               {isCtxDebrided ? (
                 <button
                   type="button"
+                  role="menuitem"
                   className="locaryn-ctx-item"
                   style={{ fontSize: 13 }}
                   onClick={() => void handleToggleDebridage(contextMenu.entry, false)}
@@ -730,6 +723,7 @@ export function InstalledModelsView({
               ) : (
                 <button
                   type="button"
+                  role="menuitem"
                   className="locaryn-ctx-item"
                   style={{ color: "var(--accent, #6366f1)", fontSize: 13, fontWeight: 600 }}
                   onClick={() => void handleToggleDebridage(contextMenu.entry, true)}
@@ -740,6 +734,7 @@ export function InstalledModelsView({
               <div className="locaryn-ctx-sep" />
               <button
                 type="button"
+                role="menuitem"
                 className="locaryn-ctx-item"
                 onClick={() => {
                   const path = contextMenu.entry.path;
@@ -752,6 +747,7 @@ export function InstalledModelsView({
               {onDeleteModel && (
                 <button
                   type="button"
+                  role="menuitem"
                   className="locaryn-ctx-item"
                   style={{ color: "var(--danger)" }}
                   onClick={() => {

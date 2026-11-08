@@ -5,6 +5,7 @@ import { visibleNavItems } from "../components/NavDrawer";
 import { SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
 import { confirmer, pickFolder } from "../lib/dialog";
+import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { useSimpleUi } from "../lib/profile";
 import {
@@ -489,14 +490,20 @@ export function LeftPanel({
   /** Project whose quick-actions menu is open (the settings button), plus the anchor
    *  position. The menu renders `position: fixed` so the sidebar's own
    *  `overflow: auto` cannot clip it (it used to cut off the last action). */
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const {
+    menu: menuFor,
+    ouvrir: ouvrirMenuProjet,
+    fermer: fermerMenuProjet,
+  } = useMenuUnique<string>();
+  const setMenuFor = (valeur: null) => {
+    if (valeur === null) fermerMenuProjet();
+  };
   const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
   function openMenu(e: React.MouseEvent, projectId: string) {
     e.stopPropagation();
     if (menuFor === projectId) {
-      setMenuFor(null);
+      fermerMenuProjet();
       return;
     }
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -506,24 +513,8 @@ export function LeftPanel({
       top: openUp ? Math.max(8, r.top - MENU_H - 4) : r.bottom + 4,
       right: Math.max(8, window.innerWidth - r.right),
     });
-    setMenuFor(projectId);
+    ouvrirMenuProjet(projectId);
   }
-
-  useEffect(() => {
-    if (!menuFor) return;
-    function onDown(e: MouseEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuFor(null);
-    }
-    function onEsc(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuFor(null);
-    }
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onEsc);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onEsc);
-    };
-  }, [menuFor]);
 
   async function archive(p: Project) {
     setMenuFor(null);
@@ -832,16 +823,14 @@ export function LeftPanel({
                         </span>
                       )}
                     </button>
-                    <div
-                      className="locaryn-proj-menu-wrap"
-                      ref={menuFor === p.id ? menuRef : undefined}
-                    >
+                    <div className="locaryn-proj-menu-wrap">
                       <button
                         type="button"
                         className="locaryn-icon-btn"
                         style={{ padding: "2px 6px", fontSize: "12px" }}
                         title={`Actions sur ${p.name}`}
                         aria-haspopup="menu"
+                        data-menu-trigger=""
                         aria-expanded={menuFor === p.id}
                         onClick={(e) => openMenu(e, p.id)}
                       >
@@ -850,6 +839,8 @@ export function LeftPanel({
 
                       {menuFor === p.id && (
                         <div
+                          ref={focusPremiereEntree}
+                          onKeyDown={navigationMenu}
                           className="locaryn-proj-menu"
                           role="menu"
                           style={{ top: menuPos.top, right: menuPos.right }}
