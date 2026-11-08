@@ -100,9 +100,8 @@ fn ajouter_a_l_historique(historique: &mut Vec<StreamEvent>, ev: &StreamEvent) {
         }
         StreamEvent::ToolDraft { index, .. } => historique
             .retain(|e| !matches!(e, StreamEvent::ToolDraft { index: i, .. } if i == index)),
-        StreamEvent::ToolResult { call_id, .. } => historique.retain(
-            |e| !matches!(e, StreamEvent::ToolApproval { call_id: c, .. } if c == call_id),
-        ),
+        StreamEvent::ToolResult { call_id, .. } => historique
+            .retain(|e| !matches!(e, StreamEvent::ToolApproval { call_id: c, .. } if c == call_id)),
         _ => {}
     }
     historique.push(ev.clone());
@@ -197,6 +196,26 @@ mod tests {
             Err(broadcast::error::TryRecvError::Closed)
         ));
         assert!(vives.en_cours().is_empty());
+    }
+
+    #[test]
+    fn le_canal_dedouble_sert_l_ecran_et_le_registre() {
+        let recus: Arc<Mutex<Vec<String>>> = Arc::default();
+        let copie = recus.clone();
+        let origine: Channel<InvokeResponseBody> = Channel::new(move |corps| {
+            if let InvokeResponseBody::Json(j) = corps {
+                copie.lock().unwrap_or_else(|e| e.into_inner()).push(j);
+            }
+            Ok(())
+        });
+        let vives = ReponsesVives::default();
+        let s = Uuid::new_v4();
+        let t = vives.commencer(s);
+        let canal = dedoubler(origine, vives.clone(), s, t);
+        canal.send(jeton("salut")).expect("envoi");
+        assert_eq!(recus.lock().unwrap_or_else(|e| e.into_inner()).len(), 1);
+        let (deja, _) = vives.rejoindre(s).expect("en cours");
+        assert!(matches!(&deja[0], StreamEvent::Token { text } if text == "salut"));
     }
 
     #[test]

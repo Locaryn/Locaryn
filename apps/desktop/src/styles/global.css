@@ -2422,6 +2422,10 @@ dialog:where([open]) {
 .locaryn-etat-erreur {
   background: var(--danger);
 }
+/* Vert : une réponse est arrivée ailleurs. Rien a debloquer, donc fixe. */
+.locaryn-etat-terminee {
+  background: var(--accent);
+}
 @keyframes locaryn-battement {
   0%,
   100% {

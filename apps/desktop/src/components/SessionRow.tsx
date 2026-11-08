@@ -4,6 +4,24 @@ import type { Session } from "../lib/core";
 import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
 import { clicApresGlisser, suivreAppui } from "../lib/sessionDrag";
 
+/** La pastille d'une conversation dans la liste. */
+export type EtatSession = "attente" | "erreur" | "terminee" | null;
+
+const PASTILLES: Record<Exclude<EtatSession, null>, { classe: string; titre: string }> = {
+  attente: {
+    classe: "locaryn-etat-attente",
+    titre: "En pause : le modèle attend votre réponse",
+  },
+  erreur: {
+    classe: "locaryn-etat-erreur",
+    titre: "Quelque chose est cassé dans cette conversation",
+  },
+  terminee: {
+    classe: "locaryn-etat-terminee",
+    titre: "Une réponse est arrivée pendant que vous étiez ailleurs",
+  },
+};
+
 type Props = {
   session: Session;
   label: string;
@@ -16,9 +34,10 @@ type Props = {
    * `attente` : le modèle est en pause, il attend une réponse — c'est la seule
    * chose qui débloque le travail, et c'est pour cela qu'on la voit depuis la
    * liste plutôt qu'en ouvrant la conversation. `erreur` : quelque chose est
-   * cassé et demande une action, pas une réponse.
+   * cassé et demande une action, pas une réponse. `terminee` : une réponse a
+   * fini pendant qu'on regardait une autre conversation.
    */
-  etat?: "attente" | "erreur" | null;
+  etat?: EtatSession;
   onSelect: () => void;
   onRename: (title: string) => void;
   /** Renommer avec le modèle chargé. Absent : l'action ne s'affiche pas. */
@@ -183,14 +202,8 @@ export function SessionRow({
           {session.ephemeral && <span className="locaryn-ephemeral-dot" title="Éphémère" />}
           {etat && (
             <span
-              className={`locaryn-etat-pastille ${
-                etat === "attente" ? "locaryn-etat-attente" : "locaryn-etat-erreur"
-              }`}
-              title={
-                etat === "attente"
-                  ? "En pause : le modèle attend votre réponse"
-                  : "Quelque chose est cassé dans cette conversation"
-              }
+              className={`locaryn-etat-pastille ${PASTILLES[etat].classe}`}
+              title={PASTILLES[etat].titre}
             />
           )}
         </button>

@@ -724,8 +724,6 @@ export function ChatPanel({
   const [goalNext, setGoalNext] = useState(false);
   /** `/equipe` choisi dans la palette : s'applique au prochain envoi. */
   const [equipeNext, setEquipeNext] = useState(false);
-  /** L'arrêt demandé sur la carte d'un plan ou d'un objectif en cours. */
-  const arretSuiviRef = useRef(false);
   const [loopCount, setLoopCount] = useState<number | null>(null);
   /** Suivi masqué par l'utilisateur (fermeture de la fenêtre au-dessus de la saisie). */
   const [suiviMasque, setSuiviMasque] = useState<string | null>(null);
@@ -790,6 +788,10 @@ export function ChatPanel({
    *  déversaient dans la nouvelle conversation. */
   const runRef = useRef(0);
   const runSessionRef = useRef<string | null>(null);
+  /** Les conversations où Stop a été demandé : un /plan détaché (on regarde
+   *  ailleurs) ne s'arrête que pour le sien, jamais parce qu'on a changé
+   *  d'écran. */
+  const arretsRef = useRef<Set<string>>(new Set());
   /** Ce que la boucle d'agent a mesuré au dernier tour de cette conversation. */
   const [ctxUsage, setCtxUsage] = useState<ContextUsage | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `sessionId` n'est pas lu, il signale le changement de conversation.
@@ -899,7 +901,6 @@ export function ChatPanel({
   useEffect(() => {
     const surEjection = () => {
       if (!streamingRef.current) return;
-      arretSuiviRef.current = true;
       void stopGeneration();
     };
     window.addEventListener("locaryn:model-ejecting", surEjection);
@@ -919,41 +920,68 @@ export function ChatPanel({
         console.warn("conversation non relue :", e);
       }
     };
+    const libre = () => !streamingRef.current && !runSessionRef.current;
+    /** Suit une réponse qui tourne sans cet écran. `connue` : on la sait en
+     *  cours avant son premier événement (une réponse d'ici, encore en
+     *  lecture de la conversation) — l'indicateur s'affiche tout de suite. */
+    const suivre = async (
+      ecouter: (onEvent: (ev: StreamEvent) => void) => Promise<boolean>,
+      connue: boolean,
+    ) => {
+      runRef.current += 1;
+      const run = runRef.current;
+      let suivie = false;
+      const ouvrir = () => {
+        suivie = true;
+        runSessionRef.current = sid;
+        fullTextRef.current = "";
+        setStreaming(true);
+      };
+      if (connue) {
+        ouvrir();
+        setAttente("attend");
+        await relire();
+      }
+      try {
+        await ecouter((ev) => {
+          if (runRef.current !== run || sessionRef.current !== sid) return;
+          if (!suivie) {
+            // La question est déjà enregistrée : elle s'affiche, puis la
+            // réponse depuis son début.
+            ouvrir();
+            void relire().then(() => {
+              if (runRef.current === run) handleEventRef.current(ev);
+            });
+            return;
+          }
+          handleEventRef.current(ev);
+        });
+      } catch (e) {
+        console.warn("suivi en direct impossible :", e);
+      }
+      if (suivie && runRef.current === run) {
+        runSessionRef.current = null;
+        setStreaming(false);
+        setAttente(null);
+        // Une réponse finie pendant qu'on regardait ailleurs : le son dit
+        // qu'elle est là, la relecture met le fil à jour.
+        if (fullTextRef.current.trim()) void jouerSon();
+        // La version enregistrée remplace ce qui a été reçu au vol.
+        await relire();
+      }
+    };
+    // Une réponse lancée ici puis quittée (on a ouvert une autre
+    // conversation) d'abord, sinon celle du téléphone.
     const guetter = async () => {
       if (fini) return;
-      if (!streamingRef.current && !runSessionRef.current) {
-        runRef.current += 1;
-        const run = runRef.current;
-        let suivie = false;
-        try {
-          suivie = await core.watchLiveSession(sid, (ev) => {
-            if (runRef.current !== run || sessionRef.current !== sid) return;
-            if (!suivie) {
-              suivie = true;
-              // La question posée sur le téléphone est déjà enregistrée :
-              // elle s'affiche, puis la réponse depuis son début.
-              runSessionRef.current = sid;
-              fullTextRef.current = "";
-              setStreaming(true);
-              void relire().then(() => {
-                if (runRef.current === run) handleEventRef.current(ev);
-              });
-              return;
-            }
-            handleEventRef.current(ev);
-          });
-        } catch (e) {
-          console.warn("suivi en direct impossible :", e);
-        }
-        if (suivie && runRef.current === run) {
-          runSessionRef.current = null;
-          setStreaming(false);
-          setAttente(null);
-          // Une réponse finie pendant qu'on regardait ailleurs : le son dit
-          // qu'elle est là, la relecture met le fil à jour.
-          if (fullTextRef.current.trim()) void jouerSon();
-          // La version enregistrée remplace ce qui a été reçu au vol.
-          await relire();
+      if (libre()) {
+        const ici = await core.localRepliesRunning().catch((e: unknown) => {
+          console.warn("réponses en cours illisibles :", e);
+          return [] as string[];
+        });
+        if (!fini && libre()) {
+          if (ici.includes(sid)) await suivre((f) => core.followLocalReply(sid, f), true);
+          else await suivre((f) => core.watchLiveSession(sid, f), false);
         }
       }
       if (!fini) attente = setTimeout(() => void guetter(), 3000);
@@ -1866,8 +1894,10 @@ ${d.texte}`
     runRef.current += 1;
     const run = runRef.current;
     runSessionRef.current = sid;
+    arretsRef.current.delete(sid);
     const surEvenement = (ev: StreamEvent) => {
       if (runRef.current === run) handleEvent(ev);
+      else if (ev.type === "tool_approval") signalerAccordAilleurs(sid, ev.tool);
     };
 
     // Show the message and the thinking indicator FIRST. Anything slow (model
@@ -1939,7 +1969,6 @@ ${d.texte}`
       ...s,
       etapes: s.etapes.map((e, j) => (j === i ? { ...e, etat } : e)),
     });
-    arretSuiviRef.current = false;
 
     // /plan et /goal : décomposer à l'avance et exécuter étape par étape.
     // Quand /goal est activé (seul ou avec /plan), chaque étape bénéficie de
@@ -2006,7 +2035,11 @@ ${d.texte}`
               majSuivi((s) => {
                 const fin = {
                   ...s,
-                  etat: (ok ? "fait" : arretSuiviRef.current ? "arrete" : "echec") as Suivi["etat"],
+                  etat: (ok
+                    ? "fait"
+                    : arretsRef.current.has(sid)
+                      ? "arrete"
+                      : "echec") as Suivi["etat"],
                 };
                 // `majSuivi` applique la fonction au fil et à la carte vivante :
                 // n'enregistrer qu'une fois.
@@ -2021,14 +2054,17 @@ ${d.texte}`
                 return fin;
               });
             },
-            arret: () => arretSuiviRef.current || runRef.current !== run,
+            arret: () => arretsRef.current.has(sid),
           },
           { force: imposeWorkflow || planifie || objectif, goalMode: objectif, loops: reprises },
         );
         if (ran) {
-          if (runRef.current === run) runSessionRef.current = null;
-          setStreaming(false);
-          setAttente(null);
+          // Fini ailleurs : l'écran appartient à une autre conversation.
+          if (runRef.current === run) {
+            runSessionRef.current = null;
+            setStreaming(false);
+            setAttente(null);
+          }
           return;
         }
       } catch (e) {
@@ -2259,6 +2295,18 @@ ${d.texte}`
     }
   }
 
+  /** Une réponse détachée attend un accord : la carte ne s'affiche qu'en
+   *  revenant sur sa conversation, la pastille et la bannière y mènent. */
+  function signalerAccordAilleurs(sid: string, outil: string) {
+    onEtatChange?.(sid, "attente");
+    void notifierSysteme(
+      "Locaryn attend votre accord",
+      `L'outil « ${outil} » ne s'exécutera pas sans votre réponse, dans une autre conversation.`,
+      "approvals",
+    );
+    void jouerSon();
+  }
+
   /** Stop coupe la generation sans decharger le modele : la reponse
    *  partielle est conservee, la file attend, on peut retaper derriere. */
   async function stopGeneration() {
@@ -2267,7 +2315,7 @@ ${d.texte}`
     stopRequestedRef.current = true;
     // Un /plan, /goal ou /loop enchaîne les réponses : arrêter seulement
     // celle en cours laissait l'étape suivante repartir aussitôt.
-    arretSuiviRef.current = true;
+    arretsRef.current.add(sessionId);
     // Arrêté : la file attend, même ce qui allait être lu.
     if (queueRef.current.some((m) => m.sessionId === sessionId)) setFilePause(true);
     try {
@@ -3213,10 +3261,7 @@ ${preview}`,
         <div className="locaryn-todo-dock">
           <TaskTracker
             suivi={suiviAffiche.suivi}
-            onArreter={() => {
-              arretSuiviRef.current = true;
-              void stopGeneration();
-            }}
+            onArreter={() => void stopGeneration()}
             onFermer={() => setSuiviMasque(suiviAffiche.id)}
           />
         </div>

@@ -135,6 +135,9 @@ export function App() {
    */
   const [sessionsEnAttente, setSessionsEnAttente] = useState<ReadonlySet<string>>(new Set());
   const [sessionsEnErreur, setSessionsEnErreur] = useState<ReadonlySet<string>>(new Set());
+  /** Réponses finies pendant qu'on regardait une autre conversation. */
+  const [sessionsTerminees, setSessionsTerminees] = useState<ReadonlySet<string>>(new Set());
+  const sessionAfficheeRef = useRef<string | null>(null);
 
   /**
    * Les questions du modèle et les alertes de l'application.
@@ -180,6 +183,27 @@ export function App() {
     return () => {
       closed = true;
       off?.();
+    };
+  }, []);
+
+  // Une réponse finie ailleurs allume sa conversation ; l'ouvrir l'éteint.
+  useEffect(() => {
+    sessionAfficheeRef.current = activeSession?.id ?? null;
+    const id = activeSession?.id;
+    if (!id) return;
+    setSessionsTerminees((p) => (p.has(id) ? new Set([...p].filter((s) => s !== id)) : p));
+  }, [activeSession?.id]);
+  useEffect(() => {
+    const un = listen<string>("locaryn://reponse-finie", (ev) => {
+      const id = ev.payload;
+      if (id === sessionAfficheeRef.current) return;
+      setSessionsTerminees((p) => (p.has(id) ? p : new Set([...p, id])));
+    }).catch((e: unknown) => {
+      console.warn("fin des réponses non suivie :", e);
+      return null;
+    });
+    return () => {
+      void un.then((f) => f?.());
     };
   }, []);
 
@@ -1361,6 +1385,7 @@ export function App() {
                 sessions={sessions}
                 sessionsEnAttente={sessionsEnAttente}
                 sessionsEnErreur={sessionsEnErreur}
+                sessionsTerminees={sessionsTerminees}
                 sessionsByProject={sessionsByProject}
                 standaloneSessions={standaloneSessions}
                 activeProject={activeProject}

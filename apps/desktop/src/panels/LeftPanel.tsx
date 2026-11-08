@@ -2,7 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { visibleNavItems } from "../components/NavDrawer";
-import { SessionRow } from "../components/SessionRow";
+import { type EtatSession, SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
 import { confirmer, pickFolder } from "../lib/dialog";
 import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
@@ -37,6 +37,8 @@ type Props = {
    */
   sessionsEnAttente?: ReadonlySet<string>;
   sessionsEnErreur?: ReadonlySet<string>;
+  /** Une réponse y a fini pendant qu'on regardait ailleurs. */
+  sessionsTerminees?: ReadonlySet<string>;
   onSelectProject: (p: Project | null) => void;
   onSelectSession: (s: Session) => void;
   onNewSession: (p: Project) => void;
@@ -107,9 +109,11 @@ function etatDe(
   id: string,
   attente?: ReadonlySet<string>,
   erreur?: ReadonlySet<string>,
-): "attente" | "erreur" | null {
+  terminee?: ReadonlySet<string>,
+): EtatSession {
   if (erreur?.has(id)) return "erreur";
   if (attente?.has(id)) return "attente";
+  if (terminee?.has(id)) return "terminee";
   return null;
 }
 
@@ -263,6 +267,7 @@ export function LeftPanel({
   activeSession,
   sessionsEnAttente,
   sessionsEnErreur,
+  sessionsTerminees,
   onSelectProject,
   onSelectSession,
   onNewSession,
@@ -724,7 +729,7 @@ export function LeftPanel({
                       label={sessionLabel(s)}
                       bullet="chat"
                       active={activeSession?.id === s.id}
-                      etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
+                      etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur, sessionsTerminees)}
                       leaving={leaving === s.id}
                       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
                       onSelect={() => onSelectSession(s)}
@@ -923,7 +928,12 @@ export function LeftPanel({
                               label={sessionLabel(s)}
                               bullet="dot"
                               active={activeSession?.id === s.id}
-                              etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur)}
+                              etat={etatDe(
+                                s.id,
+                                sessionsEnAttente,
+                                sessionsEnErreur,
+                                sessionsTerminees,
+                              )}
                               leaving={leaving === s.id}
                               projects={projects.map((proj) => ({ id: proj.id, name: proj.name }))}
                               onSelect={() => onSelectSession(s)}
