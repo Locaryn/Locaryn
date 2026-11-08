@@ -38,6 +38,7 @@ mod permissions_web;
 mod presse_papiers;
 mod project_context;
 mod rapports;
+mod reponses_vives;
 mod reveler;
 mod skills;
 mod snippets;
@@ -127,6 +128,9 @@ struct Core {
     /// partie (enchaînements /plan, /goal, file d'attente) — sans quoi Stop
     /// ne trouvait plus rien à arrêter.
     chat_cancels: Arc<tokio::sync::Mutex<JetonsDAnnulation>>,
+    /// Les réponses en cours, que l'écran rejoint en revenant sur leur
+    /// conversation : changer de conversation ne les arrête pas.
+    reponses_vives: reponses_vives::ReponsesVives,
     /// Le travail d'arrière-plan sur le modèle (tri de la mémoire) : arrêté
     /// net dès qu'une personne envoie un message.
     arriere_plan_stop: Arc<memory_gardener::Interrupteur>,
@@ -455,6 +459,7 @@ async fn init_core() -> anyhow::Result<Core> {
         )),
         pull_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         chat_cancels: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        reponses_vives: reponses_vives::ReponsesVives::default(),
         arriere_plan_stop: Arc::new(memory_gardener::Interrupteur::default()),
         embed_server: Arc::new(tokio::sync::Mutex::new(None)),
         pending_approvals: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -1006,6 +1011,11 @@ async fn plan_task(
         .flatten()
         .ok_or("no active provider")?;
     if moteur_supervise(&provider.engine) {
+        // Un modèle refusé par la prudence ne se charge pas pour un appoint ;
+        // une autre panne de démarrage reste sans suite, comme avant.
+        if let Some(refus) = model_residency::refus_du_modele_actif(&core).await {
+            return Err(refus.message);
+        }
         let _ = core.supervisor.ensure_running(&provider.engine).await;
     }
     let url = format!(
@@ -1256,8 +1266,7 @@ async fn judge_goal(
     let model = provider.model.clone().unwrap_or_else(|| "default".into());
     // Le moteur local a pu être libéré entre deux tours.
     if moteur_supervise(&provider.engine) {
-        core.supervisor
-            .ensure_running(&provider.engine)
+        model_residency::demarrer_si_permis(&core, &provider.engine)
             .await
             .map_err(|e| format!("le moteur n'a pas démarré : {e}"))?;
     }
@@ -1322,6 +1331,11 @@ async fn suggest_followups(
         .flatten()
         .ok_or("no active provider")?;
     if moteur_supervise(&provider.engine) {
+        // Un modèle refusé par la prudence ne se charge pas pour un appoint ;
+        // une autre panne de démarrage reste sans suite, comme avant.
+        if let Some(refus) = model_residency::refus_du_modele_actif(&core).await {
+            return Err(refus.message);
+        }
         let _ = core.supervisor.ensure_running(&provider.engine).await;
     }
 
@@ -1956,10 +1970,15 @@ async fn send_message(
     documents: Option<Vec<JointDocumentIn>>,
     response_format: Option<serde_json::Value>,
     reasoning: Option<serde_json::Value>,
-    on_event: Channel<StreamEvent>,
+    on_event: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), String> {
+    // La réponse appartient à sa conversation, pas à l'écran : elle continue
+    // quand on en ouvre une autre, et se rejoint en revenant.
+    let vives = core.reponses_vives.clone();
+    let ticket = vives.commencer(session_id);
+    let canal = reponses_vives::dedoubler(on_event, vives.clone(), session_id, ticket);
     let resultat = envoyer_message(
-        app,
+        app.clone(),
         core,
         session_id,
         content,
@@ -1967,9 +1986,14 @@ async fn send_message(
         documents,
         response_format,
         reasoning,
-        on_event,
+        canal,
     )
     .await;
+    vives.terminer(session_id, ticket);
+    // La pastille de la conversation, si on regarde ailleurs.
+    if let Err(e) = app.emit("locaryn://reponse-finie", session_id.to_string()) {
+        tracing::warn!(error = %e, "fin de réponse non signalée");
+    }
     if let Err(e) = &resultat {
         rapports::signaler("Erreur de conversation", e);
     }
@@ -2042,6 +2066,16 @@ async fn envoyer_message(
     // d'arrière-plan (tri de la mémoire) lui cède la place.
     let _utilisation = core.supervisor.utilisation();
     core.arriere_plan_stop.cancel_all();
+    // La prudence refuse le modèle à charger : rien ne part, rien ne
+    // s'enregistre. La fenêtre de refus garde le message ; « Charger quand
+    // même » le renvoie une fois le moteur prêt.
+    if core.remote_client().is_none() {
+        if let Some(refus) = model_residency::refus_du_modele_actif(&core).await {
+            let _ = app.emit("locaryn://modele-trop-lourd", refus);
+            liberer_annulation(&core.chat_cancels, session_id, generation).await;
+            return Err(ERREUR_MODELE_TROP_LOURD.to_string());
+        }
+    }
     // 0. Hooks : UserPromptSubmit peut refuser le tour. Tiré avant toute
     //    persistance, sinon un message refusé resterait dans l'historique.
     let hook_root = {
@@ -2171,25 +2205,10 @@ async fn envoyer_message(
     // pourtant si c'est le binaire qui manque, le fichier de poids qui n'est
     // pas là où on le cherche, ou le démarrage qui a expiré. On garde sa
     // réponse pour la donner à qui la lit.
+    // La prudence a déjà été vérifiée en tête : un modèle refusé n'arrive pas
+    // jusqu'ici.
     let mut panne_du_moteur: Option<String> = None;
-    // Le modèle n'est pas encore en mémoire : la conversation va le charger.
-    // La prudence choisie vaut aussi ici — sans ce contrôle, seul le menu de
-    // chargement la respectait.
-    if let Some(ref p) = active_provider {
-        if p.engine == ProviderEngine::LlamaCpp && !core.supervisor.is_healthy(&p.engine).await {
-            if let Some(m) = p.model.as_deref() {
-                if let Some(refus) = model_residency::refus_de_chargement(&core, m).await {
-                    let raison = refus.message.clone();
-                    let _ = app.emit("locaryn://modele-trop-lourd", refus);
-                    panne_du_moteur = Some(raison);
-                }
-            }
-        }
-    }
-    if let Some(p) = active_provider
-        .as_ref()
-        .filter(|_| panne_du_moteur.is_none())
-    {
+    if let Some(p) = active_provider.as_ref() {
         if moteur_supervise(&p.engine) {
             tokio::select! {
                 res = core.supervisor.ensure_running(&p.engine) => {
@@ -2942,6 +2961,11 @@ async fn panne_de_modele(
         .await;
     no_model_stream(reason)
 }
+
+/// L'erreur d'un envoi retenu par la prudence. La conversation la reconnaît :
+/// le message attend la décision prise dans la fenêtre de refus, sans bulle
+/// d'échec. Même texte côté interface (`ERREUR_MODELE_TROP_LOURD`).
+const ERREUR_MODELE_TROP_LOURD: &str = "locaryn:modele-trop-lourd";
 
 /// Un refus du moteur (image sans projecteur, fenêtre dépassée) : un avis, sans
 /// la pastille de panne ni le mode d'emploi d'installation.
@@ -7671,6 +7695,7 @@ pub fn run() {
             cloud_providers::cloud_provider_dashboard_password,
             model_residency::llmfit_catalog,
             model_residency::load_chat_model,
+            model_residency::refus_avant_envoi,
             model_residency::eject_chat_model,
             model_residency::signaler_activite,
             model_residency::caution_level,
@@ -7698,6 +7723,8 @@ pub fn run() {
             travel_mode::pairing_code,
             travel_mode::user_login_qr,
             live_watch::watch_live_session,
+            reponses_vives::reponses_locales_en_cours,
+            reponses_vives::suivre_reponse_locale,
             run_snippet,
             wsl_cmd::wsl_distributions,
             travel_mode::pairing_state,

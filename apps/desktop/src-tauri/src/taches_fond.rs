@@ -162,8 +162,15 @@ pub async fn cible(core: &Core, tache: Tache, explicite: bool) -> Option<Cible> 
             && !core.supervisor.is_healthy(&actif.engine).await
         {
             // Le nommage attend le moteur qui démarre ; le tri, jamais.
+            // Un modèle que la prudence refuse ne se charge pas pour un titre :
+            // la conversation garde son nom provisoire.
             if tache == Tache::Titre {
-                let _ = core.supervisor.ensure_running(&actif.engine).await;
+                if let Err(e) =
+                    crate::model_residency::demarrer_si_permis(core, &actif.engine).await
+                {
+                    tracing::info!(raison = %e, "nommage reporté : moteur non démarré");
+                    return None;
+                }
             } else {
                 return None;
             }

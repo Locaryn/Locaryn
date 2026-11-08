@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AttentionStrip } from "../components/AttentionStrip";
 import { ModalShell } from "../components/ModalShell";
-import { MODELE_FORCE } from "../components/ModeleTropLourd";
+import { MODELE_ANNULE, MODELE_FORCE, MODELE_REFUSE } from "../components/ModeleTropLourd";
 import { QuickModelSelector } from "../components/QuickModelSelector";
 import { RagPanel } from "../components/RagPanel";
 import { SESSION_TRUST_CHANGED } from "../components/SessionTrustControl";
@@ -35,6 +35,7 @@ import {
   ACTIVE_MODEL_CHANGED,
   type AttentionItem,
   type ConnectionMode,
+  ERREUR_MODELE_TROP_LOURD,
   type InstalledExtension,
   type McpServerInfo,
   type ModelAbilities,
@@ -1681,30 +1682,55 @@ ${d.texte}`
     if (gardees.length) setAttachments((prev) => [...prev, ...gardees]);
   }
 
-  // Le modèle refusé à l'envoi vient d'être chargé « quand même » : la
-  // demande repart, sans doubler la bulle ni garder le message d'échec.
-  const renvoyerRef = useRef<() => void>(() => {});
-  renvoyerRef.current = () => {
-    let texte: string | null = null;
-    setItems((prev) => {
-      for (let i = prev.length - 1; i >= 0; i--) {
-        const it = prev[i];
-        if (it.kind === "msg" && it.role === "user") {
-          texte = it.text;
-          return prev.slice(0, i);
-        }
-      }
-      return prev;
-    });
-    queueMicrotask(() => {
-      if (texte) void send(texte);
-    });
+  // Le message que la fenêtre de refus du modèle retient : il part une fois
+  // le modèle chargé « quand même », ou revient dans le champ si on renonce.
+  const retenuRef = useRef<{ texte: string; pieces: Attachment[] } | null>(null);
+  const relancerRef = useRef<(charge: boolean) => void>(() => {});
+  relancerRef.current = (charge) => {
+    const retenu = retenuRef.current;
+    retenuRef.current = null;
+    if (!retenu) return;
+    if (charge) {
+      void send(retenu.texte, retenu.pieces);
+      return;
+    }
+    setInput(retenu.texte);
+    setAttachments(retenu.pieces);
   };
   useEffect(() => {
-    const surForce = () => renvoyerRef.current();
-    window.addEventListener(MODELE_FORCE, surForce);
-    return () => window.removeEventListener(MODELE_FORCE, surForce);
+    const surCharge = () => relancerRef.current(true);
+    const surAnnule = () => relancerRef.current(false);
+    window.addEventListener(MODELE_FORCE, surCharge);
+    window.addEventListener(MODELE_ANNULE, surAnnule);
+    return () => {
+      window.removeEventListener(MODELE_FORCE, surCharge);
+      window.removeEventListener(MODELE_ANNULE, surAnnule);
+    };
   }, []);
+
+  function retenir(texte: string, pieces: Attachment[], viderChamp: boolean) {
+    retenuRef.current = { texte, pieces: [...pieces] };
+    if (!viderChamp) return;
+    setInput("");
+    setAttachments([]);
+    if (inputRef.current) inputRef.current.style.height = "auto";
+  }
+
+  /** La prudence refuse de charger le modèle local : le message attend la
+   *  décision prise dans la fenêtre de refus, sans rien laisser dans le fil. */
+  async function retenirSiRefuse(texte: string, pieces: Attachment[], viderChamp: boolean) {
+    if (retenuRef.current) return true;
+    if (!isLocalModel) return false;
+    const refus = await core.refusAvantEnvoi().catch((e: unknown) => {
+      // Vérification illisible : l'envoi tente sa chance, le moteur vérifie aussi.
+      console.warn("[Chat] vérification de la prudence impossible :", e);
+      return null;
+    });
+    if (!refus) return false;
+    retenir(texte, pieces, viderChamp);
+    window.dispatchEvent(new CustomEvent(MODELE_REFUSE, { detail: refus }));
+    return true;
+  }
 
   async function send(textOverride?: string, attachOverride?: Attachment[], depuisFile = false) {
     // Envoyer, c'est vouloir lire la réponse : le fil se rattache au bas.
@@ -1824,6 +1850,10 @@ ${d.texte}`
         // A broken plugin must never block the ordinary chat path.
       }
     }
+
+    // Le modèle local doit être chargé et la prudence le refuse : rien ne
+    // s'affiche ni ne part. Le message attend dans cette conversation.
+    if (await retenirSiRefuse(brut, imgs, textOverride === undefined)) return;
 
     if (!textOverride) {
       setInput("");
@@ -2034,7 +2064,12 @@ ${d.texte}`
         documents.length ? documents : undefined,
       );
     } catch (e) {
-      if (runRef.current === run) {
+      if (String(e).includes(ERREUR_MODELE_TROP_LOURD)) {
+        // Refusé par le moteur entre la vérification et l'envoi : rien n'est
+        // parti, la bulle s'efface et le message attend la fenêtre de refus.
+        setItems((prev) => prev.filter((it) => it.id !== idMessage));
+        retenir(brut, imgs, false);
+      } else if (runRef.current === run) {
         setItems((prev) => [
           ...prev,
           { id: nextId("log"), kind: "log", text: `send failed: ${e}` },

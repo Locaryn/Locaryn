@@ -362,7 +362,7 @@ async fn cible(core: &Core, modele: &str) -> Result<Cible, String> {
             .flatten()
             .ok_or("aucun modèle actif sur cette machine")?;
         if crate::moteur_supervise(&p.engine) {
-            if let Err(e) = core.supervisor.ensure_running(&p.engine).await {
+            if let Err(e) = crate::model_residency::demarrer_si_permis(core, &p.engine).await {
                 return Err(format!("le moteur local n'a pas démarré : {e}"));
             }
         }

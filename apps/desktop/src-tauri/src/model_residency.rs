@@ -444,6 +444,39 @@ pub async fn refus_de_chargement(core: &Core, model: &str) -> Option<RefusDeChar
     })
 }
 
+/// Le refus qui attend le prochain envoi : le moteur local n'est pas prêt et
+/// son modèle dépasse la prudence choisie. `None` pour un modèle distant ou
+/// déjà en mémoire — il n'y a alors rien à charger.
+pub async fn refus_du_modele_actif(core: &Core) -> Option<RefusDeChargement> {
+    let actif = core.storage.providers.active().await.ok().flatten()?;
+    if actif.engine != ProviderEngine::LlamaCpp || core.supervisor.is_healthy(&actif.engine).await {
+        return None;
+    }
+    refus_de_chargement(core, actif.model.as_deref()?).await
+}
+
+/// Vérifiée par la conversation avant d'envoyer : un refus garde le message
+/// de côté au lieu de le laisser partir vers un moteur qui ne démarrera pas.
+#[tauri::command]
+pub async fn refus_avant_envoi(core: State<'_, Core>) -> Result<Option<RefusDeChargement>, String> {
+    Ok(refus_du_modele_actif(&core).await)
+}
+
+/// Démarrer le moteur pour un travail d'appoint (titre, suggestions, plan),
+/// sauf si la prudence refuse son modèle : seule la personne, depuis la
+/// fenêtre de refus, peut passer outre. Sans ce contrôle, nommer la
+/// conversation chargeait le modèle refusé dans son dos.
+pub async fn demarrer_si_permis(core: &Core, engine: &ProviderEngine) -> Result<(), String> {
+    if let Some(refus) = refus_du_modele_actif(core).await {
+        return Err(refus.message);
+    }
+    core.supervisor
+        .ensure_running(engine)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Un modèle que la conversation n'a pas chargé : la fenêtre dit pourquoi,
 /// sous quelle prudence, et propose de passer outre comme le menu de
 /// chargement — sans quoi l'un acceptait ce que l'autre refusait.

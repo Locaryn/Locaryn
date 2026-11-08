@@ -1477,6 +1477,18 @@ export interface HardwareSpec {
 /** Jusqu'où l'application accepte de remplir la mémoire avant de charger. */
 export type CautionLevel = "prudent" | "equilibre" | "risque";
 
+/** Le modèle local que la prudence refuse de charger, et pourquoi. */
+export type RefusDeChargement = {
+  message: string;
+  model: string;
+  level: CautionLevel;
+  overridable: boolean;
+};
+
+/** L'erreur d'un envoi retenu par la prudence (même texte côté Rust) : le
+ *  message attend la décision prise dans la fenêtre de refus. */
+export const ERREUR_MODELE_TROP_LOURD = "locaryn:modele-trop-lourd";
+
 /** Le modèle de décision local partagé par les morphs de contrôle. */
 export type EtatDecisions = {
   installe: boolean;
@@ -2191,6 +2203,10 @@ export interface CoreApi {
   /** Suivre la réponse en cours d'une conversation servie par le service local
    *  (lancée depuis le téléphone). `false` si aucune ne tourne. */
   watchLiveSession(sessionId: string, onEvent: (ev: StreamEvent) => void): Promise<boolean>;
+  /** Les conversations dont une réponse tourne sur ce poste, même détachée de l'écran. */
+  localRepliesRunning(): Promise<string[]>;
+  /** Rejoint la réponse en cours : le déjà-dit puis la suite. `false` si aucune ne tourne. */
+  followLocalReply(sessionId: string, onEvent: (ev: StreamEvent) => void): Promise<boolean>;
   createServerUser(username: string, password: string, isAdmin?: boolean): Promise<ServerStatus>;
   deleteServerUser(userId: string): Promise<ServerStatus>;
   providerApiStatus(): Promise<ProviderApiStatus>;
@@ -2526,6 +2542,9 @@ export interface CoreApi {
   /** Charge un modèle et l'épingle. Rejette avec le message du garde-fou
    *  quand la mémoire manque, sauf si `force` est demandé explicitement. */
   loadChatModel(model: string, force?: boolean): Promise<ResidencyStatus>;
+  /** Le refus qui attend le prochain envoi, ou `null` : modèle distant, déjà
+   *  en mémoire, ou qui tient dans la prudence choisie. */
+  refusAvantEnvoi(): Promise<RefusDeChargement | null>;
   /** Décharge le modèle et rend la mémoire. */
   ejectChatModel(): Promise<ResidencyStatus>;
   cautionLevel(): Promise<CautionLevel>;
@@ -2829,6 +2848,12 @@ const tauriCore: CoreApi = {
     chan.onmessage = onEvent;
     return invoke<boolean>("watch_live_session", { sessionId, onEvent: chan });
   },
+  localRepliesRunning: () => invoke<string[]>("reponses_locales_en_cours"),
+  followLocalReply: (sessionId, onEvent) => {
+    const chan = new Channel<StreamEvent>();
+    chan.onmessage = onEvent;
+    return invoke<boolean>("suivre_reponse_locale", { sessionId, onEvent: chan });
+  },
   createServerUser: (username, password, isAdmin = true) =>
     invoke<ServerStatus>("create_server_user", {
       args: { username, password, isAdmin },
@@ -3113,6 +3138,7 @@ const tauriCore: CoreApi = {
     invoke<ModelFit[]>("llmfit_catalog", { entries, contexteCharge: contexteCharge ?? null }),
   loadChatModel: (model, force) =>
     invoke<ResidencyStatus>("load_chat_model", { model, force: force ?? null }),
+  refusAvantEnvoi: () => invoke<RefusDeChargement | null>("refus_avant_envoi"),
   ejectChatModel: () => invoke<ResidencyStatus>("eject_chat_model"),
   cautionLevel: () => invoke<CautionLevel>("caution_level"),
   cautionReserves: () => invoke<CautionReserves>("caution_reserves"),
@@ -4909,6 +4935,8 @@ Contenu de démonstration, avec **du gras** et une liste :
     blocker: null,
   }),
   watchLiveSession: async () => false,
+  localRepliesRunning: async () => [],
+  followLocalReply: async () => false,
   userLoginQr: async () => ({
     code: Math.random().toString(36).slice(2, 8).toUpperCase(),
     username: "admin",
@@ -5825,6 +5853,13 @@ Contenu de démonstration, avec **du gras** et une liste :
     await new Promise((r) => setTimeout(r, 1400));
     demoResident = { model, pinned: true, since: Date.now() };
     return demoResidencyStatus();
+  },
+  async refusAvantEnvoi() {
+    const model = demoProviders.find((p) => p.is_active)?.model ?? null;
+    if (!model || demoResident.model === model) return null;
+    const fit = demoFit(model, demoCaution);
+    if (fit.verdict !== "refuse") return null;
+    return { message: fit.message, model, level: demoCaution, overridable: fit.overridable };
   },
   async ejectChatModel() {
     await new Promise((r) => setTimeout(r, 300));
