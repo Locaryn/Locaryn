@@ -368,8 +368,8 @@ export function MessageBubble({
       await ecrirePressePapiers(role === "assistant" ? splitReasoning(text).answer : text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard unavailable (permissions) — silently ignore.
+    } catch (err) {
+      console.warn("Copie du message impossible :", err);
     }
   }
 
@@ -388,8 +388,8 @@ export function MessageBubble({
       await ecrirePressePapiersRiche(html, texte);
       setCopiedTout(true);
       setTimeout(() => setCopiedTout(false), 1500);
-    } catch {
-      // Presse-papiers indisponible : rien à faire de plus.
+    } catch (err) {
+      console.warn("Copie du message complet impossible :", err);
     }
   }
 
@@ -435,16 +435,24 @@ export function MessageBubble({
                 {heure.court}
               </time>
             )}
-            <button type="button" className="locaryn-msg-action" onClick={copy}>
-              {copied ? "Copié" : joints ? "Copier le texte" : "Copier"}
+            <button
+              type="button"
+              className="locaryn-msg-action"
+              data-done={copied}
+              aria-live="polite"
+              onClick={copy}
+            >
+              {copied ? "Copié ✓" : joints ? "Copier le texte" : "Copier"}
             </button>
             {joints && (
               <button
                 type="button"
                 className="locaryn-msg-action"
+                data-done={copiedTout}
+                aria-live="polite"
                 onClick={() => void copierTout()}
               >
-                {copiedTout ? "Copié" : "Copier tout"}
+                {copiedTout ? "Copié ✓" : "Copier tout"}
               </button>
             )}
             {canEdit && onEdit && (
@@ -517,8 +525,14 @@ export function MessageBubble({
             {heure.court}
           </time>
         )}
-        <button type="button" className="locaryn-msg-action" onClick={copy}>
-          {copied ? "Copié" : "Copier"}
+        <button
+          type="button"
+          className="locaryn-msg-action"
+          data-done={copied}
+          aria-live="polite"
+          onClick={copy}
+        >
+          {copied ? "Copié ✓" : "Copier"}
         </button>
       </div>
       <ReasoningBlock reasoning={reasoning} inProgress={reasoningInProgress} />

@@ -734,19 +734,36 @@ body.locaryn-resizing .locaryn-resizer::after {
   margin-top: var(--space-2);
   opacity: 1;
 }
+/* Cible de 40 px de haut, même si le texte est petit. */
 .locaryn-msg-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
   background: transparent;
   border: none;
   color: var(--text-faint);
   font: inherit;
   font-size: var(--text-xs);
-  padding: 1px 4px;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: color var(--dur-fast) var(--ease);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .locaryn-msg-action:hover {
   color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-msg-action:active {
+  background: var(--border);
+}
+.locaryn-msg-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  color: var(--text);
+}
+.locaryn-msg-action[data-done="true"] {
+  color: var(--accent);
 }
 
 /* ── Inline voice notes ── */
@@ -886,11 +903,24 @@ body.locaryn-resizing .locaryn-resizer::after {
   color: var(--text-dim);
   margin-right: auto;
 }
-.locaryn-msg-meta .locaryn-msg-action {
+/* Marges négatives : la cible fait 40 px sans épaissir la ligne d'auteur.
+   Toute la ligne du message porte le survol ; le masquage attend un peu. */
+.locaryn-msg-meta .locaryn-msg-action,
+.locaryn-msg-meta .locaryn-msg-heure {
+  margin-block: -12px;
   opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    opacity 160ms var(--ease-out) 200ms, transform 160ms var(--ease-out) 200ms,
+    color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
-.locaryn-msg-row-assistant:hover .locaryn-msg-action {
+.locaryn-msg-row-assistant:hover .locaryn-msg-meta .locaryn-msg-action,
+.locaryn-msg-row-assistant:hover .locaryn-msg-meta .locaryn-msg-heure,
+.locaryn-msg-meta:focus-within .locaryn-msg-action,
+.locaryn-msg-meta:focus-within .locaryn-msg-heure {
   opacity: 1;
+  transform: none;
+  transition-delay: 0s;
 }
 
 /* ── Markdown ── */
@@ -4452,6 +4482,7 @@ pre.md-code {
   display: block;
   width: 100%;
   padding: 6px 8px;
+  min-height: 40px;
   background: transparent;
   border: none;
   border-radius: var(--radius-xs);
@@ -11095,6 +11126,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   display: block;
   width: 100%;
   padding: 7px 10px;
+  min-height: 40px;
   font-family: inherit;
   font-size: var(--text-sm);
   text-align: left;
@@ -15666,29 +15698,33 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-msg-user-cadre > .locaryn-msg-user {
   max-width: 100%;
 }
+/* La barre couvre toute la hauteur de la bulle et le pont jusqu'à elle :
+   un trajet en biais ne sort jamais de la zone de survol. Elle reste
+   cliquable même invisible — la survoler la fait apparaître — et ne se
+   masque qu'après un court délai. */
 .locaryn-msg-barre {
   position: absolute;
-  top: 2px;
+  top: 0;
   right: 100%;
+  min-height: 100%;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  gap: 2px var(--space-1);
+  align-content: flex-start;
+  gap: 0 2px;
   width: max-content;
-  max-width: 220px;
-  /* Le pont entre la barre et la bulle : le survol ne se perd pas en route. */
+  max-width: 230px;
   padding-right: var(--space-2);
   opacity: 0;
   transform: translateX(6px);
-  pointer-events: none;
-  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  transition: opacity 160ms var(--ease-out) 200ms, transform 160ms var(--ease-out) 200ms;
 }
 .locaryn-msg-user-cadre:hover .locaryn-msg-barre,
 .locaryn-msg-barre:focus-within {
   opacity: 1;
   transform: none;
-  pointer-events: auto;
+  transition-delay: 0s;
 }
 .locaryn-msg-heure {
   font-size: var(--text-xs);
@@ -15696,12 +15732,17 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.locaryn-msg-meta .locaryn-msg-heure {
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease);
+.locaryn-msg-barre .locaryn-msg-heure {
+  padding: 0 var(--space-1);
 }
-.locaryn-msg-row-assistant:hover .locaryn-msg-heure {
-  opacity: 1;
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-msg-barre,
+  .locaryn-msg-meta .locaryn-msg-action,
+  .locaryn-msg-meta .locaryn-msg-heure {
+    transform: none;
+    transition-property: opacity;
+    transition-duration: 1ms;
+  }
 }
 
 /* Demande d'autorisation d'une page (micro, caméra…), posée par l'app. */
