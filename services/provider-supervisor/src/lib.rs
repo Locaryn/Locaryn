@@ -2048,6 +2048,30 @@ pub fn fit_margin_mib(total_vram_gb: f64, unified: bool) -> Option<u64> {
     Some(((total_vram_gb * 1024.0 * 0.05) as u64).clamp(256, 512))
 }
 
+/// Les tampons de calcul que llama.cpp pose en plus des poids et du cache.
+const TAMPONS_CALCUL_OCTETS: u64 = 512 * 1024 * 1024;
+
+/// Le minimum qu'il faut sur la carte : les poids, le cache f16 du plus petit
+/// contexte que `--fit` accepte, et les tampons de calcul. Sans en-tête
+/// lisible, la taille du fichier et les tampons seuls.
+pub fn besoin_minimal(fichier_octets: u64, resume: Option<&locaryn_llmfit::GgufSummary>) -> u64 {
+    let cache = resume.map_or(0, |r| {
+        let par_jeton =
+            2 * 2 * u64::from(r.kv_layers()) * u64::from(r.n_head_kv) * u64::from(r.head_dim());
+        par_jeton * u64::from(AUTO_FIT_MIN_CTX)
+    });
+    fichier_octets + cache + TAMPONS_CALCUL_OCTETS
+}
+
+/// Ce minimum dépasse-t-il la VRAM libre, réserve du niveau de prudence
+/// déduite ? Inconnu (taille ou VRAM nulle) : non.
+pub fn poids_debordent(besoin_octets: u64, libre_gb: f64, reserve_gb: f64) -> bool {
+    if besoin_octets <= TAMPONS_CALCUL_OCTETS || libre_gb <= 0.0 {
+        return false;
+    }
+    besoin_octets as f64 / (1024.0 * 1024.0 * 1024.0) > libre_gb - reserve_gb
+}
+
 /// Le profil automatique : toutes les couches demandées et aucun contexte fixé.
 /// llama.cpp choisit alors les deux d'après la mémoire libre.
 pub fn is_auto_fit(gpu_layers: i64, context_length: u64) -> bool {
@@ -2268,6 +2292,32 @@ async fn spawn_llama_server(
     let ctx_demande = inference_cfg["context_length"].as_u64().unwrap_or(0);
     let auto = is_auto_fit(gpu_layers, ctx_demande);
 
+    // Des poids plus gros que la VRAM libre (chargement forcé malgré
+    // l'avertissement) : `-ngl 999` interdit à `--fit` de retirer des couches,
+    // et le pilote Windows déborde alors en silence dans la RAM partagée.
+    // Mesuré sur RTX 4050 6 Go (TwIL-8B Q4_K_M, 5,35 Go) : lecture tombée de
+    // 20 à 6 jetons/s, plus de 15 min pour 8 200 jetons. Laisser llama.cpp
+    // répartir les couches et compresser le cache : 363 jetons/s, contexte de
+    // 10 240 jetons.
+    let debordement = gpu_layers < 0
+        && !cpu_only
+        && !profile.unified_memory
+        && profile.total_vram_gb > 0.0
+        && poids_debordent(
+            besoin_minimal(
+                std::fs::metadata(&full_model_path).map_or(0, |m| m.len()),
+                summary.as_ref(),
+            ),
+            libre_avant,
+            caution_headroom().vram_reserve_gb(libre_avant),
+        );
+    if debordement {
+        tracing::warn!(
+            libre_gb = libre_avant,
+            "poids plus gros que la VRAM libre : couches réparties par --fit, cache en q8_0"
+        );
+    }
+
     // Flash attention. Sur Vulkan (AMD, Intel, NVIDIA), elle tient : tuilée,
     // elle évite le tampon « clé × requête » qui grossit avec le contexte —
     // c'est lui qui dépassait 2 s par dispatch (TDR Windows) et la VRAM d'une
@@ -2292,6 +2342,7 @@ async fn spawn_llama_server(
     // V cache requires flash_attn to be enabled ») — seulement en `on`.
     let kv_type = match inference_cfg["kv_cache_type"].as_str().unwrap_or("f16") {
         "turbo3" | "turboquant" => "q4_0",
+        "f16" if debordement && fa_mode == "on" => "q8_0",
         other => other,
     };
     let kv_quantifie = matches!(
@@ -2371,7 +2422,7 @@ async fn spawn_llama_server(
             None => LLAMA_BUILD.to_string(),
         },
     };
-    let ctx_memorise = if auto && !cpu_only {
+    let ctx_memorise = if auto && !cpu_only && !debordement {
         fit_memorise(&data_dir, &cle_fit, libre_avant)
     } else {
         None
@@ -2414,10 +2465,11 @@ async fn spawn_llama_server(
         cmd.arg("--device").arg("none");
     } else if gpu_layers >= 0 {
         cmd.arg("-ngl").arg(gpu_layers.to_string());
-    } else {
+    } else if !debordement {
         // En mode auto (-1), toutes les couches sur la carte : laissé vide,
         // llama.cpp gardait des couches en RAM (14 Go de RAM, processeur à
-        // 100 %). 999 couvre tous les modèles.
+        // 100 %). 999 couvre tous les modèles. En débordement, rien n'est
+        // imposé : `--fit` choisit combien de couches tiennent.
         cmd.arg("-ngl").arg("999");
     }
 
@@ -2865,6 +2917,39 @@ fn stem_sans_quant(stem: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn des_poids_trop_gros_debordent() {
+        use super::{besoin_minimal, poids_debordent};
+        // TwIL-8B Q4_K_M (Granite 8B : 40 couches, 8 têtes clés-valeurs de
+        // 128) sur une RTX 4050 : 5,8 Go libres, 0,53 réservés. Les poids
+        // seuls tiendraient ; avec le cache et les tampons, non.
+        let granite = locaryn_llmfit::GgufSummary {
+            n_layer: 40,
+            n_head_kv: 8,
+            key_length: 128,
+            ..Default::default()
+        };
+        let twil = 5_347_917_568;
+        assert!(poids_debordent(
+            besoin_minimal(twil, Some(&granite)),
+            5.8,
+            0.53
+        ));
+        assert!(!poids_debordent(
+            besoin_minimal(3_000_000_000, Some(&granite)),
+            5.8,
+            0.53
+        ));
+        assert!(
+            !poids_debordent(besoin_minimal(0, None), 5.8, 0.53),
+            "taille inconnue"
+        );
+        assert!(
+            !poids_debordent(besoin_minimal(twil, Some(&granite)), 0.0, 0.53),
+            "VRAM inconnue"
+        );
+    }
+
     #[test]
     fn le_micro_lot_s_allege_a_chaque_plantage() {
         assert_eq!(super::micro_lot_allege(512, 0), 512);
