@@ -974,6 +974,10 @@ export interface PairingCode {
   pairing_code?: string;
   /** Durée de validité du code, en secondes (120 en pratique). */
   pairing_ttl_seconds?: number;
+  /** Lien `locaryn://connect` pour un PC d'un autre réseau, sans QR. */
+  connect_link?: string;
+  /** Pourquoi l'adresse risque de ne pas être joignable de dehors. */
+  warning?: string | null;
 }
 
 /**

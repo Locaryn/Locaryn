@@ -33,6 +33,7 @@ mod frein_connexion;
 mod live;
 mod media;
 mod mtls;
+mod acces_public;
 mod port_forward;
 mod tls;
 mod travel;

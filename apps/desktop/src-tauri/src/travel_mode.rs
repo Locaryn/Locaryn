@@ -408,6 +408,13 @@ pub struct PairingCode {
     /// Durée de validité du code, en secondes (typiquement 120).
     #[serde(default)]
     pub pairing_ttl_seconds: u64,
+    /// Le lien `locaryn://connect` qui mène un PC d'un autre réseau au même
+    /// serveur, sans QR. Vide si le serveur est trop vieux.
+    #[serde(default)]
+    pub connect_link: String,
+    /// Pourquoi l'adresse risque de ne pas être joignable de dehors.
+    #[serde(default)]
+    pub warning: Option<String>,
 }
 
 /// Le code à photographier pour un premier appairage.
@@ -443,6 +450,11 @@ pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCo
             .unwrap_or_default()
             .to_string(),
         pairing_ttl_seconds: body["pairing_ttl_seconds"].as_u64().unwrap_or(0),
+        connect_link: body["connect_link"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        warning: body["warning"].as_str().map(str::to_string),
     })
 }
 

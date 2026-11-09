@@ -108,6 +108,8 @@ struct Charge {
     url: String,
     charge: String,
     svg: String,
+    /// Mode `public` : pourquoi le port risque de ne pas être joignable.
+    avertissement: Option<String>,
 }
 
 /// GET /v1/pairing — l'adresse, la configuration, et le code qui la porte.
@@ -117,7 +119,12 @@ pub async fn qr(
     Query(q): Query<QrQuery>,
 ) -> Response {
     let mode = q.mode.as_deref().unwrap_or("local").to_string();
-    let Charge { url, charge, svg } = match construire_charge(&s, &mode, q.url, None).await {
+    let Charge {
+        url,
+        charge,
+        svg,
+        avertissement,
+    } = match construire_charge(&s, &mode, q.url, None).await {
         Ok(c) => c,
         Err(r) => return r,
     };
@@ -146,6 +153,9 @@ pub async fn qr(
         // second facteur se donnerait a qui sait demander.
         "pairing_code": if sur_cette_machine(pair) { code } else { String::new() },
         "pairing_ttl_seconds": PAIRING_TTL.as_secs(),
+        // Le même serveur pour un PC d'un autre réseau, sans QR.
+        "connect_link": crate::acces_public::lien_pc(&url),
+        "warning": avertissement,
     }))
     .into_response()
 }
@@ -158,6 +168,7 @@ async fn construire_charge(
     login_code: Option<String>,
 ) -> Result<Charge, Response> {
     let q_url = url_publique;
+    let mut avertissement = None;
 
     let url = match mode {
         "local" => {
@@ -188,13 +199,25 @@ async fn construire_charge(
             u
         }
         "public" => {
-            let Some(u) = q_url.filter(|u| !u.trim().is_empty()) else {
-                return Err(erreur(
-                    StatusCode::BAD_REQUEST,
-                    "Indiquez l'adresse publique par laquelle on joint cette machine.".into(),
-                ));
-            };
-            normaliser(&u)
+            let saisie = q_url.unwrap_or_default();
+            // Rien ou un port seul : l'IP publique de cette machine, lue
+            // plutôt que demandée. Une adresse complète reste celle de la
+            // personne (nom de domaine, redirection posée à la main).
+            match crate::acces_public::port_saisi(&saisie) {
+                Some(Err(m)) => return Err(erreur(StatusCode::BAD_REQUEST, m)),
+                port if saisie.trim().is_empty() || port.is_some() => {
+                    let port = port.and_then(Result::ok);
+                    let certs = locaryn_config::load(None)
+                        .map(|c| c.daemon.require_client_cert)
+                        .unwrap_or(false);
+                    let a = crate::acces_public::par_defaut(&s.http, s.port, port, certs)
+                        .await
+                        .map_err(|m| erreur(StatusCode::BAD_GATEWAY, m))?;
+                    avertissement = a.avertissement;
+                    a.url
+                }
+                _ => normaliser(&saisie),
+            }
         }
         autre => {
             return Err(erreur(
@@ -261,7 +284,12 @@ async fn construire_charge(
             ));
         }
     };
-    Ok(Charge { url, charge, svg })
+    Ok(Charge {
+        url,
+        charge,
+        svg,
+        avertissement,
+    })
 }
 
 // ─── Connexion par code temporaire (à la manière d'une télé) ─────────────────
@@ -345,11 +373,12 @@ pub async fn login_qr(
     }
     let code = generer_code_connexion();
     let mode = q.mode.as_deref().unwrap_or("local").to_string();
-    let Charge { url, charge, svg } =
-        match construire_charge(&s, &mode, q.url, Some(code.clone())).await {
-            Ok(c) => c,
-            Err(r) => return r,
-        };
+    let Charge {
+        url, charge, svg, ..
+    } = match construire_charge(&s, &mode, q.url, Some(code.clone())).await {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
     {
         let mut codes = s.login_codes.lock().expect("verrou codes");
         codes.retain(|_, c| c.cree.elapsed() < CODE_CONNEXION_TTL);
