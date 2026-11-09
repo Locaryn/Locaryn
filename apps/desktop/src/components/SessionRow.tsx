@@ -42,6 +42,8 @@ type Props = {
   onRename: (title: string) => void;
   /** Renommer avec le modèle chargé. Absent : l'action ne s'affiche pas. */
   onRenameAi?: () => Promise<void>;
+  /** Le titre se génère en fond après le premier message : « Nommage… » s'affiche. */
+  nommageEnFond?: boolean;
   onArchive: () => void;
   /** Projets où la ranger. Vide : l'action ne s'affiche pas. */
   projects: { id: string; name: string }[];
@@ -82,6 +84,7 @@ export function SessionRow({
   onSelect,
   onRename,
   onRenameAi,
+  nommageEnFond = false,
   onArchive,
   projects,
   onMove,
@@ -98,7 +101,8 @@ export function SessionRow({
   const [showSubmenu, setShowSubmenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);
-  const [nommage, setNommage] = useState(false);
+  const [renommageIa, setRenommageIa] = useState(false);
+  const nommage = renommageIa || nommageEnFond;
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -239,8 +243,8 @@ export function SessionRow({
               disabled={nommage}
               onClick={() => {
                 fermer();
-                setNommage(true);
-                void onRenameAi().finally(() => setNommage(false));
+                setRenommageIa(true);
+                void onRenameAi().finally(() => setRenommageIa(false));
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>

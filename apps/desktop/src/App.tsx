@@ -137,6 +137,8 @@ export function App() {
   const [sessionsEnErreur, setSessionsEnErreur] = useState<ReadonlySet<string>>(new Set());
   /** Réponses finies pendant qu'on regardait une autre conversation. */
   const [sessionsTerminees, setSessionsTerminees] = useState<ReadonlySet<string>>(new Set());
+  /** Conversations dont le titre se génère en fond : leur ligne montre « Nommage… ». */
+  const [sessionsEnNommage, setSessionsEnNommage] = useState<ReadonlySet<string>>(new Set());
   const sessionAfficheeRef = useRef<string | null>(null);
 
   /**
@@ -881,11 +883,31 @@ export function App() {
   /** Le modèle des petites tâches nomme la conversation d'après sa première
    *  demande. Sans modèle choisi, le titre reste la date et l'heure de début. */
   function nommerEnFond(sessionId: string, premiereDemande: string) {
+    let enCours = true;
+    // « Nommage… » seulement s'il y a un modèle pour nommer : sans lui, la
+    // demande de titre attend un moteur qui ne viendra pas, et l'animation
+    // tournait pour rien.
+    core
+      .modelResidency()
+      .then((r) => {
+        if (enCours && r.model) {
+          setSessionsEnNommage((p) => (p.has(sessionId) ? p : new Set([...p, sessionId])));
+        }
+      })
+      .catch((e: unknown) => {
+        console.warn("État du modèle illisible, pas d'animation de nommage :", e);
+      });
     core
       .generateSessionTitle(sessionId, premiereDemande)
       .then((title) => appliquerTitre(sessionId, title))
       .catch((e: unknown) => {
         console.warn("Titre de la conversation non généré :", e);
+      })
+      .finally(() => {
+        enCours = false;
+        setSessionsEnNommage((p) =>
+          p.has(sessionId) ? new Set([...p].filter((s) => s !== sessionId)) : p,
+        );
       });
   }
 
@@ -1386,6 +1408,7 @@ export function App() {
                 sessionsEnAttente={sessionsEnAttente}
                 sessionsEnErreur={sessionsEnErreur}
                 sessionsTerminees={sessionsTerminees}
+                sessionsEnNommage={sessionsEnNommage}
                 sessionsByProject={sessionsByProject}
                 standaloneSessions={standaloneSessions}
                 activeProject={activeProject}

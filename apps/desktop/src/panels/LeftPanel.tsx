@@ -39,6 +39,8 @@ type Props = {
   sessionsEnErreur?: ReadonlySet<string>;
   /** Une réponse y a fini pendant qu'on regardait ailleurs. */
   sessionsTerminees?: ReadonlySet<string>;
+  /** Son titre se génère en fond : la ligne montre « Nommage… ». */
+  sessionsEnNommage?: ReadonlySet<string>;
   onSelectProject: (p: Project | null) => void;
   onSelectSession: (s: Session) => void;
   onNewSession: (p: Project) => void;
@@ -268,6 +270,7 @@ export function LeftPanel({
   sessionsEnAttente,
   sessionsEnErreur,
   sessionsTerminees,
+  sessionsEnNommage,
   onSelectProject,
   onSelectSession,
   onNewSession,
@@ -730,6 +733,7 @@ export function LeftPanel({
                       bullet="chat"
                       active={activeSession?.id === s.id}
                       etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur, sessionsTerminees)}
+                      nommageEnFond={sessionsEnNommage?.has(s.id) ?? false}
                       leaving={leaving === s.id}
                       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
                       onSelect={() => onSelectSession(s)}
@@ -934,6 +938,7 @@ export function LeftPanel({
                                 sessionsEnErreur,
                                 sessionsTerminees,
                               )}
+                              nommageEnFond={sessionsEnNommage?.has(s.id) ?? false}
                               leaving={leaving === s.id}
                               projects={projects.map((proj) => ({ id: proj.id, name: proj.name }))}
                               onSelect={() => onSelectSession(s)}
