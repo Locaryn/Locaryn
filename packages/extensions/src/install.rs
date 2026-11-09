@@ -113,6 +113,7 @@ async fn install_into(
     // Move the staged copy to its final home, replacing a previous version.
     let final_root = scope_root.join(&report.manifest.name);
     if final_root.exists() {
+        garder_les_reglages(&final_root, &fetched);
         std::fs::remove_dir_all(&final_root)?;
     }
     move_dir(&fetched, &final_root)?;
@@ -132,6 +133,21 @@ async fn install_into(
         partial: report.partial,
         source: canonical,
     })
+}
+
+/// Les réglages enregistrés d'une extension (`.data/`) survivent à sa mise à
+/// jour. Le dossier entier était remplacé : chaque nouvelle version repartait
+/// des valeurs par défaut, et un choix fait dans les réglages — le navigateur
+/// à relier, par exemple — disparaissait sans un mot (#133).
+fn garder_les_reglages(ancien: &Path, nouveau: &Path) {
+    let source = ancien.join(".data");
+    let cible = nouveau.join(".data");
+    if !source.is_dir() || cible.exists() {
+        return;
+    }
+    if let Err(e) = source::copy_dir(&source, &cible) {
+        tracing::warn!(dossier = %source.display(), erreur = %e, "réglages de l'extension non conservés");
+    }
 }
 
 /// `rename` first — same volume, instant. Falls back to copy+delete, which is
@@ -196,6 +212,25 @@ pub fn remove_files(root: &Path, scope: ExtensionScope, workspace_root: Option<&
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_mise_a_jour_garde_les_reglages() {
+        let base = std::env::temp_dir().join("locaryn-install-reglages");
+        let _ = std::fs::remove_dir_all(&base);
+        let ancien = base.join("ancien");
+        let nouveau = base.join("nouveau");
+        std::fs::create_dir_all(ancien.join(".data")).unwrap();
+        std::fs::create_dir_all(&nouveau).unwrap();
+        std::fs::write(
+            ancien.join(".data").join("config.json"),
+            r#"{"browser":"comet"}"#,
+        )
+        .unwrap();
+        garder_les_reglages(&ancien, &nouveau);
+        let lu = std::fs::read_to_string(nouveau.join(".data").join("config.json")).unwrap();
+        assert_eq!(lu, r#"{"browser":"comet"}"#);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn remote_name_is_derived_from_the_host() {
