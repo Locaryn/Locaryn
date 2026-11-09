@@ -1,6 +1,6 @@
 import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppContextMenu } from "./components/AppContextMenu";
 import { BatchStudio } from "./components/BatchStudio";
 import { ConnectScreen } from "./components/ConnectScreen";
@@ -54,7 +54,17 @@ import { keepIfEqual } from "./lib/stableState";
 import { taskCenter } from "./lib/taskCenter";
 import { extraitPourTitre } from "./lib/titreConversation";
 import { VUE_RECHOISIE } from "./lib/vues";
-import { KINDS, type WorkspaceKind, openTab, setWorkspaceOpen, toggleTab } from "./lib/workspace";
+import {
+  KINDS,
+  type WorkspaceKind,
+  forgetWorkspace,
+  openTab,
+  openTabFor,
+  setWorkspaceConversation,
+  setWorkspaceOpen,
+  setWorkspaceWidth,
+  toggleTab,
+} from "./lib/workspace";
 import { BottomPanel } from "./panels/BottomPanel";
 import { ChatPanel } from "./panels/ChatPanel";
 import { LeftPanel } from "./panels/LeftPanel";
@@ -330,6 +340,10 @@ export function App() {
   // Le panneau de droite : l'espace de travail et ses onglets (navigateur,
   // fichiers, terminaux, modifications, aperçu, modèle).
   const workspace = useWorkspace();
+  // L'espace de travail suit la conversation : chacune a le sien.
+  useLayoutEffect(() => {
+    setWorkspaceConversation(activeSession?.id ?? null);
+  }, [activeSession?.id]);
   const ongletActif = workspace.tabs.find((t) => t.id === workspace.active);
   // A run opens the pane that displays it, so output is never produced into a
   // panel the user cannot see.
@@ -339,9 +353,10 @@ export function App() {
   }, []);
   // Le modèle ouvre le navigateur : la personne doit voir ce qu'il y fait.
   useEffect(() => {
-    const un = listen<{ tab?: string }>("locaryn://workspace-open", (ev) => {
+    const un = listen<{ tab?: string; session?: string }>("locaryn://workspace-open", (ev) => {
       const tab = ev.payload?.tab;
-      if (tab && tab in KINDS) openTab(tab as WorkspaceKind);
+      // Dans l'espace de la conversation dont le modèle s'en sert.
+      if (tab && tab in KINDS) openTabFor(ev.payload?.session || null, tab as WorkspaceKind);
     }).catch((e: unknown) => {
       console.warn("ouverture de l'espace de travail non écoutée :", e);
       return null;
@@ -404,7 +419,10 @@ export function App() {
 
   // Tailles des panneaux redimensionnables, en pixels.
   const [leftW, setLeftW] = useState(260);
-  const [rightW, setRightW] = useState(340);
+  // La largeur du panneau de droite appartient à l'espace de la conversation.
+  const rightW = workspace.width ?? 340;
+  const setRightW = (v: number | ((w: number) => number)) =>
+    setWorkspaceWidth(typeof v === "function" ? v(rightW) : v);
   const [bottomH, setBottomH] = useState(220);
 
   // Resizing state
@@ -792,6 +810,9 @@ export function App() {
     }));
     setSessions((prev) => prev.filter((x) => x.id !== s.id));
     if (activeSession?.id === s.id) setActiveSession(null);
+    // Son espace de travail et son navigateur partent avec elle.
+    forgetWorkspace(s.id);
+    void core.browserClose(s.id).catch((e: unknown) => console.warn("navigateur :", e));
   }
 
   /** Déplacer une conversation dans un projet. */
@@ -1715,25 +1736,29 @@ export function App() {
 
         {/* Right side panels for Chat view — ils appartiennent au chat, pas aux
             pages qui prennent sa place. */}
-        {workspace.open && activeView === "chat" && (
+        {activeView === "chat" && (
           <>
-            <div
-              className="locaryn-resizer locaryn-resizer-v"
-              onPointerDown={startDrag("rightW")}
-              onKeyDown={nudgePanel("rightW")}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Largeur de l'espace de travail"
-              aria-valuenow={rightW}
-              aria-valuemin={PANEL_LIMITS.rightW.min}
-              aria-valuemax={PANEL_LIMITS.rightW.max}
-              tabIndex={0}
-            />
-            <div className="locaryn-right-dock" style={{ width: rightW }}>
-              <WorkspacePanel
-                sessionId={activeSession?.id ?? null}
-                projectPath={activeProject?.path ?? null}
+            {workspace.open && (
+              <div
+                className="locaryn-resizer locaryn-resizer-v"
+                onPointerDown={startDrag("rightW")}
+                onKeyDown={nudgePanel("rightW")}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Largeur de l'espace de travail"
+                aria-valuenow={rightW}
+                aria-valuemin={PANEL_LIMITS.rightW.min}
+                aria-valuemax={PANEL_LIMITS.rightW.max}
+                tabIndex={0}
               />
+            )}
+            {/* Monté même fermé : une conversation dont le panneau est fermé
+                ne coupe pas les terminaux ni le navigateur des autres. */}
+            <div
+              className="locaryn-right-dock"
+              style={workspace.open ? { width: rightW } : { display: "none" }}
+            >
+              <WorkspacePanel projectPath={activeProject?.path ?? null} />
             </div>
           </>
         )}

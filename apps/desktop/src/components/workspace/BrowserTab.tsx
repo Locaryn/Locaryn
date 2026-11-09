@@ -4,10 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { type BrowserState, core, isTauri } from "../../lib/core";
 import { suivreRecouvrement } from "../../lib/nativeViewCover";
 
-/** La page de chaque conversation. La vue native est unique : quitter une
- *  conversation la cache, y revenir rouvre sa page. */
-const pagesParConversation = new Map<string, string>();
-
 function estUnePage(url: string): boolean {
   return url !== "" && url !== "about:blank";
 }
@@ -15,14 +11,16 @@ function estUnePage(url: string): boolean {
 type Props = {
   /** L'onglet est celui qu'on regarde, et le panneau est à l'écran. */
   visible: boolean;
-  /** La conversation affichée. */
+  /** La conversation à qui appartient ce navigateur. */
   sessionId: string | null;
 };
 
 /**
- * Le navigateur intégré. La page elle-même est une vue web native que le
- * service pose exactement sur la zone réservée ici ; cette zone la suit quand
- * le panneau change de taille, et la cache dès qu'elle ne doit plus se voir.
+ * Le navigateur intégré d'une conversation. La page elle-même est une vue web
+ * native, une par conversation, que le service pose exactement sur la zone
+ * réservée ici ; cette zone la suit quand le panneau change de taille, et la
+ * cache dès qu'elle ne doit plus se voir. Cachée, la vue reste chargée : le
+ * modèle de la conversation continue de s'en servir en arrière-plan.
  */
 export function BrowserTab({ visible, sessionId }: Props) {
   const conversation = sessionId ?? "";
@@ -32,44 +30,23 @@ export function BrowserTab({ visible, sessionId }: Props) {
   const [recouvert, setRecouvert] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const editionRef = useRef(false);
-  /** La conversation à qui appartient la page affichée par la vue. */
-  const [proprio, setProprio] = useState<string | null>(null);
-  const proprioRef = useRef<string | null>(null);
-  const conversationRef = useRef(conversation);
 
-  const changerProprio = useCallback((qui: string | null) => {
-    proprioRef.current = qui;
-    setProprio(qui);
-  }, []);
-
-  // Une nouvelle adresse appartient à la conversation affichée ; une page déjà
-  // connue (fin de chargement, retour sur une conversation) ne change rien.
-  const recevoir = useCallback(
-    (e: BrowserState) => {
-      if (estUnePage(e.url)) {
-        const actuel = proprioRef.current;
-        if (actuel === null || pagesParConversation.get(actuel) !== e.url) {
-          changerProprio(conversationRef.current);
-          pagesParConversation.set(conversationRef.current, e.url);
-        }
-      }
-      setEtat(e);
-      if (!editionRef.current && proprioRef.current === conversationRef.current) {
-        setSaisie(estUnePage(e.url) ? e.url : "");
-      }
-    },
-    [changerProprio],
-  );
-
-  // L'état de la page, poussé par le service à chaque chargement et titre.
+  // L'état de la page de cette conversation, poussé par le service à chaque
+  // chargement et titre ; celui des autres conversations ne nous regarde pas.
   useEffect(() => {
     if (!isTauri) return;
     let fin: (() => void) | null = null;
     let vivant = true;
-    void core.browserState().then((e) => {
+    const recevoir = (e: BrowserState) => {
+      setEtat(e);
+      if (!editionRef.current) setSaisie(estUnePage(e.url) ? e.url : "");
+    };
+    void core.browserState(sessionId).then((e) => {
       if (vivant) recevoir(e);
     });
-    void listen<BrowserState>("locaryn://browser", (ev) => recevoir(ev.payload)).then((un) => {
+    void listen<BrowserState>("locaryn://browser", (ev) => {
+      if ((ev.payload.session ?? "") === conversation) recevoir(ev.payload);
+    }).then((un) => {
       if (vivant) fin = un;
       else un();
     });
@@ -77,32 +54,18 @@ export function BrowserTab({ visible, sessionId }: Props) {
       vivant = false;
       fin?.();
     };
-  }, [recevoir]);
-
-  // Changer de conversation : la page de l'autre se cache (elle n'est plus à
-  // nous), et celle de cette conversation, s'il y en a une, revient.
-  useEffect(() => {
-    conversationRef.current = conversation;
-    editionRef.current = false;
-    setErreur(null);
-    const page = pagesParConversation.get(conversation);
-    setSaisie(page ?? "");
-    if (!page || proprioRef.current === conversation) return;
-    changerProprio(conversation);
-    void core.browserNavigate(page).catch((e: unknown) => console.warn("navigateur :", e));
-  }, [conversation, changerProprio]);
+  }, [sessionId, conversation]);
 
   // Quoi que ce soit par-dessus la place de la page (fenêtre, menu,
   // notification, infobulle) ou une séparation qu'on tire : la page s'efface
   // le temps que cela dure. Une vue native se dessinerait par-dessus.
-  useEffect(
-    () =>
-      suivreRecouvrement(
-        () => zone.current,
-        (r) => setRecouvert(r),
-      ),
-    [],
-  );
+  useEffect(() => {
+    if (!visible) return;
+    return suivreRecouvrement(
+      () => zone.current,
+      (r) => setRecouvert(r),
+    );
+  }, [visible]);
 
   const cadre = useCallback(() => {
     const r = zone.current?.getBoundingClientRect();
@@ -112,31 +75,30 @@ export function BrowserTab({ visible, sessionId }: Props) {
 
   // Avant la première adresse, pas de vue : une page blanche cacherait le mot
   // d'accueil.
-  // La page doit aussi être celle de cette conversation, chargée : pas celle
-  // qu'on vient de quitter, le temps que la sienne revienne.
-  const aUnePage =
-    estUnePage(etat.url) &&
-    proprio === conversation &&
-    pagesParConversation.get(conversation) === etat.url;
+  const aUnePage = estUnePage(etat.url);
   const montrer = visible && !recouvert && aUnePage;
 
-  // Montrer, cacher, suivre la place.
+  // Montrer, cacher (sans fermer), suivre la place.
   useEffect(() => {
     if (!isTauri) return;
     if (!montrer) {
-      void core.browserHide().catch((e: unknown) => console.warn("navigateur :", e));
+      void core.browserHide(sessionId).catch((e: unknown) => console.warn("navigateur :", e));
       return;
     }
     const c = cadre();
     if (c) {
       void core
-        .browserShow(c)
+        .browserShow(sessionId, c)
         .then(setEtat)
         .catch((e: unknown) => setErreur(String(e)));
     }
     const suivre = () => {
       const n = cadre();
-      if (n) void core.browserBounds(n).catch((e: unknown) => console.warn("navigateur :", e));
+      if (n) {
+        void core
+          .browserBounds(sessionId, n)
+          .catch((e: unknown) => console.warn("navigateur :", e));
+      }
     };
     const obs = new ResizeObserver(suivre);
     if (zone.current) obs.observe(zone.current);
@@ -145,31 +107,31 @@ export function BrowserTab({ visible, sessionId }: Props) {
       obs.disconnect();
       window.removeEventListener("resize", suivre);
     };
-  }, [montrer, cadre]);
+  }, [montrer, cadre, sessionId]);
 
-  // Le panneau se démonte (fermeture de l'onglet) : la page ne reste pas à l'écran.
+  // L'onglet se ferme : la page quitte l'écran, mais reste chargée.
   useEffect(
     () => () => {
-      if (isTauri) void core.browserHide().catch((e: unknown) => console.warn("navigateur :", e));
+      if (isTauri) {
+        void core.browserHide(sessionId).catch((e: unknown) => console.warn("navigateur :", e));
+      }
     },
-    [],
+    [sessionId],
   );
 
   function aller(e: React.FormEvent) {
     e.preventDefault();
     editionRef.current = false;
     setErreur(null);
-    // La page tapée ici est celle de cette conversation. La première adresse
-    // crée la vue, cachée ; elle se montre dès que la page arrive.
-    changerProprio(conversationRef.current);
-    pagesParConversation.delete(conversationRef.current);
+    // La première adresse crée la vue, cachée ; elle se montre dès que la
+    // page arrive.
     void core
-      .browserNavigate(saisie)
+      .browserNavigate(sessionId, saisie)
       .catch((err: unknown) => setErreur(String(err).replace(/^Error:\s*/, "")));
   }
 
   function historique(action: "back" | "forward" | "reload") {
-    void core.browserHistory(action).catch((e: unknown) => setErreur(String(e)));
+    void core.browserHistory(sessionId, action).catch((e: unknown) => setErreur(String(e)));
   }
 
   if (!isTauri) {

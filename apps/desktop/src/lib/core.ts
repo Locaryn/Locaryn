@@ -1059,6 +1059,8 @@ export interface McpServerInfo {
 
 /** La page du navigateur intégré. */
 export interface BrowserState {
+  /** La conversation à qui appartient la vue (`""` hors conversation). */
+  session?: string;
   url: string;
   title: string;
   loading: boolean;
@@ -1989,13 +1991,16 @@ export interface CoreApi {
    *  Coché par défaut. */
   commitContributeur(): Promise<boolean>;
   definirCommitContributeur(actif: boolean): Promise<boolean>;
-  /** Le navigateur intégré : montrer à sa place, cacher, suivre la place. */
-  browserShow(frame: BrowserFrame, url?: string): Promise<BrowserState>;
-  browserHide(): Promise<void>;
-  browserBounds(frame: BrowserFrame): Promise<void>;
-  browserNavigate(url: string): Promise<void>;
-  browserHistory(action: "back" | "forward" | "reload"): Promise<void>;
-  browserState(): Promise<BrowserState>;
+  /** Le navigateur intégré, une vue par conversation (`session`, `null` hors
+   *  conversation) : montrer à sa place, cacher sans fermer, suivre la place. */
+  browserShow(session: string | null, frame: BrowserFrame, url?: string): Promise<BrowserState>;
+  browserHide(session: string | null): Promise<void>;
+  /** Fermer pour de bon la vue d'une conversation supprimée. */
+  browserClose(session: string): Promise<void>;
+  browserBounds(session: string | null, frame: BrowserFrame): Promise<void>;
+  browserNavigate(session: string | null, url: string): Promise<void>;
+  browserHistory(session: string | null, action: "back" | "forward" | "reload"): Promise<void>;
+  browserState(session: string | null): Promise<BrowserState>;
   /** Le dossier de la conversation, en lecture. */
   workspaceList(sessionId: string, dossier: string): Promise<WorkspaceEntry[]>;
   /** Les fichiers de la conversation modifiés depuis `depuisMs`. */
@@ -2647,12 +2652,14 @@ const tauriCore: CoreApi = {
   definirCommitContributeur: (actif: boolean) =>
     invoke<boolean>("definir_commit_contributeur", { actif }),
   definirOutilsAlleges: (actif) => invoke<boolean>("definir_outils_alleges", { actif }),
-  browserShow: (cadre, url) => invoke<BrowserState>("browser_show", { cadre, url: url ?? null }),
-  browserHide: () => invoke("browser_hide"),
-  browserBounds: (cadre) => invoke("browser_bounds", { cadre }),
-  browserNavigate: (url) => invoke("browser_navigate", { url }),
-  browserHistory: (action) => invoke("browser_history", { action }),
-  browserState: () => invoke<BrowserState>("browser_state"),
+  browserShow: (session, cadre, url) =>
+    invoke<BrowserState>("browser_show", { session, cadre, url: url ?? null }),
+  browserHide: (session) => invoke("browser_hide", { session }),
+  browserClose: (session) => invoke("browser_close", { session }),
+  browserBounds: (session, cadre) => invoke("browser_bounds", { session, cadre }),
+  browserNavigate: (session, url) => invoke("browser_navigate", { session, url }),
+  browserHistory: (session, action) => invoke("browser_history", { session, action }),
+  browserState: (session) => invoke<BrowserState>("browser_state", { session }),
   workspaceRecent: (sessionId, depuisMs) =>
     invoke<WorkspaceEntry[]>("workspace_recent", { sessionId, depuisMs }),
   workspaceList: (sessionId, dossier) =>
@@ -4214,6 +4221,7 @@ const demoCore: CoreApi = {
     return { url: "", title: "", loading: false };
   },
   async browserHide() {},
+  async browserClose() {},
   async browserBounds() {},
   async browserNavigate() {
     throw new Error("Le navigateur intégré s'ouvre dans l'application de bureau.");

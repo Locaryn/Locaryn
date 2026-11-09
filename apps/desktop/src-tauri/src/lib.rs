@@ -7640,6 +7640,7 @@ pub fn run() {
             model_recommendations::model_recommendation,
             browser::browser_show,
             browser::browser_hide,
+            browser::browser_close,
             browser::browser_bounds,
             browser::browser_navigate,
             browser::browser_history,

@@ -30,6 +30,8 @@ export interface WorkspaceState {
   tabs: WorkspaceTab[];
   /** `null` : le lanceur (nouvel onglet). */
   active: string | null;
+  /** Largeur du panneau en pixels ; absente, la largeur par défaut. */
+  width?: number;
 }
 
 export interface KindInfo {
@@ -97,45 +99,90 @@ export const LAUNCHER_ORDER: WorkspaceKind[] = [
   "tasks",
 ];
 
-const STORAGE_KEY = "locaryn.workspace";
+/**
+ * Chaque conversation a son propre espace de travail : panneau ouvert ou non,
+ * onglets, onglet actif, largeur. Changer de conversation reprend le sien ;
+ * une nouvelle conversation part de l'espace vide.
+ */
+const STORAGE_KEY = "locaryn.workspace.conversations";
+
+/** Au-delà, les espaces les plus anciens sont oubliés. */
+const MAX_CONVERSATIONS = 200;
+
+const EMPTY: WorkspaceState = { open: false, tabs: [], active: null };
 
 function isKind(value: unknown): value is WorkspaceKind {
   return typeof value === "string" && value in KINDS;
 }
 
-/** Les onglets de la dernière fois : une commodité, jamais une condition. */
-function restore(): WorkspaceState {
-  const empty: WorkspaceState = { open: false, tabs: [], active: null };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return empty;
-    const parsed = JSON.parse(raw) as Partial<WorkspaceState>;
-    const tabs = Array.isArray(parsed.tabs)
-      ? parsed.tabs.filter((t): t is WorkspaceTab => typeof t?.id === "string" && isKind(t?.kind))
-      : [];
-    const active =
-      typeof parsed.active === "string" && tabs.some((t) => t.id === parsed.active)
-        ? parsed.active
-        : (tabs[0]?.id ?? null);
-    return { open: parsed.open === true, tabs, active };
-  } catch (e) {
-    console.warn("espace de travail non restauré :", e);
-    return empty;
-  }
+function lire(valeur: unknown): WorkspaceState | null {
+  if (typeof valeur !== "object" || valeur === null) return null;
+  const parsed = valeur as Partial<WorkspaceState>;
+  const tabs = Array.isArray(parsed.tabs)
+    ? parsed.tabs.filter((t): t is WorkspaceTab => typeof t?.id === "string" && isKind(t?.kind))
+    : [];
+  const active =
+    typeof parsed.active === "string" && tabs.some((t) => t.id === parsed.active)
+      ? parsed.active
+      : (tabs[0]?.id ?? null);
+  const width = typeof parsed.width === "number" && parsed.width > 0 ? parsed.width : undefined;
+  return { open: parsed.open === true, tabs, active, width };
 }
 
-let state: WorkspaceState = restore();
+/** Les espaces de la dernière fois : une commodité, jamais une condition. */
+function restore(): Map<string, WorkspaceState> {
+  const espaces = new Map<string, WorkspaceState>();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return espaces;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    for (const [conversation, valeur] of Object.entries(parsed)) {
+      const espace = lire(valeur);
+      if (espace) espaces.set(conversation, espace);
+    }
+  } catch (e) {
+    console.warn("espace de travail non restauré :", e);
+  }
+  return espaces;
+}
+
+/** Clé de la conversation affichée ; `""` hors de toute conversation. */
+let conversation = "";
+const espaces = restore();
+/** Les conversations ouvertes depuis le lancement : leurs onglets restent
+ *  montés (un terminal garde sa sortie, le navigateur sa page). */
+const visitees = new Set<string>([conversation]);
+let state: WorkspaceState = espaces.get(conversation) ?? EMPTY;
 const listeners = new Set<() => void>();
 let counter = 0;
 
-function commit(next: WorkspaceState) {
-  state = next;
+function enregistrer() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(espaces)));
   } catch (e) {
     console.warn("espace de travail non enregistré :", e);
   }
+}
+
+/** Poser l'espace d'une conversation, en le rangeant parmi les plus récents. */
+function ranger(cle: string, espace: WorkspaceState) {
+  espaces.delete(cle);
+  espaces.set(cle, espace);
+  for (const ancienne of espaces.keys()) {
+    if (espaces.size <= MAX_CONVERSATIONS) break;
+    if (ancienne !== conversation) espaces.delete(ancienne);
+  }
+  enregistrer();
+}
+
+function notifier() {
   for (const l of listeners) l();
+}
+
+function commit(next: WorkspaceState) {
+  state = next;
+  ranger(conversation, next);
+  notifier();
 }
 
 export function getWorkspace(): WorkspaceState {
@@ -145,6 +192,42 @@ export function getWorkspace(): WorkspaceState {
 export function subscribeWorkspace(l: () => void): () => void {
   listeners.add(l);
   return () => listeners.delete(l);
+}
+
+/** Afficher l'espace de `id` (la conversation qu'on vient d'ouvrir). */
+export function setWorkspaceConversation(id: string | null): void {
+  const cle = id ?? "";
+  if (cle === conversation) return;
+  conversation = cle;
+  visitees.add(cle);
+  state = espaces.get(cle) ?? EMPTY;
+  notifier();
+}
+
+/** La conversation dont l'espace est affiché. */
+export function getWorkspaceConversation(): string {
+  return conversation;
+}
+
+/** Les espaces des conversations ouvertes depuis le lancement. */
+export function getVisitedWorkspaces(): Array<[string, WorkspaceState]> {
+  return [...visitees].map((cle) => [
+    cle,
+    cle === conversation ? state : (espaces.get(cle) ?? EMPTY),
+  ]);
+}
+
+/** Oublier l'espace d'une conversation supprimée. */
+export function forgetWorkspace(id: string): void {
+  visitees.delete(id);
+  if (!espaces.delete(id)) return;
+  enregistrer();
+  notifier();
+}
+
+export function setWorkspaceWidth(width: number): void {
+  if (width === state.width) return;
+  commit({ ...state, width });
 }
 
 function newId(kind: WorkspaceKind): string {
@@ -157,13 +240,32 @@ function newId(kind: WorkspaceKind): string {
  * retrouvé s'il existe ; `fresh` force un nouvel onglet pour un genre multiple.
  */
 export function openTab(kind: WorkspaceKind, fresh = false): void {
-  const existing = state.tabs.find((t) => t.kind === kind);
+  commit(avecOnglet(state, kind, fresh));
+}
+
+function avecOnglet(espace: WorkspaceState, kind: WorkspaceKind, fresh: boolean): WorkspaceState {
+  const existing = espace.tabs.find((t) => t.kind === kind);
   if (existing && !(fresh && KINDS[kind].multiple)) {
-    commit({ ...state, open: true, active: existing.id });
-    return;
+    return { ...espace, open: true, active: existing.id };
   }
   const tab = { id: newId(kind), kind };
-  commit({ open: true, tabs: [...state.tabs, tab], active: tab.id });
+  return { ...espace, open: true, tabs: [...espace.tabs, tab], active: tab.id };
+}
+
+/**
+ * Ouvrir un onglet dans l'espace d'une conversation précise — le modèle d'une
+ * conversation en arrière-plan ouvre son navigateur sans toucher à celle
+ * qu'on regarde.
+ */
+export function openTabFor(id: string | null, kind: WorkspaceKind): void {
+  const cle = id ?? "";
+  if (cle === conversation) {
+    openTab(kind);
+    return;
+  }
+  visitees.add(cle);
+  ranger(cle, avecOnglet(espaces.get(cle) ?? EMPTY, kind, false));
+  notifier();
 }
 
 /** Le fichier que l'onglet Fichiers doit ouvrir en arrivant. */

@@ -14,7 +14,9 @@ import {
   type WorkspaceTab,
   activateTab,
   closeTab,
+  getVisitedWorkspaces,
   getWorkspace,
+  getWorkspaceConversation,
   openTab,
   setWorkspaceOpen,
   subscribeWorkspace,
@@ -23,7 +25,6 @@ import { ModelConfigPanel } from "./ModelConfigPanel";
 import { RunPanel } from "./RunPanel";
 
 type Props = {
-  sessionId: string | null;
   /** Dossier du projet actif, en attendant celui de la conversation. */
   projectPath: string | null;
 };
@@ -66,13 +67,21 @@ function Launcher() {
   );
 }
 
+type OngletsProps = {
+  /** La conversation à qui appartiennent ces onglets. */
+  sessionId: string | null;
+  projectPath: string | null;
+  espace: WorkspaceState;
+  /** Cette conversation est affichée et son panneau ouvert. */
+  affichee: boolean;
+};
+
 /**
- * L'espace de travail : les outils à côté de la conversation, en onglets.
- * Tous les onglets restent montés — un terminal garde sa sortie, le navigateur
- * sa page — et seul celui qu'on regarde est visible.
+ * Les onglets d'une conversation. Ils restent montés quand on en change — un
+ * terminal garde sa sortie, le navigateur sa page que le modèle continue de
+ * lire — et seul l'onglet actif de la conversation affichée est visible.
  */
-export function WorkspacePanel({ sessionId, projectPath }: Props) {
-  const { tabs, active } = useWorkspace();
+function OngletsConversation({ sessionId, projectPath, espace, affichee }: OngletsProps) {
   const dossier = useSessionWorkspace(sessionId, projectPath);
 
   function contenu(tab: WorkspaceTab, visible: boolean) {
@@ -80,12 +89,11 @@ export function WorkspacePanel({ sessionId, projectPath }: Props) {
       case "browser":
         return <BrowserTab visible={visible} sessionId={sessionId} />;
       case "files":
-        // Une autre conversation repart de son propre dossier.
-        return <FilesTab key={sessionId ?? "aucune"} sessionId={sessionId} visible={visible} />;
+        return <FilesTab sessionId={sessionId} visible={visible} />;
       case "terminal":
         return <TerminalConsole cwd={dossier} greeting={dossier ? `Dans ${dossier}` : undefined} />;
       case "changes":
-        return <ChangesTab key={sessionId ?? "aucune"} sessionId={sessionId} visible={visible} />;
+        return <ChangesTab sessionId={sessionId} visible={visible} />;
       case "preview":
         return <RunPanel />;
       case "model":
@@ -94,6 +102,31 @@ export function WorkspacePanel({ sessionId, projectPath }: Props) {
         return <TasksTab />;
     }
   }
+
+  return (
+    <>
+      {espace.tabs.map((tab) => {
+        const visible = affichee && tab.id === espace.active;
+        return (
+          <div
+            key={tab.id}
+            className="lw-tab-panel"
+            role="tabpanel"
+            hidden={!visible}
+            aria-label={titre(tab, espace.tabs)}
+          >
+            {contenu(tab, visible)}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** L'espace de travail : les outils à côté de la conversation, en onglets. */
+export function WorkspacePanel({ projectPath }: Props) {
+  const { tabs, active, open } = useWorkspace();
+  const affichee = getWorkspaceConversation();
 
   return (
     <aside className="lw-panel" aria-label="Espace de travail">
@@ -152,16 +185,14 @@ export function WorkspacePanel({ sessionId, projectPath }: Props) {
       </div>
       <div className="lw-body">
         {active === null && <Launcher />}
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className="lw-tab-panel"
-            role="tabpanel"
-            hidden={tab.id !== active}
-            aria-label={titre(tab, tabs)}
-          >
-            {contenu(tab, tab.id === active)}
-          </div>
+        {getVisitedWorkspaces().map(([conversation, espace]) => (
+          <OngletsConversation
+            key={conversation}
+            sessionId={conversation === "" ? null : conversation}
+            projectPath={projectPath}
+            espace={espace}
+            affichee={open && conversation === affichee}
+          />
         ))}
       </div>
     </aside>

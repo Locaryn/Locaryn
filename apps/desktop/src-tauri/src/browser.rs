@@ -9,16 +9,22 @@
 //! par-dessus l'interface : l'interface lui donne sa place (`browser_show`,
 //! en pixels logiques) et la cache dès qu'autre chose doit passer devant.
 //!
+//! Chaque conversation a sa propre vue. Quitter une conversation ne fait que
+//! cacher la sienne : la page reste chargée et le modèle de cette conversation
+//! continue de la lire et d'y cliquer en arrière-plan.
+//!
 //! Lire la page passe par `eval_with_callback`, qui rend le résultat d'un
 //! script sur les trois systèmes. La page n'a aucun accès à l'application :
 //! une adresse distante ne reçoit aucune capacité Tauri.
 
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use tauri::webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webview, WebviewUrl};
 
+/// Préfixe du libellé des vues : `locaryn-browser-<conversation>`.
 const LABEL: &str = "locaryn-browser";
 
 /// L'état de la page, poussé à l'interface (barre d'adresse, titre d'onglet).
@@ -48,6 +54,8 @@ pub struct Cadre {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct EtatNavigateur {
+    /// La conversation à qui appartient la vue (`""` hors conversation).
+    pub session: String,
     pub url: String,
     pub title: String,
     pub loading: bool,
@@ -57,21 +65,32 @@ pub struct EtatNavigateur {
     pub chargements: u64,
 }
 
-static ETAT: Mutex<EtatNavigateur> = Mutex::new(EtatNavigateur {
-    url: String::new(),
-    title: String::new(),
-    loading: false,
-    chargements: 0,
-});
+/// L'état de la vue de chaque conversation.
+static ETATS: LazyLock<Mutex<HashMap<String, EtatNavigateur>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn etat() -> EtatNavigateur {
-    ETAT.lock().map(|e| e.clone()).unwrap_or_default()
+fn etat_vide(session: &str) -> EtatNavigateur {
+    EtatNavigateur {
+        session: session.to_string(),
+        ..EtatNavigateur::default()
+    }
 }
 
-fn modifier(app: &AppHandle, f: impl FnOnce(&mut EtatNavigateur)) {
-    let copie = match ETAT.lock() {
-        Ok(mut e) => {
-            f(&mut e);
+fn etat(session: &str) -> EtatNavigateur {
+    ETATS
+        .lock()
+        .ok()
+        .and_then(|e| e.get(session).cloned())
+        .unwrap_or_else(|| etat_vide(session))
+}
+
+fn modifier(app: &AppHandle, session: &str, f: impl FnOnce(&mut EtatNavigateur)) {
+    let copie = match ETATS.lock() {
+        Ok(mut tous) => {
+            let e = tous
+                .entry(session.to_string())
+                .or_insert_with(|| etat_vide(session));
+            f(e);
             e.clone()
         }
         Err(err) => {
@@ -191,8 +210,27 @@ pub fn normaliser(saisie: &str) -> Result<Url, String> {
     Url::parse(&texte).map_err(|e| format!("Adresse illisible : {e}"))
 }
 
-fn vue(app: &AppHandle) -> Option<Webview> {
-    app.get_webview(LABEL)
+/// Le libellé de la vue d'une conversation : lettres, chiffres et tirets.
+fn libelle(session: &str) -> String {
+    let propre: String = session
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if propre.is_empty() {
+        format!("{LABEL}-libre")
+    } else {
+        format!("{LABEL}-{propre}")
+    }
+}
+
+fn vue(app: &AppHandle, session: &str) -> Option<Webview> {
+    app.get_webview(&libelle(session))
 }
 
 /// Une seule création à la fois. L'outil `browser_open` demande à
@@ -204,9 +242,14 @@ static CREATION: Mutex<()> = Mutex::new(());
 
 /// Créer la vue (ou rendre celle qu'un autre appel vient de créer), avec un
 /// second essai sur une page vide si WebView2 refuse la première fois.
-fn creer(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Webview, String> {
+fn creer(
+    app: &AppHandle,
+    session: &str,
+    url: Url,
+    cadre: Option<Cadre>,
+) -> Result<Webview, String> {
     let _garde = CREATION.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(v) = vue(app) {
+    if let Some(v) = vue(app, session) {
         // Créée entre-temps par l'autre appel : la page vide de l'interface
         // ne remplace pas celle que le modèle vient d'ouvrir.
         if url.as_str() != "about:blank" {
@@ -214,24 +257,29 @@ fn creer(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Webview, Str
         }
         return Ok(v);
     }
-    match creer_une_fois(app, url.clone(), cadre) {
+    match creer_une_fois(app, session, url.clone(), cadre) {
         Ok(v) => Ok(v),
         Err(e) => {
             tracing::warn!(erreur = %e, adresse = %url, "navigateur intégré non créé — second essai");
             std::thread::sleep(Duration::from_millis(600));
-            if let Some(v) = vue(app) {
+            if let Some(v) = vue(app, session) {
                 v.navigate(url).map_err(|e| e.to_string())?;
                 return Ok(v);
             }
             let vide = Url::parse("about:blank").map_err(|e| e.to_string())?;
-            let v = creer_une_fois(app, vide, cadre)?;
+            let v = creer_une_fois(app, session, vide, cadre)?;
             v.navigate(url).map_err(|e| e.to_string())?;
             Ok(v)
         }
     }
 }
 
-fn creer_une_fois(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Webview, String> {
+fn creer_une_fois(
+    app: &AppHandle,
+    session: &str,
+    url: Url,
+    cadre: Option<Cadre>,
+) -> Result<Webview, String> {
     let fenetre = app
         .get_window("main")
         .ok_or("fenêtre principale introuvable")?;
@@ -251,10 +299,16 @@ fn creer_une_fois(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Web
         }
     });
 
+    let label = libelle(session);
     let app_chargement = app.clone();
     let app_titre = app.clone();
     let app_fenetre = app.clone();
-    let constructeur = WebviewBuilder::new(LABEL, WebviewUrl::External(url))
+    let (s_chargement, s_titre, s_fenetre) = (
+        session.to_string(),
+        session.to_string(),
+        session.to_string(),
+    );
+    let constructeur = WebviewBuilder::new(&label, WebviewUrl::External(url))
         // Une page ne mène qu'à d'autres pages web : un lien `file:` ou vers un
         // schéma d'application n'est pas suivi.
         .on_navigation(|url| match url.scheme() {
@@ -267,7 +321,7 @@ fn creer_une_fois(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Web
         .on_page_load(move |_vue, charge| {
             let url = charge.url().to_string();
             let fini = matches!(charge.event(), PageLoadEvent::Finished);
-            modifier(&app_chargement, |e| {
+            modifier(&app_chargement, &s_chargement, |e| {
                 e.url = url;
                 e.loading = !fini;
                 if fini {
@@ -276,13 +330,13 @@ fn creer_une_fois(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Web
             });
         })
         .on_document_title_changed(move |_vue, titre| {
-            modifier(&app_titre, |e| e.title = titre);
+            modifier(&app_titre, &s_titre, |e| e.title = titre);
         })
         // Un lien qui veut une nouvelle fenêtre s'ouvre ici : une fenêtre
         // flottante hors de l'espace de travail échapperait au modèle comme à
         // la personne.
         .on_new_window(move |url, _| {
-            if let Some(v) = vue(&app_fenetre) {
+            if let Some(v) = vue(&app_fenetre, &s_fenetre) {
                 if let Err(e) = v.navigate(url) {
                     tracing::warn!(erreur = %e, "nouvelle fenêtre non ouverte dans le navigateur");
                 }
@@ -298,7 +352,7 @@ fn creer_une_fois(app: &AppHandle, url: Url, cadre: Option<Cadre>) -> Result<Web
         )
         .map_err(|e| format!("navigateur impossible à créer : {e}"))?;
     let app_vue = app.clone();
-    v.with_webview(move |vue| crate::permissions_web::brancher(app_vue, LABEL.to_string(), vue))
+    v.with_webview(move |vue| crate::permissions_web::brancher(app_vue, label, vue))
         .map_err(|e| e.to_string())?;
     v.hide().map_err(|e| e.to_string())?;
     Ok(v)
@@ -315,12 +369,28 @@ fn poser(v: &Webview, cadre: Cadre) -> Result<(), String> {
 }
 
 /// Ouvrir `saisie` : dans la vue existante, ou dans une vue créée cachée.
-fn aller(app: &AppHandle, saisie: &str) -> Result<(), String> {
+fn aller(app: &AppHandle, session: &str, saisie: &str) -> Result<(), String> {
     let url = normaliser(saisie)?;
-    match vue(app) {
+    match vue(app, session) {
         Some(v) => v.navigate(url).map_err(|e| e.to_string()),
-        None => creer(app, url, None).map(|_| ()),
+        None => creer(app, session, url, None).map(|_| ()),
     }
+}
+
+/// Cacher la vue d'une conversation, sans la fermer : sa page reste chargée.
+fn cacher(app: &AppHandle, session: &str) -> Result<(), String> {
+    match vue(app, session) {
+        Some(v) => v.hide().map_err(|e| e.to_string()),
+        None => Ok(()),
+    }
+}
+
+/// Les conversations dont la vue a déjà servi.
+fn sessions_connues() -> Vec<String> {
+    ETATS
+        .lock()
+        .map(|t| t.keys().cloned().collect())
+        .unwrap_or_default()
 }
 
 // ── Commandes de l'interface ───────────────────────────────────────────────
@@ -336,52 +406,87 @@ pub async fn browser_show(
     app: AppHandle,
     cadre: Cadre,
     url: Option<String>,
+    session: Option<String>,
 ) -> Result<EtatNavigateur, String> {
-    let v = match vue(&app) {
+    let session = session.unwrap_or_default();
+    let v = match vue(&app, &session) {
         Some(v) => v,
         None => {
             let depart = match url.as_deref() {
                 Some(u) if !u.trim().is_empty() => normaliser(u)?,
                 _ => Url::parse("about:blank").map_err(|e| e.to_string())?,
             };
-            creer(&app, depart, Some(cadre))?
+            creer(&app, &session, depart, Some(cadre))?
         }
     };
+    // Une seule vue à l'écran : celles des autres conversations se cachent
+    // (sans se fermer) avant que celle-ci prenne la place.
+    for autre in sessions_connues() {
+        if autre != session {
+            cacher(&app, &autre)?;
+        }
+    }
     poser(&v, cadre)?;
     v.show().map_err(|e| e.to_string())?;
-    Ok(etat())
+    Ok(etat(&session))
 }
 
-/// Cacher la vue : un autre onglet, une autre page, une fenêtre par-dessus.
+/// Cacher la vue d'une conversation : un autre onglet, une autre
+/// conversation, une fenêtre par-dessus. La page reste chargée pour le modèle.
 #[tauri::command]
-pub async fn browser_hide(app: AppHandle) -> Result<(), String> {
-    match vue(&app) {
-        Some(v) => v.hide().map_err(|e| e.to_string()),
+pub async fn browser_hide(app: AppHandle, session: Option<String>) -> Result<(), String> {
+    cacher(&app, &session.unwrap_or_default())
+}
+
+/// Fermer pour de bon la vue d'une conversation supprimée.
+#[tauri::command]
+pub async fn browser_close(app: AppHandle, session: String) -> Result<(), String> {
+    if let Ok(mut tous) = ETATS.lock() {
+        tous.remove(&session);
+    }
+    match vue(&app, &session) {
+        Some(v) => v.close().map_err(|e| e.to_string()),
         None => Ok(()),
     }
 }
 
 /// Suivre la place de l'onglet (redimensionnement du panneau, de la fenêtre).
 #[tauri::command]
-pub async fn browser_bounds(app: AppHandle, cadre: Cadre) -> Result<(), String> {
-    match vue(&app) {
+pub async fn browser_bounds(
+    app: AppHandle,
+    cadre: Cadre,
+    session: Option<String>,
+) -> Result<(), String> {
+    match vue(&app, &session.unwrap_or_default()) {
         Some(v) => poser(&v, cadre),
         None => Ok(()),
     }
 }
 
 #[tauri::command]
-pub async fn browser_navigate(app: AppHandle, url: String) -> Result<(), String> {
-    aller(&app, &url)
+pub async fn browser_navigate(
+    app: AppHandle,
+    url: String,
+    session: Option<String>,
+) -> Result<(), String> {
+    aller(&app, &session.unwrap_or_default(), &url)
 }
 
 /// `back`, `forward` ou `reload`.
 #[tauri::command]
-pub async fn browser_history(app: AppHandle, action: String) -> Result<(), String> {
-    let Some(v) = vue(&app) else {
+pub async fn browser_history(
+    app: AppHandle,
+    action: String,
+    session: Option<String>,
+) -> Result<(), String> {
+    historique(&app, &session.unwrap_or_default(), &action)
+}
+
+fn historique(app: &AppHandle, session: &str, action: &str) -> Result<(), String> {
+    let Some(v) = vue(app, session) else {
         return Ok(());
     };
-    match action.as_str() {
+    match action {
         "back" => v.eval("history.back()").map_err(|e| e.to_string()),
         "forward" => v.eval("history.forward()").map_err(|e| e.to_string()),
         "reload" => v.reload().map_err(|e| e.to_string()),
@@ -390,15 +495,19 @@ pub async fn browser_history(app: AppHandle, action: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub async fn browser_state() -> EtatNavigateur {
-    etat()
+pub async fn browser_state(session: Option<String>) -> EtatNavigateur {
+    etat(&session.unwrap_or_default())
 }
 
 // ── Ce dont le modèle se sert ──────────────────────────────────────────────
 
 /// Exécuter `script` dans la page et rendre sa valeur.
-async fn evaluer(app: &AppHandle, script: &str) -> Result<serde_json::Value, String> {
-    let v = vue(app).ok_or("Aucune page ouverte : commencez par browser_open.")?;
+async fn evaluer(
+    app: &AppHandle,
+    session: &str,
+    script: &str,
+) -> Result<serde_json::Value, String> {
+    let v = vue(app, session).ok_or("Aucune page ouverte : commencez par browser_open.")?;
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx = Mutex::new(Some(tx));
     v.eval_with_callback(script, move |json| {
@@ -422,10 +531,10 @@ async fn evaluer(app: &AppHandle, script: &str) -> Result<serde_json::Value, Str
 }
 
 /// Attendre la fin d'un chargement commencé après `avant` chargements.
-async fn attendre_chargement(avant: u64, delai: Duration) {
+async fn attendre_chargement(session: &str, avant: u64, delai: Duration) {
     let debut = tokio::time::Instant::now();
     while tokio::time::Instant::now() - debut < delai {
-        let e = etat();
+        let e = etat(session);
         if e.chargements > avant && !e.loading {
             // Laisser une application de page dessiner ce qu'elle charge.
             tokio::time::sleep(Duration::from_millis(250)).await;
@@ -459,11 +568,11 @@ const SCRIPT_LECTURE: &str = r#"(() => { try {
 } catch (err) { return { error: String(err) }; } })()"#;
 
 /// La page, mise en texte pour le modèle.
-pub async fn lire(app: &AppHandle, max_texte: usize) -> Result<String, String> {
+pub async fn lire(app: &AppHandle, session: &str, max_texte: usize) -> Result<String, String> {
     let script = SCRIPT_LECTURE
         .replace("MAX_ELEMENTS", "80")
         .replace("MAX_TEXTE", &max_texte.to_string());
-    let page = evaluer(app, &script).await?;
+    let page = evaluer(app, session, &script).await?;
     let s = |k: &str| {
         page.get(k)
             .and_then(|v| v.as_str())
@@ -506,36 +615,40 @@ pub async fn lire(app: &AppHandle, max_texte: usize) -> Result<String, String> {
 }
 
 /// Ouvrir une adresse, attendre la page, la lire.
-pub async fn ouvrir(app: &AppHandle, saisie: &str) -> Result<String, String> {
-    if let Err(e) = app.emit(EVENT_OUVRIR, serde_json::json!({ "tab": "browser" })) {
+pub async fn ouvrir(app: &AppHandle, session: &str, saisie: &str) -> Result<String, String> {
+    // L'onglet s'ouvre dans l'espace de cette conversation, même si la
+    // personne en regarde une autre.
+    let demande = serde_json::json!({ "tab": "browser", "session": session });
+    if let Err(e) = app.emit(EVENT_OUVRIR, demande) {
         tracing::warn!(erreur = %e, "onglet du navigateur non ouvert dans l'interface");
     }
-    let avant = etat().chargements;
+    let avant = etat(session).chargements;
     // L'échec dit quoi faire : sans cela, le modèle concluait que « le
     // navigateur s'est fermé » et passait au contrôle du bureau.
-    aller(app, saisie).map_err(|e| {
+    aller(app, session, saisie).map_err(|e| {
         format!(
             "Le navigateur intégré n'a pas pu ouvrir « {saisie} » : {e}. Réessaie browser_open \
              une fois ; s'il échoue encore, dis-le à la personne. Ne passe pas au contrôle du \
              bureau ni au navigateur de la personne sans qu'elle le demande."
         )
     })?;
-    attendre_chargement(avant, ATTENTE_CHARGEMENT).await;
+    attendre_chargement(session, avant, ATTENTE_CHARGEMENT).await;
     // Une page lue en entier remplissait une fenêtre de 8 192 jetons en deux
     // lectures : le modèle perdait ses observations et tournait en rond.
-    lire(app, 5_000).await
+    lire(app, session, 5_000).await
 }
 
 /// Après une action : si elle a lancé un chargement, l'attendre, puis relire.
-async fn apres_action(app: &AppHandle, avant: u64) -> Result<String, String> {
+async fn apres_action(app: &AppHandle, session: &str, avant: u64) -> Result<String, String> {
     // Le temps qu'un clic lance un chargement ou redessine la page. Chaque
     // action en attendait 1,2 s fixes avec le glissement du curseur : sur un
     // jeu ou un formulaire, c'était la moitié de la durée d'un coup.
     tokio::time::sleep(Duration::from_millis(350)).await;
-    if etat().loading || etat().chargements > avant {
-        attendre_chargement(avant, ATTENTE_CHARGEMENT).await;
+    let e = etat(session);
+    if e.loading || e.chargements > avant {
+        attendre_chargement(session, avant, ATTENTE_CHARGEMENT).await;
     }
-    lire(app, 3_000).await
+    lire(app, session, 3_000).await
 }
 
 /// Le curseur de l'IA, posé dans la page une fois pour toutes : une flèche
@@ -604,7 +717,7 @@ const GLISSEMENT_CURSEUR: Duration = Duration::from_millis(220);
 
 /// Amener le curseur de l'IA sur l'élément `reference`, la page défilée pour
 /// qu'il soit visible.
-async fn viser(app: &AppHandle, reference: u64) -> Result<(), String> {
+async fn viser(app: &AppHandle, session: &str, reference: u64) -> Result<(), String> {
     let script = format!(
         r#"{CURSEUR_JS}
 (() => {{ try {{
@@ -616,7 +729,7 @@ async fn viser(app: &AppHandle, reference: u64) -> Result<(), String> {
   return {{ ok: true }};
 }} catch (err) {{ return {{ error: String(err) }}; }} }})()"#
     );
-    evaluer(app, &script).await?;
+    evaluer(app, session, &script).await?;
     tokio::time::sleep(GLISSEMENT_CURSEUR).await;
     Ok(())
 }
@@ -625,9 +738,9 @@ async fn viser(app: &AppHandle, reference: u64) -> Result<(), String> {
 const ONDE_JS: &str = r#"if (window.__locarynCurseur) { const r = e.getBoundingClientRect();
   window.__locarynCurseur.clic(r.left + Math.min(r.width / 2, 48), r.top + r.height / 2); }"#;
 
-pub async fn cliquer(app: &AppHandle, reference: u64) -> Result<String, String> {
-    let avant = etat().chargements;
-    viser(app, reference).await?;
+pub async fn cliquer(app: &AppHandle, session: &str, reference: u64) -> Result<String, String> {
+    let avant = etat(session).chargements;
+    viser(app, session, reference).await?;
     let script = format!(
         r#"(() => {{ try {{
   const e = document.querySelector('[data-locaryn-ref="{reference}"]');
@@ -636,18 +749,19 @@ pub async fn cliquer(app: &AppHandle, reference: u64) -> Result<String, String> 
   return {{ ok: true }};
 }} catch (err) {{ return {{ error: String(err) }}; }} }})()"#
     );
-    evaluer(app, &script).await?;
-    apres_action(app, avant).await
+    evaluer(app, session, &script).await?;
+    apres_action(app, session, avant).await
 }
 
 pub async fn saisir(
     app: &AppHandle,
+    session: &str,
     reference: u64,
     texte: &str,
     valider: bool,
 ) -> Result<String, String> {
-    let avant = etat().chargements;
-    viser(app, reference).await?;
+    let avant = etat(session).chargements;
+    viser(app, session, reference).await?;
     let texte_js = serde_json::to_string(texte).map_err(|e| e.to_string())?;
     let script = format!(
         r#"(() => {{ try {{
@@ -674,14 +788,14 @@ pub async fn saisir(
   return {{ ok: true }};
 }} catch (err) {{ return {{ error: String(err) }}; }} }})()"#
     );
-    evaluer(app, &script).await?;
-    apres_action(app, avant).await
+    evaluer(app, session, &script).await?;
+    apres_action(app, session, avant).await
 }
 
 /// Faire défiler la page : `down`, `up` (un écran), `top` ou `bottom`. Rend la
 /// position et le texte maintenant à l'écran — la lecture complète s'arrête
 /// au début d'une longue page, c'est ce qui manquait pour en voir la fin.
-pub async fn defiler(app: &AppHandle, direction: &str) -> Result<String, String> {
+pub async fn defiler(app: &AppHandle, session: &str, direction: &str) -> Result<String, String> {
     let geste = match direction {
         "down" => "window.scrollBy(0, window.innerHeight * 0.9)",
         "up" => "window.scrollBy(0, -window.innerHeight * 0.9)",
@@ -710,7 +824,7 @@ pub async fn defiler(app: &AppHandle, direction: &str) -> Result<String, String>
   return {{ position: Math.round(100 * window.scrollY / max), texte: vus.join(" ").replace(/\s+/g, " ").slice(0, 6000) }};
 }} catch (err) {{ return {{ error: String(err) }}; }} }})()"#
     );
-    let premier = evaluer(app, &script).await?;
+    let premier = evaluer(app, session, &script).await?;
     let position = premier
         .get("position")
         .and_then(|v| v.as_u64())
@@ -724,10 +838,10 @@ pub async fn defiler(app: &AppHandle, direction: &str) -> Result<String, String>
     ))
 }
 
-pub async fn revenir(app: &AppHandle) -> Result<String, String> {
-    let avant = etat().chargements;
-    browser_history(app.clone(), "back".into()).await?;
-    apres_action(app, avant).await
+pub async fn revenir(app: &AppHandle, session: &str) -> Result<String, String> {
+    let avant = etat(session).chargements;
+    historique(app, session, "back")?;
+    apres_action(app, session, avant).await
 }
 
 #[cfg(test)]

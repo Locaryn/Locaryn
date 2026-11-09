@@ -211,6 +211,8 @@ impl HostTools for AppTools {
 
     async fn call(&self, tool: &str, args: &Value) -> ToolResult {
         let core = self.app.state::<Core>();
+        // Le navigateur de cette conversation : chacune a le sien.
+        let navigateur = self.session.to_string();
         match tool {
             "app_list_connectors" => list_connectors(core).await,
             "app_add_connector" => add_connector(core, args).await,
@@ -218,26 +220,26 @@ impl HostTools for AppTools {
             "app_search_extensions" => search_extensions(core, args).await,
             "app_install_extension" => install_extension(core, args).await,
             "browser_open" => match args.get("url").and_then(Value::as_str) {
-                Some(url) => resultat(browser::ouvrir(&self.app, url).await),
+                Some(url) => resultat(browser::ouvrir(&self.app, &navigateur, url).await),
                 None => erreur("`url` manquant."),
             },
-            "browser_read" => resultat(browser::lire(&self.app, 6_000).await),
+            "browser_read" => resultat(browser::lire(&self.app, &navigateur, 6_000).await),
             "browser_click" => match reference(args) {
-                Some(r) => resultat(browser::cliquer(&self.app, r).await),
+                Some(r) => resultat(browser::cliquer(&self.app, &navigateur, r).await),
                 None => erreur("`ref` manquant : le numéro d'un élément de la dernière lecture."),
             },
             "browser_type" => match (reference(args), args.get("text").and_then(Value::as_str)) {
                 (Some(r), Some(texte)) => {
                     let valider = args.get("submit").and_then(Value::as_bool).unwrap_or(false);
-                    resultat(browser::saisir(&self.app, r, texte, valider).await)
+                    resultat(browser::saisir(&self.app, &navigateur, r, texte, valider).await)
                 }
                 _ => erreur("`ref` et `text` sont requis."),
             },
             "browser_scroll" => match args.get("direction").and_then(Value::as_str) {
-                Some(d) => resultat(browser::defiler(&self.app, d).await),
+                Some(d) => resultat(browser::defiler(&self.app, &navigateur, d).await),
                 None => erreur("`direction` manquante : down, up, top ou bottom."),
             },
-            "browser_back" => resultat(browser::revenir(&self.app).await),
+            "browser_back" => resultat(browser::revenir(&self.app, &navigateur).await),
             "lister_modeles" => ok(crate::sous_agents::lister(&core).await),
             "lancer_sous_agent" => match args.get("tache").and_then(Value::as_str) {
                 Some(tache) if !tache.trim().is_empty() => resultat(

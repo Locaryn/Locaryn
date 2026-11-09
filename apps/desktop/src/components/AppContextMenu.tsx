@@ -3,7 +3,7 @@ import { attachTerminalText } from "../lib/attachText";
 import { core, isTauri } from "../lib/core";
 import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
 import { ecrirePressePapiers, lirePressePapiers } from "../lib/pressePapiers";
-import { openTab } from "../lib/workspace";
+import { getWorkspaceConversation, openTab } from "../lib/workspace";
 
 /**
  * Le clic droit de l'application.
@@ -43,8 +43,10 @@ async function copier(texte: string) {
 /** Ouvrir une adresse ou une recherche dans le navigateur intégré. */
 function ouvrirDansLeNavigateur(cible: string) {
   openTab("browser");
+  // Le navigateur de la conversation affichée.
+  const conversation = getWorkspaceConversation();
   void core
-    .browserNavigate(cible)
+    .browserNavigate(conversation === "" ? null : conversation, cible)
     .catch((e: unknown) => console.warn("navigateur intégré indisponible :", e));
 }
 
