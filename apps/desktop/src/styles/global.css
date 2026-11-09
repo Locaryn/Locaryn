@@ -1576,6 +1576,15 @@ body.locaryn-resizing .locaryn-resizer::after {
 .locaryn-composer-input::placeholder {
   color: var(--text-faint);
 }
+/* Texte provisoire d'une extension (dictée en cours) : il passe en clair au
+   moment où elle le valide. */
+.locaryn-composer-input--brouillon {
+  color: var(--text-faint);
+  cursor: default;
+}
+.locaryn-composer-input {
+  transition: color 220ms ease;
+}
 .locaryn-composer-bar {
   display: flex;
   align-items: center;

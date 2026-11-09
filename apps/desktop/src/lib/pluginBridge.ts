@@ -26,6 +26,11 @@ export interface LocarynPluginAPI {
   chat: {
     getText: () => string;
     setText: (text: string) => void;
+    /** Texte provisoire affiché grisé dans le champ, non modifiable, tant
+     *  qu'il n'est pas validé : une dictée en cours, par exemple. `null` le
+     *  retire et rend la main ; l'extension pose alors le texte définitif
+     *  avec `setText`. */
+    setDraft: (text: string | null) => void;
     insertText: (text: string) => void;
     submit: () => void;
     getSessionId: () => string | null;
@@ -150,6 +155,7 @@ class PluginBridgeManager {
   private currentInputSetter: ((text: string) => void) | null = null;
   private currentSubmitter: (() => void) | null = null;
   private currentSessionId: string | null = null;
+  private currentDraftSetter: ((text: string | null) => void) | null = null;
   private submitHandlers = new Set<(text: string) => boolean | Promise<boolean>>();
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map();
 
@@ -162,11 +168,13 @@ class PluginBridgeManager {
     setText: (text: string) => void,
     submit: () => void,
     sessionId: string | null = null,
+    setDraft: ((text: string | null) => void) | null = null,
   ) {
     this.currentInputGetter = getText;
     this.currentInputSetter = setText;
     this.currentSubmitter = submit;
     this.currentSessionId = sessionId;
+    this.currentDraftSetter = setDraft;
   }
 
   public unregisterChatContext() {
@@ -174,6 +182,7 @@ class PluginBridgeManager {
     this.currentInputSetter = null;
     this.currentSubmitter = null;
     this.currentSessionId = null;
+    this.currentDraftSetter = null;
   }
 
   /** Prévenir les extensions d'un événement de l'application (`chat.reply`…). */
@@ -206,6 +215,12 @@ class PluginBridgeManager {
         getText: () => this.currentInputGetter?.() ?? "",
         setText: (text: string) => {
           this.currentInputSetter?.(text);
+        },
+        setDraft: (text: string | null) => {
+          // Sans composeur capable d'afficher un brouillon, le texte arrive
+          // quand même, en clair.
+          if (this.currentDraftSetter) this.currentDraftSetter(text);
+          else if (text !== null) this.currentInputSetter?.(text);
         },
         insertText: (text: string) => {
           if (!this.currentInputSetter) return;

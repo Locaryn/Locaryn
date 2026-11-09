@@ -601,6 +601,9 @@ export function ChatPanel({
   const itemsRef = useRef<ChatItem[]>(items);
   itemsRef.current = items;
   const [input, setInput] = useState("");
+  // Texte provisoire d'une extension (dictée en cours) : affiché grisé à la
+  // place de la saisie, non modifiable, jusqu'à ce qu'elle le valide.
+  const [brouillon, setBrouillon] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   /** Les pièces jointes de chaque message envoyé, pour les rendre à l'édition. */
   const piecesEnvoyees = useRef(new Map<string, Attachment[]>());
@@ -2957,6 +2960,15 @@ ${preview}`,
         if (canSend) sendRef.current();
       },
       sessionId,
+      (txt) => {
+        setBrouillon(txt);
+        requestAnimationFrame(() => {
+          const el = inputRef.current;
+          if (!el) return;
+          el.style.height = "auto";
+          el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+        });
+      },
     );
     return () => {
       pluginBridge.unregisterChatContext();
@@ -3616,7 +3628,13 @@ ${preview}`,
           )}
           <textarea
             ref={inputRef}
-            className="locaryn-composer-input"
+            className={
+              brouillon === null
+                ? "locaryn-composer-input"
+                : "locaryn-composer-input locaryn-composer-input--brouillon"
+            }
+            readOnly={brouillon !== null}
+            aria-busy={brouillon !== null}
             rows={1}
             placeholder={
               // Sur l'ecran d'accueil, le premier message cree la conversation
@@ -3628,7 +3646,7 @@ ${preview}`,
                 ? "Posez votre question à Locaryn…"
                 : "Sélectionnez ou créez une conversation"
             }
-            value={input}
+            value={brouillon ?? input}
             disabled={!canCompose}
             onChange={(e) => {
               const val = e.target.value;
