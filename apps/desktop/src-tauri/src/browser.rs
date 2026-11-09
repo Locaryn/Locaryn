@@ -73,13 +73,12 @@ pub struct EtatNavigateur {
 static ETATS: LazyLock<Mutex<HashMap<String, EtatNavigateur>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// La page que la personne a sous les yeux dans le navigateur de `session` :
-/// `(titre, adresse)`, ou rien si la vue est cachée ou vide.
+/// La page chargée dans le navigateur de `session` : `(titre, adresse)`, ou
+/// rien sans vue ou sur une page vide. Cachée (réglages, autre conversation),
+/// la vue reste celle de la conversation et ses outils la lisent toujours.
 pub fn page_affichee(app: &AppHandle, session: &str) -> Option<(String, String)> {
+    vue(app, session)?;
     let e = etat(session);
-    if !e.visible || vue(app, session).is_none() {
-        return None;
-    }
     let url = e.url.trim();
     if url.is_empty() || url == "about:blank" {
         return None;
