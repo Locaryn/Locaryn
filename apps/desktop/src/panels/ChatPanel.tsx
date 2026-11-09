@@ -40,6 +40,7 @@ import {
   type McpServerInfo,
   type ModelAbilities,
   type ReasoningLevel,
+  type RefusDeChargement,
   type Session,
   type SkillInfo,
   type StreamEvent,
@@ -75,6 +76,8 @@ import { useCloudContext } from "../lib/useCloudContext";
 import { useWelcome } from "../lib/welcome";
 import { estConsigneInterne, runWorkflow } from "../lib/workflow";
 
+type VerificationEnvoi = "memoire" | "choix";
+
 type ChatItem =
   | {
       id: string;
@@ -91,6 +94,9 @@ type ChatItem =
       attachments?: MessageAttachment[];
       /** Remis par « Envoyer maintenant » et lu par le modèle pendant sa tâche. */
       luEnCours?: boolean;
+      /** Affiché avant d'être envoyé : la mémoire est vérifiée (`memoire`) ou
+       *  la fenêtre « Modèle trop lourd » attend une décision (`choix`). */
+      verification?: VerificationEnvoi;
       /** Un média en cours de création : sa place réservée. */
       forge?: MediaForge;
       /** Ses images viennent d'être créées ici : elles apparaissent animées. */
@@ -604,6 +610,12 @@ export function ChatPanel({
   // Texte provisoire d'une extension (dictée en cours) : affiché grisé à la
   // place de la saisie, non modifiable, jusqu'à ce qu'elle le valide.
   const [brouillon, setBrouillon] = useState<string | null>(null);
+  // Un brouillon appartient à la conversation où il a commencé : en changer
+  // ne laisse pas le champ grisé et bloqué.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: on réagit au seul changement de conversation
+  useEffect(() => {
+    setBrouillon(null);
+  }, [sessionId]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   /** Les pièces jointes de chaque message envoyé, pour les rendre à l'édition. */
   const piecesEnvoyees = useRef(new Map<string, Attachment[]>());
@@ -1713,20 +1725,20 @@ ${d.texte}`
     if (gardees.length) setAttachments((prev) => [...prev, ...gardees]);
   }
 
-  // Le message que la fenêtre de refus du modèle retient : il part une fois
-  // le modèle chargé « quand même », ou revient dans le champ si on renonce.
-  const retenuRef = useRef<{ texte: string; pieces: Attachment[] } | null>(null);
+  // Le message que la fenêtre de refus du modèle retient : sa bulle reste au
+  // fil jusqu'à la décision. Il part une fois le modèle chargé « quand même »,
+  // ou revient dans le champ si on renonce.
+  const retenuRef = useRef<{ texte: string; pieces: Attachment[]; bulle: string } | null>(null);
   const relancerRef = useRef<(charge: boolean) => void>(() => {});
   relancerRef.current = (charge) => {
     const retenu = retenuRef.current;
     retenuRef.current = null;
     if (!retenu) return;
     if (charge) {
-      void send(retenu.texte, retenu.pieces);
+      void send(retenu.texte, retenu.pieces, false, retenu.bulle);
       return;
     }
-    setInput(retenu.texte);
-    setAttachments(retenu.pieces);
+    rendreAuChamp(retenu.bulle, retenu.texte, retenu.pieces);
   };
   useEffect(() => {
     const surCharge = () => relancerRef.current(true);
@@ -1739,31 +1751,105 @@ ${d.texte}`
     };
   }, []);
 
-  function retenir(texte: string, pieces: Attachment[], viderChamp: boolean) {
-    retenuRef.current = { texte, pieces: [...pieces] };
-    if (!viderChamp) return;
+  function viderChamp() {
     setInput("");
     setAttachments([]);
     if (inputRef.current) inputRef.current.style.height = "auto";
   }
 
-  /** La prudence refuse de charger le modèle local : le message attend la
-   *  décision prise dans la fenêtre de refus, sans rien laisser dans le fil. */
-  async function retenirSiRefuse(texte: string, pieces: Attachment[], viderChamp: boolean) {
-    if (retenuRef.current) return true;
-    if (!isLocalModel) return false;
-    const refus = await core.refusAvantEnvoi().catch((e: unknown) => {
-      // Vérification illisible : l'envoi tente sa chance, le moteur vérifie aussi.
-      console.warn("[Chat] vérification de la prudence impossible :", e);
-      return null;
-    });
-    if (!refus) return false;
-    retenir(texte, pieces, viderChamp);
-    window.dispatchEvent(new CustomEvent(MODELE_REFUSE, { detail: refus }));
-    return true;
+  /** La bulle d'un message tapé, posée au fil avant que l'envoi soit décidé. */
+  function poserBulle(
+    id: string,
+    brut: string,
+    pieces: Attachment[],
+    verification: VerificationEnvoi | undefined,
+  ) {
+    // Les pièces jointes telles qu'envoyées (contenu compris) : éditer le
+    // message les remet dans le champ au lieu de les perdre.
+    if (pieces.length > 0) piecesEnvoyees.current.set(id, pieces);
+    setItems((prev) => [
+      ...prev,
+      {
+        id,
+        kind: "msg",
+        role: "user",
+        at: new Date().toISOString(),
+        // Afficher ce que l'utilisateur a tapé (slash compris) dans la bulle :
+        // ce qui part au modèle perd les /goal, /workflow… L'afficher complet
+        // évite que « /goal fais X » devienne mystérieusement « fais X ».
+        text: brut,
+        images: pieces
+          .filter((a) => a.kind === "image" && a.dataUrl)
+          .map((a) => a.dataUrl as string),
+        attachments: pieces
+          .filter((a) => a.kind !== "image")
+          .map((a) => ({
+            kind: a.kind as MessageAttachment["kind"],
+            name: a.name,
+            url: a.objectUrl,
+          })),
+        verification,
+      },
+    ]);
   }
 
-  async function send(textOverride?: string, attachOverride?: Attachment[], depuisFile = false) {
+  function marquerBulle(id: string, verification: VerificationEnvoi | undefined) {
+    setItems((prev) =>
+      prev.map((it) => (it.kind === "msg" && it.id === id ? { ...it, verification } : it)),
+    );
+  }
+
+  /** Le message ne part pas : sa bulle disparaît, le texte revient au champ. */
+  function rendreAuChamp(id: string, texte: string, pieces: Attachment[]) {
+    piecesEnvoyees.current.delete(id);
+    setItems((prev) => prev.filter((it) => it.id !== id));
+    setInput(texte);
+    setAttachments(pieces);
+  }
+
+  function retenir(texte: string, pieces: Attachment[], bulle: string) {
+    retenuRef.current = { texte, pieces: [...pieces], bulle };
+    marquerBulle(bulle, "choix");
+  }
+
+  /** Le message s'affiche tout de suite, pendant que la prudence vérifie la
+   *  mémoire pour le modèle local. Refus : la bulle attend la décision prise
+   *  dans la fenêtre de refus. `false` : rien ne part maintenant. */
+  async function afficherPuisVerifier(
+    verif: Promise<RefusDeChargement | null>,
+    envoi: {
+      id: string;
+      brut: string;
+      pieces: Attachment[];
+      existante: boolean;
+      depuisChamp: boolean;
+    },
+  ): Promise<boolean> {
+    // Un message attend déjà la fenêtre de refus : celui-ci reste dans le champ.
+    if (retenuRef.current) return false;
+    if (envoi.depuisChamp) viderChamp();
+    const etat: VerificationEnvoi | undefined = isLocalModel ? "memoire" : undefined;
+    if (envoi.existante) marquerBulle(envoi.id, etat);
+    else poserBulle(envoi.id, envoi.brut, envoi.pieces, etat);
+    const refus = await verif;
+    if (!refus) {
+      if (etat) marquerBulle(envoi.id, undefined);
+      return true;
+    }
+    retenir(envoi.brut, envoi.pieces, envoi.id);
+    window.dispatchEvent(new CustomEvent(MODELE_REFUSE, { detail: refus }));
+    return false;
+  }
+
+  async function send(
+    textOverride?: string,
+    attachOverride?: Attachment[],
+    depuisFile = false,
+    bulleRetenue?: string,
+  ) {
+    // Un brouillon d'extension (dictée en cours) n'est pas encore validé :
+    // Entrée attend qu'il le soit plutôt que d'envoyer un texte incomplet.
+    if (brouillon !== null && textOverride === undefined) return;
     // Envoyer, c'est vouloir lire la réponse : le fil se rattache au bas.
     followRef.current = true;
     setDetached(false);
@@ -1806,12 +1892,33 @@ ${d.texte}`
       return;
     }
 
+    // La sonde mémoire part tout de suite, en parallèle de ce qui précède
+    // l'envoi : elle seule prend une à deux secondes. Un modèle distant n'a
+    // rien à vérifier.
+    const verif: Promise<RefusDeChargement | null> = isLocalModel
+      ? core.refusAvantEnvoi().catch((e: unknown) => {
+          // Vérification illisible : l'envoi tente sa chance, le moteur vérifie aussi.
+          console.warn("[Chat] vérification de la prudence impossible :", e);
+          return null;
+        })
+      : Promise.resolve(null);
+    const idMessage = bulleRetenue ?? nextId("msg");
+    const envoiAffiche = {
+      id: idMessage,
+      brut,
+      pieces: imgs,
+      existante: bulleRetenue !== undefined,
+      depuisChamp: textOverride === undefined,
+    };
+
     // Home screen: no chat yet — the first prompt creates one, auto-named after
     // its subject. `skipLoadRef` stops the load effect from wiping what we are
     // about to append optimistically for the brand-new session.
     let sid = sessionId;
     if (!sid) {
       if (!onCreateSessionForPrompt || creatingRef.current) return;
+      // Vérifier avant de créer : un refus ne laisse aucune conversation vide.
+      if (!(await afficherPuisVerifier(verif, envoiAffiche))) return;
       creatingRef.current = true;
       setCreating(true);
       let created: Awaited<ReturnType<typeof onCreateSessionForPrompt>> = null;
@@ -1835,12 +1942,13 @@ ${d.texte}`
       } catch (e) {
         const raison = String(e).replace(/^Error:\s*/, "");
         console.warn("[Chat] création de la conversation impossible :", e);
+        rendreAuChamp(idMessage, brut, imgs);
         setItems((prev) => [
           ...prev,
           {
             id: nextId("log"),
             kind: "log",
-            text: `La conversation n'a pas pu être créée, votre message n'est pas parti : ${raison}. Il est resté dans le champ.`,
+            text: `La conversation n'a pas pu être créée, votre message n'est pas parti : ${raison}. Il est remis dans le champ.`,
           },
         ]);
         return;
@@ -1848,7 +1956,10 @@ ${d.texte}`
         creatingRef.current = false;
         setCreating(false);
       }
-      if (!created) return;
+      if (!created) {
+        rendreAuChamp(idMessage, brut, imgs);
+        return;
+      }
       sid = created.id;
       skipLoadRef.current = created.id;
     }
@@ -1882,15 +1993,10 @@ ${d.texte}`
       }
     }
 
-    // Le modèle local doit être chargé et la prudence le refuse : rien ne
-    // s'affiche ni ne part. Le message attend dans cette conversation.
-    if (await retenirSiRefuse(brut, imgs, textOverride === undefined)) return;
-
-    if (!textOverride) {
-      setInput("");
-      setAttachments([]);
-      if (inputRef.current) inputRef.current.style.height = "auto";
-    }
+    // Le message s'affiche ; si le modèle local doit être chargé et que la
+    // prudence le refuse, il attend la décision et rien ne part. Sur l'écran
+    // d'accueil, c'est déjà fait avant de créer la conversation.
+    if (sessionId && !(await afficherPuisVerifier(verif, envoiAffiche))) return;
 
     // Cette réponse, et elle seule, écrit dans ce fil — tant que c'est lui
     // qui est à l'écran.
@@ -1924,38 +2030,15 @@ ${d.texte}`
     }
     setFollowups([]);
     fullTextRef.current = "";
-    const idMessage = nextId("msg");
     // Une conversation créée vide reçoit sa première demande : elle se nomme
-    // maintenant. Celle créée par ce message l'a déjà été à sa création.
-    if (sessionId && !items.some((i) => i.kind === "msg" && i.role === "user")) {
+    // maintenant. Celle créée par ce message l'a déjà été à sa création. Sa
+    // propre bulle, déjà au fil, ne compte pas.
+    if (
+      sessionId &&
+      !items.some((i) => i.kind === "msg" && i.role === "user" && i.id !== idMessage)
+    ) {
       onFirstMessage?.(sid, text);
     }
-    // Les pièces jointes telles qu'envoyées (contenu compris) : éditer le
-    // message les remet dans le champ au lieu de les perdre.
-    if (imgs.length > 0) piecesEnvoyees.current.set(idMessage, imgs);
-    setItems((prev) => [
-      ...prev,
-      {
-        id: idMessage,
-        kind: "msg",
-        role: "user",
-        at: new Date().toISOString(),
-        // Afficher ce que l'utilisateur a tapé (slash compris) dans la bulle :
-        // `text` est ce qui part au modèle (sans les /goal, /workflow…),
-        // `brut` est ce qui était dans le champ. L'afficher complet évite que
-        // « /goal fais X » devienne mystérieusement « fais X » dans l'historique.
-        text: brut,
-        images: imgs.filter((a) => a.kind === "image" && a.dataUrl).map((a) => a.dataUrl as string),
-        attachments: imgs
-          .filter((a) => a.kind !== "image")
-          .map((a) => ({
-            kind: a.kind as MessageAttachment["kind"],
-            name: a.name,
-            url: a.objectUrl,
-          })),
-      },
-    ]);
-
     const t0 = Date.now();
 
     // Un plan ou un objectif se suit sur une carte du fil, mise à jour en place.
@@ -2105,9 +2188,8 @@ ${d.texte}`
     } catch (e) {
       if (String(e).includes(ERREUR_MODELE_TROP_LOURD)) {
         // Refusé par le moteur entre la vérification et l'envoi : rien n'est
-        // parti, la bulle s'efface et le message attend la fenêtre de refus.
-        setItems((prev) => prev.filter((it) => it.id !== idMessage));
-        retenir(brut, imgs, false);
+        // parti, la bulle attend la décision prise dans la fenêtre de refus.
+        retenir(brut, imgs, idMessage);
       } else if (runRef.current === run) {
         setItems((prev) => [
           ...prev,
@@ -3126,7 +3208,9 @@ ${preview}`,
                   // un court instant après le précédent.
                   <div
                     key={it.id}
-                    className="locaryn-msg-anim"
+                    className={
+                      it.verification ? "locaryn-msg-anim locaryn-msg-attente" : "locaryn-msg-anim"
+                    }
                     style={{ animationDelay: `${Math.min(i * 35, 350)}ms` }}
                   >
                     <MessageBubble
@@ -3139,7 +3223,7 @@ ${preview}`,
                       forge={it.forge}
                       forged={it.forged}
                       at={it.at}
-                      canEdit={i === lastUserIdx && !streaming}
+                      canEdit={i === lastUserIdx && !streaming && !it.verification}
                       onEdit={() => void editLastUserMessage()}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}
                       runTarget={
@@ -3152,6 +3236,13 @@ ${preview}`,
                       <div className="locaryn-msg-lu">
                         <Icon name="check" size={12} />
                         Lu pendant la tâche
+                      </div>
+                    )}
+                    {it.verification && (
+                      <div className="locaryn-msg-lu locaryn-msg-verif" role="status">
+                        {it.verification === "memoire"
+                          ? "Vérification de la mémoire…"
+                          : "En attente de votre choix…"}
                       </div>
                     )}
                   </div>

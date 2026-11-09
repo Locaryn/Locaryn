@@ -1134,6 +1134,7 @@ export const EN_EXACT: Record<string, string> = {
     "Locaryn can read, search, edit and run code in this project or in free chat.",
   "Longueur maximale d'une réponse": "Maximum answer length",
   "Lu pendant la tâche": "Read during the task",
+  "En attente de votre choix…": "Waiting for your choice…",
   "Légèrement plus lourd que Q4_K_M pour un gain subtil.":
     "Slightly heavier than Q4_K_M for a subtle gain.",
   "Légères (Q2/Q3/IQ)": "Light (Q2/Q3/IQ)",

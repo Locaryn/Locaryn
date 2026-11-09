@@ -6685,6 +6685,21 @@ pre.md-code {
   color: var(--text-faint);
 }
 
+/* Un message affiché avant d'être envoyé (mémoire vérifiée, ou décision
+   attendue) : la bulle s'efface un peu, la mention respire. */
+.locaryn-msg-attente > :first-child {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+.locaryn-msg-verif {
+  animation: locaryn-nommage 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-msg-verif {
+    animation: none;
+  }
+}
+
 /* Menu button styling in topbar */
 .locaryn-menu-btn {
   /* Alignement optique sur le bord du panneau latéral (« + Nouveau », 16px) :
