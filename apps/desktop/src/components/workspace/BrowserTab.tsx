@@ -2,14 +2,21 @@ import { Icon } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type BrowserState, core, isTauri } from "../../lib/core";
+import { suivreRecouvrement } from "../../lib/nativeViewCover";
 
-/** Ce qui, posé par-dessus l'interface, doit passer devant la page : la vue
- *  web native se dessine au-dessus de tout le reste, elle se cache donc. */
-const PAR_DESSUS = 'dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
+/** La page de chaque conversation. La vue native est unique : quitter une
+ *  conversation la cache, y revenir rouvre sa page. */
+const pagesParConversation = new Map<string, string>();
+
+function estUnePage(url: string): boolean {
+  return url !== "" && url !== "about:blank";
+}
 
 type Props = {
   /** L'onglet est celui qu'on regarde, et le panneau est à l'écran. */
   visible: boolean;
+  /** La conversation affichée. */
+  sessionId: string | null;
 };
 
 /**
@@ -17,13 +24,42 @@ type Props = {
  * service pose exactement sur la zone réservée ici ; cette zone la suit quand
  * le panneau change de taille, et la cache dès qu'elle ne doit plus se voir.
  */
-export function BrowserTab({ visible }: Props) {
+export function BrowserTab({ visible, sessionId }: Props) {
+  const conversation = sessionId ?? "";
   const zone = useRef<HTMLDivElement | null>(null);
   const [etat, setEtat] = useState<BrowserState>({ url: "", title: "", loading: false });
   const [saisie, setSaisie] = useState("");
   const [recouvert, setRecouvert] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const editionRef = useRef(false);
+  /** La conversation à qui appartient la page affichée par la vue. */
+  const [proprio, setProprio] = useState<string | null>(null);
+  const proprioRef = useRef<string | null>(null);
+  const conversationRef = useRef(conversation);
+
+  const changerProprio = useCallback((qui: string | null) => {
+    proprioRef.current = qui;
+    setProprio(qui);
+  }, []);
+
+  // Une nouvelle adresse appartient à la conversation affichée ; une page déjà
+  // connue (fin de chargement, retour sur une conversation) ne change rien.
+  const recevoir = useCallback(
+    (e: BrowserState) => {
+      if (estUnePage(e.url)) {
+        const actuel = proprioRef.current;
+        if (actuel === null || pagesParConversation.get(actuel) !== e.url) {
+          changerProprio(conversationRef.current);
+          pagesParConversation.set(conversationRef.current, e.url);
+        }
+      }
+      setEtat(e);
+      if (!editionRef.current && proprioRef.current === conversationRef.current) {
+        setSaisie(estUnePage(e.url) ? e.url : "");
+      }
+    },
+    [changerProprio],
+  );
 
   // L'état de la page, poussé par le service à chaque chargement et titre.
   useEffect(() => {
@@ -31,14 +67,9 @@ export function BrowserTab({ visible }: Props) {
     let fin: (() => void) | null = null;
     let vivant = true;
     void core.browserState().then((e) => {
-      if (!vivant) return;
-      setEtat(e);
-      if (!editionRef.current) setSaisie(e.url === "about:blank" ? "" : e.url);
+      if (vivant) recevoir(e);
     });
-    void listen<BrowserState>("locaryn://browser", (ev) => {
-      setEtat(ev.payload);
-      if (!editionRef.current) setSaisie(ev.payload.url === "about:blank" ? "" : ev.payload.url);
-    }).then((un) => {
+    void listen<BrowserState>("locaryn://browser", (ev) => recevoir(ev.payload)).then((un) => {
       if (vivant) fin = un;
       else un();
     });
@@ -46,32 +77,32 @@ export function BrowserTab({ visible }: Props) {
       vivant = false;
       fin?.();
     };
-  }, []);
+  }, [recevoir]);
 
-  // Une fenêtre par-dessus l'interface, ou une séparation qu'on tire : la
-  // page s'efface le temps que cela dure. Une vue native capterait la souris
-  // au passage et couvrirait la fenêtre.
+  // Changer de conversation : la page de l'autre se cache (elle n'est plus à
+  // nous), et celle de cette conversation, s'il y en a une, revient.
   useEffect(() => {
-    const verifier = () =>
-      setRecouvert(
-        document.querySelector(PAR_DESSUS) !== null ||
-          document.body.classList.contains("locaryn-resizing"),
-      );
-    verifier();
-    const obs = new MutationObserver(verifier);
-    obs.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["open", "role", "aria-modal"],
-    });
-    const corps = new MutationObserver(verifier);
-    corps.observe(document.body, { attributes: true, attributeFilter: ["class"] });
-    return () => {
-      obs.disconnect();
-      corps.disconnect();
-    };
-  }, []);
+    conversationRef.current = conversation;
+    editionRef.current = false;
+    setErreur(null);
+    const page = pagesParConversation.get(conversation);
+    setSaisie(page ?? "");
+    if (!page || proprioRef.current === conversation) return;
+    changerProprio(conversation);
+    void core.browserNavigate(page).catch((e: unknown) => console.warn("navigateur :", e));
+  }, [conversation, changerProprio]);
+
+  // Quoi que ce soit par-dessus la place de la page (fenêtre, menu,
+  // notification, infobulle) ou une séparation qu'on tire : la page s'efface
+  // le temps que cela dure. Une vue native se dessinerait par-dessus.
+  useEffect(
+    () =>
+      suivreRecouvrement(
+        () => zone.current,
+        (r) => setRecouvert(r),
+      ),
+    [],
+  );
 
   const cadre = useCallback(() => {
     const r = zone.current?.getBoundingClientRect();
@@ -81,7 +112,12 @@ export function BrowserTab({ visible }: Props) {
 
   // Avant la première adresse, pas de vue : une page blanche cacherait le mot
   // d'accueil.
-  const aUnePage = etat.url !== "" && etat.url !== "about:blank";
+  // La page doit aussi être celle de cette conversation, chargée : pas celle
+  // qu'on vient de quitter, le temps que la sienne revienne.
+  const aUnePage =
+    estUnePage(etat.url) &&
+    proprio === conversation &&
+    pagesParConversation.get(conversation) === etat.url;
   const montrer = visible && !recouvert && aUnePage;
 
   // Montrer, cacher, suivre la place.
@@ -123,13 +159,12 @@ export function BrowserTab({ visible }: Props) {
     e.preventDefault();
     editionRef.current = false;
     setErreur(null);
-    const c = cadre();
-    if (!c) return;
-    // La première adresse crée la vue, cachée ; elle se montre à sa place.
+    // La page tapée ici est celle de cette conversation. La première adresse
+    // crée la vue, cachée ; elle se montre dès que la page arrive.
+    changerProprio(conversationRef.current);
+    pagesParConversation.delete(conversationRef.current);
     void core
       .browserNavigate(saisie)
-      .then(() => core.browserShow(c))
-      .then(setEtat)
       .catch((err: unknown) => setErreur(String(err).replace(/^Error:\s*/, "")));
   }
 

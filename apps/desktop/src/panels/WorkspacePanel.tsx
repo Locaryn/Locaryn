@@ -78,7 +78,7 @@ export function WorkspacePanel({ sessionId, projectPath }: Props) {
   function contenu(tab: WorkspaceTab, visible: boolean) {
     switch (tab.kind) {
       case "browser":
-        return <BrowserTab visible={visible} />;
+        return <BrowserTab visible={visible} sessionId={sessionId} />;
       case "files":
         // Une autre conversation repart de son propre dossier.
         return <FilesTab key={sessionId ?? "aucune"} sessionId={sessionId} visible={visible} />;
