@@ -168,6 +168,10 @@ export function MessageBubble({
   const [lightbox, setLightbox] = useState<{ src: string; path?: string } | null>(null);
   const [imageFeedback, setImageFeedback] = useState<string | null>(null);
   const mdRef = useRef<HTMLDivElement | null>(null);
+  // Le bouton « Exécuter » est posé une fois par bloc : il appelle toujours la
+  // version courante, pas celle du rendu où il est né (dossier, cible WSL).
+  const onRunCodeRef = useRef(onRunCode);
+  onRunCodeRef.current = onRunCode;
 
   // Reasoning models stream their scratchpad inline with the reply. Split it
   // out so the answer is what the reader sees; the deliberation stays folded.
@@ -358,7 +362,7 @@ export function MessageBubble({
         const linux = ["Shell", "Python", "Node"].includes(RUNNABLE[lang]);
         runBtn.textContent =
           runTarget && linux ? `▶ Exécuter (${runTarget})` : `▶ Exécuter (${RUNNABLE[lang]})`;
-        runBtn.onclick = () => onRunCode(lireCode(), lang);
+        runBtn.onclick = () => onRunCodeRef.current?.(lireCode(), lang);
         bar.appendChild(runBtn);
       }
 

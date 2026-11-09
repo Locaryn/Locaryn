@@ -1,7 +1,8 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
+import { estPageHtml, ouvrirApercu } from "../../lib/apercuPage";
 import { type WorkspaceEntry, type WorkspaceFile, core } from "../../lib/core";
-import { OUVRIR_FICHIER, prendreFichierEnAttente } from "../../lib/workspace";
+import { type FichierDemande, OUVRIR_FICHIER, prendreFichierEnAttente } from "../../lib/workspace";
 import { FileViewer } from "./FileViewer";
 
 type Props = { sessionId: string | null; visible: boolean };
@@ -22,6 +23,8 @@ export function FilesTab({ sessionId, visible }: Props) {
   const [dossier, setDossier] = useState("");
   const [entrees, setEntrees] = useState<WorkspaceEntry[] | null>(null);
   const [fichier, setFichier] = useState<WorkspaceFile | null>(null);
+  /** Le fichier a été ouvert pour son code (bouton « Source » du navigateur). */
+  const [source, setSource] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [chargement, setChargement] = useState(false);
 
@@ -56,27 +59,46 @@ export function FilesTab({ sessionId, visible }: Props) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `lireFichier` lit l'identifiant de session courant, déjà dans les dépendances.
   useEffect(() => {
     const enAttente = prendreFichierEnAttente();
-    if (enAttente) void lireFichier(enAttente);
+    if (enAttente) ouvrirDemande(enAttente);
     const surDemande = (e: Event) => {
-      const chemin = (e as CustomEvent<string>).detail;
+      const demande = (e as CustomEvent<FichierDemande>).detail;
       prendreFichierEnAttente();
-      if (chemin) void lireFichier(chemin);
+      if (demande?.chemin) ouvrirDemande(demande);
     };
     window.addEventListener(OUVRIR_FICHIER, surDemande);
     return () => window.removeEventListener(OUVRIR_FICHIER, surDemande);
   }, [sessionId]);
 
+  function ouvrirDemande(demande: FichierDemande) {
+    if (!demande.source && estPageHtml(demande.chemin)) void apercu(demande.chemin);
+    else void lireFichier(demande.chemin, demande.source);
+  }
+
   function ouvrir(e: WorkspaceEntry) {
     if (e.dossier) void charger(e.chemin);
+    else if (estPageHtml(e.chemin)) void apercu(e.chemin);
     else void lireFichier(e.chemin);
   }
 
-  async function lireFichier(chemin: string) {
+  /** Une page HTML : rendue dans le navigateur de la conversation, avec son
+   *  dossier. Si l'aperçu échoue, son code s'affiche ici. */
+  async function apercu(chemin: string) {
+    setErreur(null);
+    try {
+      await ouvrirApercu(sessionId, chemin);
+    } catch (err) {
+      await lireFichier(chemin, true);
+      setErreur(`Aperçu impossible : ${String(err).replace(/^Error:\s*/, "")}`);
+    }
+  }
+
+  async function lireFichier(chemin: string, voirSource = false) {
     if (!sessionId) return;
     setChargement(true);
     setErreur(null);
     try {
       setFichier(await core.workspaceRead(sessionId, chemin));
+      setSource(voirSource);
     } catch (err) {
       setErreur(String(err).replace(/^Error:\s*/, ""));
     } finally {
@@ -138,7 +160,13 @@ export function FilesTab({ sessionId, visible }: Props) {
       )}
 
       {fichier ? (
-        <FileViewer sessionId={sessionId} fichier={fichier} onRetour={() => setFichier(null)} />
+        <FileViewer
+          sessionId={sessionId}
+          fichier={fichier}
+          source={source}
+          onApercu={() => void apercu(fichier.chemin)}
+          onRetour={() => setFichier(null)}
+        />
       ) : (
         <ul className="lw-entries">
           {entrees?.length === 0 && <li className="lw-entries-empty">Dossier vide.</li>}

@@ -1,13 +1,17 @@
 import { Icon, highlightCode, languageFromPath, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
-import { chargeDesModules, documentApercu, dossierDe } from "../../lib/apercuHtml";
+import { documentApercu } from "../../lib/apercuHtml";
 import { type WorkspaceFile, core, isTauri } from "../../lib/core";
-import { toFrameUrl } from "../../lib/media";
+import { executerFichier, genreExecution } from "../../lib/executer";
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
 
 type Props = {
   sessionId: string;
   fichier: WorkspaceFile;
+  /** Ouvert pour son code : le texte d'abord, même s'il a un aperçu. */
+  source?: boolean;
+  /** Afficher une page HTML dans le navigateur de la conversation. */
+  onApercu: () => void;
   onRetour: () => void;
 };
 
@@ -22,19 +26,6 @@ function renduPour(chemin: string): Rendu {
   return null;
 }
 
-/**
- * La source du cadre d'une page HTML. Donnée en `srcDoc` avec l'adresse de
- * son dossier, elle trouve son CSS, ses scripts et ses images, et garde un
- * `localStorage` (voir `documentApercu`). Une page à modules est servie par
- * son chemin : ses modules exigent l'origine du protocole des fichiers.
- */
-function cadreHtml(contenu: string, fichier: WorkspaceFile): { src: string } | { srcDoc: string } {
-  if (!isTauri || !fichier.absolu) return { srcDoc: documentApercu(contenu) };
-  const url = toFrameUrl(fichier.absolu, `${fichier.taille}-${contenu.length}`);
-  if (chargeDesModules(contenu)) return { src: url };
-  return { srcDoc: documentApercu(contenu, dossierDe(url)) };
-}
-
 function taille(octets: number): string {
   if (octets < 1024) return `${octets} o`;
   if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(1)} Ko`;
@@ -47,19 +38,26 @@ function taille(octets: number): string {
  * du rendu au texte, et à droite le bouton qui l'ouvre dans VS Code — sa
  * flèche propose le terminal, l'explorateur de fichiers et la copie du chemin.
  *
- * Le HTML se rend dans un cadre isolé (scripts permis, jamais la même
- * origine que l'application) ; le Markdown et le SVG s'affichent tels quels.
+ * Une page HTML s'affiche dans le navigateur de la conversation, avec son
+ * dossier (« Aperçu ») ; ici, on lit son code. Hors de l'application de
+ * bureau, elle se rend dans un cadre isolé. Le Markdown et le SVG
+ * s'affichent tels quels.
  */
-export function FileViewer({ sessionId, fichier, onRetour }: Props) {
+export function FileViewer({ sessionId, fichier, source = false, onApercu, onRetour }: Props) {
   const rendu = renduPour(fichier.chemin);
-  const [mode, setMode] = useState<"apercu" | "source">(rendu ? "apercu" : "source");
+  /** Une page HTML se prévisualise dans le navigateur, pas dans ce panneau. */
+  const apercuAilleurs = rendu === "html" && isTauri;
+  const modeInitial = (): "apercu" | "source" =>
+    rendu && !source && !apercuAilleurs ? "apercu" : "source";
+  const [mode, setMode] = useState<"apercu" | "source">(modeInitial);
   const [menu, setMenu] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `modeInitial` ne dépend que du fichier et de `source`, suivis ici.
   useEffect(() => {
-    setMode(renduPour(fichier.chemin) ? "apercu" : "source");
-  }, [fichier.chemin]);
+    setMode(modeInitial());
+  }, [fichier.chemin, source]);
 
   useEffect(() => {
     if (!menu) return;
@@ -86,6 +84,16 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
     setMenu(false);
     try {
       await core.workspaceOpenWith(sessionId, fichier.chemin, action);
+    } catch (e) {
+      signaler(String(e).replace(/^Error:\s*/, ""));
+    }
+  }
+
+  const executable = isTauri && (genreExecution(fichier.chemin) ?? "page") !== "page";
+
+  async function executer() {
+    try {
+      await executerFichier(sessionId, fichier.chemin);
     } catch (e) {
       signaler(String(e).replace(/^Error:\s*/, ""));
     }
@@ -135,7 +143,8 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
                 role="tab"
                 aria-selected={mode === "apercu"}
                 className={mode === "apercu" ? "is-actif" : undefined}
-                onClick={() => setMode("apercu")}
+                title={apercuAilleurs ? "Afficher la page dans le navigateur" : undefined}
+                onClick={() => (apercuAilleurs ? onApercu() : setMode("apercu"))}
               >
                 Aperçu
               </button>
@@ -149,6 +158,22 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
                 Source
               </button>
             </div>
+          )}
+
+          {executable && (
+            <button
+              type="button"
+              className="lw-icon-btn"
+              title={
+                genreExecution(fichier.chemin) === "projet"
+                  ? "Lancer le serveur de développement et afficher l'aperçu"
+                  : "Exécuter dans le terminal du panneau"
+              }
+              aria-label="Exécuter"
+              onClick={() => void executer()}
+            >
+              <Icon name="lightning" size={14} />
+            </button>
           )}
 
           <div className="lw-split" ref={menuRef}>
@@ -223,7 +248,7 @@ export function FileViewer({ sessionId, fichier, onRetour }: Props) {
             className="lw-viewer-frame"
             title={fichier.chemin}
             sandbox="allow-scripts"
-            {...cadreHtml(contenu, fichier)}
+            srcDoc={documentApercu(contenu)}
           />
         ) : (
           <div className="lw-viewer-svg">

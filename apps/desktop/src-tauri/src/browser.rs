@@ -209,6 +209,8 @@ pub fn normaliser(saisie: &str) -> Result<Url, String> {
         let url = Url::parse(s).map_err(|e| format!("Adresse illisible : {e}"))?;
         return match url.scheme() {
             "http" | "https" => Ok(url),
+            // L'aperçu d'une page de la conversation (macOS, Linux).
+            s if s == crate::apercu::SCHEMA => Ok(url),
             autre => Err(format!(
                 "Le navigateur intégré n'ouvre que des pages web (http, https), pas « {autre}: »."
             )),
@@ -330,6 +332,7 @@ fn creer_une_fois(
         // schéma d'application n'est pas suivi.
         .on_navigation(|url| match url.scheme() {
             "http" | "https" | "about" | "blob" | "data" => true,
+            s if s == crate::apercu::SCHEMA => true,
             // Un fichier, seulement dans un dossier ouvert exprès par
             // `browser_open` (les liens d'un site local entre ses pages).
             "file" => fichier_permis(url),

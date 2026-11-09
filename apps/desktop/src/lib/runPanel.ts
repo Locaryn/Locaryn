@@ -19,6 +19,8 @@ export interface TerminalRun {
   lines: string[];
   running: boolean;
   exitCode?: number;
+  /** De quoi l'arrêter : un serveur de développement ne finit pas seul. */
+  stop?: () => void;
 }
 
 export interface WebRun {
@@ -59,8 +61,8 @@ export function clearRun() {
 }
 
 /** Start a terminal run and reveal the panel. */
-export function startTerminalRun(lang: string, command: string, cwd: string) {
-  current = { kind: "terminal", lang, command, cwd, lines: [], running: true };
+export function startTerminalRun(lang: string, command: string, cwd: string, stop?: () => void) {
+  current = { kind: "terminal", lang, command, cwd, lines: [], running: true, stop };
   reveal?.();
   emit();
 }

@@ -976,8 +976,12 @@ export interface PairingCode {
   pairing_ttl_seconds?: number;
   /** Lien `locaryn://connect` pour un PC d'un autre réseau, sans QR. */
   connect_link?: string;
-  /** Pourquoi l'adresse risque de ne pas être joignable de dehors. */
+  /** Pourquoi l'adresse risque de ne pas être joignable de dehors, en une ligne. */
   warning?: string | null;
+  /** Sa cause : `certificat`, `box`, `operateur` ou `port`. */
+  warning_cause?: string | null;
+  /** Le détail technique, à replier. */
+  warning_detail?: string | null;
 }
 
 /**
@@ -2022,6 +2026,11 @@ export interface CoreApi {
   /** Les fichiers de la conversation modifiés depuis `depuisMs`. */
   workspaceRecent(sessionId: string, depuisMs: number): Promise<WorkspaceEntry[]>;
   workspaceRead(sessionId: string, chemin: string): Promise<WorkspaceFile>;
+  /** L'adresse d'aperçu d'une page HTML de la conversation : servie avec son
+   *  dossier, et rien d'autre, au navigateur intégré. */
+  apercuPage(sessionId: string, chemin: string): Promise<string>;
+  /** L'adresse d'aperçu d'un bloc HTML ou SVG d'une réponse. */
+  apercuExtrait(contenu: string, svg: boolean): Promise<string>;
   /** Ouvrir un fichier de la conversation dans VS Code, un terminal ou
    *  l'explorateur de fichiers. */
   workspaceOpenWith(
@@ -2167,11 +2176,15 @@ export interface CoreApi {
   chatMailDeposit(sessionId: string, id: string, text: string): Promise<void>;
   /** Reprend un message remis et pas encore lu ; `false` s'il l'a été. */
   chatMailWithdraw(sessionId: string, id: string): Promise<boolean>;
+  /** `id` : de quoi l'arrêter ensuite avec `runTerminalStop` (serveur de dev). */
   runTerminal(
     command: string,
     cwd: string | null,
     onOutput: (ev: TerminalEvent) => void,
+    id?: string,
   ): Promise<void>;
+  /** Arrêter une commande lancée avec un `id` ; faux si elle était finie. */
+  runTerminalStop(id: string): Promise<boolean>;
   /** Exécute un bloc de code d'une réponse avec l'interprète de son langage.
    *  `wsl` : la distribution WSL où l'exécuter (`""` : celle par défaut). */
   runSnippet(
@@ -2691,6 +2704,8 @@ const tauriCore: CoreApi = {
     invoke<WorkspaceEntry[]>("workspace_list", { sessionId, dossier }),
   workspaceRead: (sessionId, chemin) =>
     invoke<WorkspaceFile>("workspace_read", { sessionId, chemin }),
+  apercuPage: (sessionId, chemin) => invoke<string>("apercu_page", { sessionId, chemin }),
+  apercuExtrait: (contenu, svg) => invoke<string>("apercu_extrait", { contenu, svg }),
   workspaceOpenWith: (sessionId, chemin, action) =>
     invoke<void>("workspace_open_with", { sessionId, chemin, action }),
   workspaceChanges: (sessionId) => invoke<WorkspaceChanges>("workspace_changes", { sessionId }),
@@ -2804,11 +2819,12 @@ const tauriCore: CoreApi = {
     invoke<void>("chat_mail_deposit", { sessionId, id, text }),
   chatMailWithdraw: (sessionId, id) => invoke<boolean>("chat_mail_withdraw", { sessionId, id }),
 
-  runTerminal(command, cwd, onOutput) {
+  runTerminal(command, cwd, onOutput, id) {
     const chan = new Channel<TerminalEvent>();
     chan.onmessage = onOutput;
-    return invoke("run_terminal", { command, cwd, onOutput: chan });
+    return invoke("run_terminal", { command, cwd, id: id ?? null, onOutput: chan });
   },
+  runTerminalStop: (id) => invoke<boolean>("run_terminal_stop", { id }),
   runSnippet(lang, code, cwd, onOutput, wsl) {
     const chan = new Channel<TerminalEvent>();
     chan.onmessage = onOutput;
@@ -4260,6 +4276,12 @@ const demoCore: CoreApi = {
   async workspaceRecent() {
     return [];
   },
+  async apercuPage() {
+    throw new Error("L'aperçu d'une page s'ouvre dans l'application de bureau.");
+  },
+  async apercuExtrait() {
+    throw new Error("L'aperçu d'un bloc s'ouvre dans l'application de bureau.");
+  },
   async workspaceList(_sessionId, dossier) {
     if (dossier === "src") {
       return [
@@ -4802,6 +4824,9 @@ Contenu de démonstration, avec **du gras** et une liste :
     await sleep(120);
     onOutput({ type: "line", stream: "stderr", text: "(no real shell in browser demo)" });
     onOutput({ type: "exit", code: 0 });
+  },
+  async runTerminalStop() {
+    return false;
   },
 
   listProviders: async () => demoProviders,

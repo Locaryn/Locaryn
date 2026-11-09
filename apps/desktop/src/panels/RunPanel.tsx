@@ -103,6 +103,16 @@ export function RunPanel() {
         {run.kind === "terminal" && run.running && (
           <span className="locaryn-run-badge">en cours…</span>
         )}
+        {run.kind === "terminal" && run.running && run.stop && (
+          <button
+            type="button"
+            className="locaryn-run-stop"
+            onClick={run.stop}
+            title="Arrêter le processus"
+          >
+            <Icon name="square" size={12} /> Arrêter
+          </button>
+        )}
         {run.kind === "terminal" && !run.running && (
           <span className={`locaryn-run-badge${run.exitCode ? " locaryn-run-badge-bad" : ""}`}>
             {run.exitCode ? `code ${run.exitCode}` : "terminé"}

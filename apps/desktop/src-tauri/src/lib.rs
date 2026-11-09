@@ -9,6 +9,7 @@
 //! lives in the shell.
 
 mod airllm;
+mod apercu;
 mod app_tools;
 mod browser;
 use locaryn_agent_runtime::approval_gate;
@@ -3031,6 +3032,7 @@ enum TerminalEvent {
 async fn run_terminal(
     command: String,
     cwd: Option<String>,
+    id: Option<String>,
     on_output: Channel<TerminalEvent>,
 ) -> Result<(), String> {
     let mut cmd = if cfg!(windows) {
@@ -3051,7 +3053,52 @@ async fn run_terminal(
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         cmd.current_dir(dir);
     }
-    diffuser_processus(cmd, on_output).await
+    diffuser_processus(cmd, on_output, id).await
+}
+
+/// Les processus lancés par `run_terminal` avec un identifiant : un serveur de
+/// développement ne s'arrête pas seul, il faut pouvoir l'arrêter.
+static ARRETS: std::sync::Mutex<Vec<(String, tokio::sync::oneshot::Sender<()>)>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Arrêter le processus `id` lancé par `run_terminal`. Faux s'il est déjà fini.
+#[tauri::command]
+async fn run_terminal_stop(id: String) -> Result<bool, String> {
+    let arret = {
+        let mut arrets = ARRETS.lock().map_err(|e| e.to_string())?;
+        arrets
+            .iter()
+            .position(|(i, _)| i == &id)
+            .map(|p| arrets.remove(p).1)
+    };
+    Ok(arret.is_some_and(|a| a.send(()).is_ok()))
+}
+
+/// Arrêter un processus et ceux qu'il a lancés (`npm run dev` lance node).
+async fn tuer_arbre(child: &mut tokio::process::Child) {
+    #[cfg(windows)]
+    if let Some(pid) = child.id() {
+        let mut taskkill = tokio::process::Command::new("taskkill");
+        taskkill.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        hide_tokio_console(&mut taskkill);
+        if let Err(e) = taskkill.status().await {
+            tracing::warn!(erreur = %e, "taskkill impossible");
+        }
+    }
+    #[cfg(unix)]
+    if let Some(pid) = child.id() {
+        // Le groupe entier : le processus a été lancé chef de son groupe.
+        if let Err(e) = tokio::process::Command::new("kill")
+            .args(["-TERM", "--", &format!("-{pid}")])
+            .status()
+            .await
+        {
+            tracing::warn!(erreur = %e, "kill impossible");
+        }
+    }
+    if let Err(e) = child.kill().await {
+        tracing::debug!(erreur = %e, "processus déjà terminé");
+    }
 }
 
 /// Exécuter un bloc de code d'une réponse : écrit dans un fichier à la bonne
@@ -3082,7 +3129,7 @@ async fn run_snippet(
             &fichier.to_string_lossy(),
         ))
         .env("WSL_UTF8", "1");
-        let resultat = diffuser_processus(cmd, on_output)
+        let resultat = diffuser_processus(cmd, on_output, None)
             .await
             .map_err(|e| format!("WSL introuvable ou impossible à lancer ({e})."));
         if let Err(e) = std::fs::remove_file(&fichier) {
@@ -3100,7 +3147,7 @@ async fn run_snippet(
     if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         cmd.current_dir(dir);
     }
-    let resultat = diffuser_processus(cmd, on_output).await.map_err(|e| {
+    let resultat = diffuser_processus(cmd, on_output, None).await.map_err(|e| {
         format!(
             "« {} » introuvable ou impossible à lancer ({e}). Installez-le, ou vérifiez qu'il est dans le PATH.",
             interprete.programme
@@ -3116,12 +3163,19 @@ async fn run_snippet(
 async fn diffuser_processus(
     mut cmd: tokio::process::Command,
     on_output: Channel<TerminalEvent>,
+    arret: Option<String>,
 ) -> Result<(), String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     hide_tokio_console(&mut cmd);
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    // Un processus qu'on arrêtera : chef de son groupe, pour l'arrêter avec
+    // ce qu'il a lancé.
+    #[cfg(unix)]
+    if arret.is_some() {
+        cmd.process_group(0);
+    }
 
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
@@ -3148,7 +3202,31 @@ async fn diffuser_processus(
         }
     });
 
-    let status = child.wait().await.map_err(|e| e.to_string())?;
+    let status = match arret {
+        None => child.wait().await,
+        Some(id) => {
+            let (envoi, reception) = tokio::sync::oneshot::channel();
+            if let Ok(mut arrets) = ARRETS.lock() {
+                arrets.retain(|(i, _)| i != &id);
+                arrets.push((id.clone(), envoi));
+            }
+            let fini = tokio::select! {
+                s = child.wait() => Some(s),
+                _ = reception => None,
+            };
+            if let Ok(mut arrets) = ARRETS.lock() {
+                arrets.retain(|(i, _)| i != &id);
+            }
+            match fini {
+                Some(s) => s,
+                None => {
+                    tuer_arbre(&mut child).await;
+                    child.wait().await
+                }
+            }
+        }
+    }
+    .map_err(|e| e.to_string())?;
     let _ = out_task.await;
     let _ = err_task.await;
     let _ = on_output.send(TerminalEvent::Exit {
@@ -7482,6 +7560,13 @@ pub fn run() {
     tracing::info!("Starting Locaryn desktop v{}", env!("CARGO_PKG_VERSION"));
 
     tauri::Builder::default()
+        // L'aperçu d'une page HTML de la conversation, limité à son dossier.
+        .register_asynchronous_uri_scheme_protocol(apercu::SCHEMA, |_ctx, requete, repondeur| {
+            let chemin = requete.uri().path().to_string();
+            drop(tauri::async_runtime::spawn_blocking(move || {
+                repondeur.respond(apercu::repondre(&chemin));
+            }));
+        })
         .on_window_event(|window, event| {
             // Seule la fenêtre principale se range dans la zone de notification ;
             // l'écran de lancement, lui, peut se fermer normalement.
@@ -7572,6 +7657,7 @@ pub fn run() {
             stop_generation,
             compress_chat_context,
             run_terminal,
+            run_terminal_stop,
             list_providers,
             set_active_provider,
             configure_provider,
@@ -7652,6 +7738,8 @@ pub fn run() {
             workspace::workspace_list,
             workspace::workspace_recent,
             workspace::workspace_read,
+            apercu::apercu_page,
+            apercu::apercu_extrait,
             workspace::workspace_open_with,
             workspace::open_path_with,
             workspace::workspace_changes,

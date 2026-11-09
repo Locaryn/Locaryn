@@ -73,7 +73,7 @@ pub struct Modifications {
     pub fichiers: Vec<Modification>,
 }
 
-async fn racine(core: &State<'_, Core>, session_id: Uuid) -> Result<PathBuf, String> {
+pub(crate) async fn racine(core: &State<'_, Core>, session_id: Uuid) -> Result<PathBuf, String> {
     let dossier = crate::session_workspace(core.clone(), session_id).await?;
     Ok(PathBuf::from(dossier))
 }

@@ -29,6 +29,7 @@ import { VoiceNote } from "../components/chat/VoiceNote";
 import { WorkspacePicker, type WorkspaceSelection } from "../components/chat/WorkspacePicker";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
 import { useContextStatus } from "../hooks/useContextStatus";
+import { ouvrirExtrait } from "../lib/apercuPage";
 import { ATTACH_TEXT_EVENT, type AttachedText } from "../lib/attachText";
 import { attentionPourVue } from "../lib/attention";
 import { FREE_CHAT_PATH } from "../lib/constants";
@@ -2500,7 +2501,18 @@ ${d.texte}`
 
   async function handleRunCode(code: string, lang: string) {
     if (["html", "htm", "svg"].includes(lang)) {
-      showWebRun(code, lang === "svg" ? "Aperçu SVG" : "Aperçu HTML");
+      // Une vraie page dans le navigateur : dans un cadre `srcDoc`, la
+      // politique de sécurité de l'application bloquait ses scripts.
+      if (!isTauri) {
+        showWebRun(code, lang === "svg" ? "Aperçu SVG" : "Aperçu HTML");
+        return;
+      }
+      try {
+        await ouvrirExtrait(code, lang === "svg");
+      } catch (e) {
+        console.warn("aperçu du bloc impossible :", e);
+        showWebRun(code, lang === "svg" ? "Aperçu SVG" : "Aperçu HTML");
+      }
       return;
     }
 

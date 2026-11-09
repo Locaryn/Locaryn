@@ -268,25 +268,33 @@ export function openTabFor(id: string | null, kind: WorkspaceKind): void {
   notifier();
 }
 
+/** Un fichier à ouvrir dans l'onglet Fichiers ; `source` force le texte. */
+export interface FichierDemande {
+  chemin: string;
+  source: boolean;
+}
+
 /** Le fichier que l'onglet Fichiers doit ouvrir en arrivant. */
-let fichierEnAttente: string | null = null;
+let fichierEnAttente: FichierDemande | null = null;
 
 /** L'événement que l'onglet Fichiers écoute pour ouvrir un fichier. */
 export const OUVRIR_FICHIER = "locaryn:workspace-open-file";
 
 /**
  * Ouvrir un fichier du dossier de la conversation dans le panneau Fichiers —
- * depuis un fichier que le modèle vient de créer, cité sous sa réponse.
+ * depuis un fichier que le modèle vient de créer, cité sous sa réponse, ou
+ * le code d'une page affichée dans le navigateur (`source`).
  * L'onglet peut ne pas exister encore : le chemin attend qu'il le reprenne.
  */
-export function ouvrirFichier(chemin: string): void {
-  fichierEnAttente = chemin;
+export function ouvrirFichier(chemin: string, source = false): void {
+  const demande: FichierDemande = { chemin, source };
+  fichierEnAttente = demande;
   openTab("files");
-  window.dispatchEvent(new CustomEvent(OUVRIR_FICHIER, { detail: chemin }));
+  window.dispatchEvent(new CustomEvent<FichierDemande>(OUVRIR_FICHIER, { detail: demande }));
 }
 
 /** Le fichier en attente d'ouverture, une seule fois. */
-export function prendreFichierEnAttente(): string | null {
+export function prendreFichierEnAttente(): FichierDemande | null {
   const c = fichierEnAttente;
   fichierEnAttente = null;
   return c;

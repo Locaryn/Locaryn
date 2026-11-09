@@ -1,8 +1,10 @@
 import { Icon } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fichierDeLaPage } from "../../lib/apercuPage";
 import { type BrowserState, core, isTauri } from "../../lib/core";
 import { suivreRecouvrement } from "../../lib/nativeViewCover";
+import { ouvrirFichier } from "../../lib/workspace";
 
 function estUnePage(url: string): boolean {
   return url !== "" && url !== "about:blank";
@@ -76,6 +78,8 @@ export function BrowserTab({ visible, sessionId }: Props) {
   // Avant la première adresse, pas de vue : une page blanche cacherait le mot
   // d'accueil.
   const aUnePage = estUnePage(etat.url);
+  // Une page du dossier de la conversation : son code est à un clic.
+  const fichierSource = fichierDeLaPage(sessionId, etat.url);
   const montrer = visible && !recouvert && aUnePage;
 
   // Montrer, cacher (sans fermer), suivre la place.
@@ -192,6 +196,17 @@ export function BrowserTab({ visible, sessionId }: Props) {
           }}
           onChange={(e) => setSaisie(e.target.value)}
         />
+        {fichierSource && (
+          <button
+            type="button"
+            className="lw-icon-btn"
+            aria-label="Voir le code source"
+            title={`Voir le code de ${fichierSource}`}
+            onClick={() => ouvrirFichier(fichierSource, true)}
+          >
+            <Icon name="code" size={15} />
+          </button>
+        )}
       </form>
       {erreur && (
         <p className="lw-browser-error" role="alert">
