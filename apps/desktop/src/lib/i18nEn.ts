@@ -2642,6 +2642,35 @@ export const EN_EXACT: Record<string, string> = {
   "Une dernière étape": "One last step",
   "Choisissez comment dessiner": "Choose how to draw",
   "Aucun modèle proposé pour l'instant.": "No model suggested yet.",
+  // Rapports anonymes : pouces, erreurs, « J'ai un problème ».
+  "Bonne réponse": "Good answer",
+  "Mauvaise réponse": "Bad answer",
+  "Merci, note envoyée": "Thanks, rating sent",
+  "Non envoyée": "Not sent",
+  "Qu'est-ce qui ne va pas ?": "What's wrong?",
+  "Bug critique": "Critical bug",
+  "Plantage, outil cassé, rien ne marche": "Crash, broken tool, nothing works",
+  "Réponse juste mauvaise": "Just a bad answer",
+  "Fausse, à côté ou inutile": "Wrong, off-topic or useless",
+  "Envoi anonyme : cet échange et les journaux, nettoyés.":
+    "Anonymous: this exchange and the logs, cleaned up.",
+  "Journaux envoyés, merci": "Logs sent, thanks",
+  "Réessayer l'envoi": "Retry sending",
+  "Envoyer les journaux": "Send logs",
+  "Anonyme, sans vos conversations": "Anonymous, without your conversations",
+  "J'ai un problème": "I have a problem",
+  "Signaler un problème": "Report a problem",
+  "Envoyé, merci. On s'en occupe.": "Sent, thanks. We're on it.",
+  "Décrivez ce qui s'est passé": "Describe what happened",
+  "Ce que vous faisiez, ce que vous attendiez, ce qui est arrivé…":
+    "What you were doing, what you expected, what happened…",
+  Gravité: "Severity",
+  "Gêne ou mauvaise réponse": "Annoyance or bad answer",
+  "Joindre le dernier échange de la conversation": "Attach the last exchange of the conversation",
+  "Envoi anonyme : votre description, les journaux du service et du modèle, la version, les morphs et le modèle utilisé. Chemins, e-mails, clés et adresses sont retirés.":
+    "Anonymous: your description, service and model logs, version, morphs and the model in use. Paths, e-mails, keys and addresses are stripped.",
+  "Envoi anonyme à chaque erreur : les journaux du service et du modèle, la version, les morphs installés et le modèle utilisé. Jamais vos conversations, vos fichiers, votre nom, vos chemins, votre adresse IP ni vos clés. Coupé, le bouton « Envoyer les journaux » reste sous les erreurs ; un pouce sur une réponse envoie seulement l'échange noté.":
+    "Anonymous sending on every error: service and model logs, version, installed morphs and the model in use. Never your conversations, files, name, paths, IP address or keys. When off, the “Send logs” button stays under errors; a thumb on an answer sends only the rated exchange.",
 };
 
 export const EN_PATTERNS: Record<string, string> = {

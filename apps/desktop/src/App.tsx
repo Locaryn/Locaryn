@@ -15,6 +15,7 @@ import { NAVIGABLE_VIEWS, isNativeViewAccessible } from "./components/NavDrawer"
 import { Onboarding } from "./components/Onboarding";
 import { ProjectSettingsModal } from "./components/ProjectSettingsModal";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { SignalerProbleme } from "./components/SignalerProbleme";
 import { SupportDialog } from "./components/SupportDialog";
 import { RunningTask, TaskCenter } from "./components/TaskCenter";
 import { TopBar } from "./components/TopBar";
@@ -1830,6 +1831,8 @@ export function App() {
               </button>
             </>
           )}
+          {/* Tout ne se voit pas comme une erreur : la personne décrit, tout part avec. */}
+          <SignalerProbleme />
           {/* Notification center — always visible (downloads, generations, workflows). */}
           <TaskCenter />
         </div>

@@ -6,9 +6,11 @@ import { useI18n } from "../../lib/i18n";
 import { plainSpeedWord } from "../../lib/plainLanguage";
 import { ecrirePressePapiers, ecrirePressePapiersRiche } from "../../lib/pressePapiers";
 import { useSimpleUi } from "../../lib/profile";
+import type { GraviteNote, NoteReponse } from "../../lib/rapports";
 import { splitReasoning } from "../../lib/reasoning";
 import { patcherHtml, useTexteFluide } from "../../lib/texteFluide";
 import { formatRate } from "../SpeedBadge";
+import { NoteReponseBoutons } from "./NoteReponseBoutons";
 import { ReasoningBlock } from "./ReasoningBlock";
 
 /** Un fichier joint à un message, tel qu'il s'affiche dans la bulle. */
@@ -76,6 +78,8 @@ type Props = {
   forged?: boolean;
   /** Quand le message a été envoyé ou la réponse commencée (ISO 8601). */
   at?: string;
+  /** Noter la réponse (assistant, réponse terminée) : envoie le rapport anonyme. */
+  onRate?: (note: NoteReponse, gravite: GraviteNote) => Promise<void>;
 };
 
 /** « 14:03:22 » aujourd'hui, « 15/10 · 14:03:22 » un autre jour. */
@@ -154,6 +158,7 @@ export function MessageBubble({
   forge,
   forged,
   at,
+  onRate,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const simpleUi = useSimpleUi();
@@ -534,6 +539,7 @@ export function MessageBubble({
         >
           {copied ? "Copié ✓" : "Copier"}
         </button>
+        {onRate && <NoteReponseBoutons onRate={onRate} />}
       </div>
       <ReasoningBlock reasoning={reasoning} inProgress={reasoningInProgress} />
       <div

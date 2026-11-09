@@ -16,7 +16,7 @@ import {
 import { TXT, type Texts } from "./onboardingTexts";
 import "../styles/onboarding.css";
 
-type StepId = "language" | "welcome" | "level" | "models" | "needs" | "suggest" | "ready";
+type StepId = "language" | "welcome" | "logs" | "level" | "models" | "needs" | "suggest" | "ready";
 
 interface Props {
   /** Lance le téléchargement d'un modèle (étiquette du catalogue). */
@@ -114,6 +114,63 @@ function WelcomeStep({ tx }: { tx: Texts }) {
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+/** Le partage des journaux : anonyme, ce qui part et ce qui ne part jamais. */
+function LogsStep({
+  tx,
+  picked,
+  onPick,
+}: { tx: Texts; picked: boolean | null; onPick: (share: boolean) => void }) {
+  return (
+    <>
+      <h2 className="lo-ob-title">{tx.logsTitle}</h2>
+      <p className="lo-ob-body">{tx.logsBody}</p>
+      <div className="lo-ob-logs">
+        <div>
+          <strong className="lo-ob-logs-head">{tx.logsSentTitle}</strong>
+          <ul>
+            {tx.logsSent.map((l) => (
+              <li key={l}>
+                <Icon name="check" size={14} />
+                {l}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <strong className="lo-ob-logs-head">{tx.logsNotSentTitle}</strong>
+          <ul>
+            {tx.logsNotSent.map((l) => (
+              <li key={l} data-never>
+                <Icon name="x" size={14} />
+                {l}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="lo-ob-choices">
+        <Choice
+          index={0}
+          selected={picked === true}
+          onClick={() => onPick(true)}
+          icon="shield-check"
+          title={tx.logsAlways}
+          hint={tx.logsAlwaysHint}
+        />
+        <Choice
+          index={1}
+          selected={picked === false}
+          onClick={() => onPick(false)}
+          icon="lock"
+          title={tx.logsNever}
+          hint={tx.logsNeverHint}
+        />
+      </div>
+      <p className="lo-ob-note">{tx.logsNote}</p>
     </>
   );
 }
@@ -297,6 +354,7 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
   const [index, setIndex] = useState(0);
   const [back, setBack] = useState(false);
   const [mode, setMode] = useState<UiMode | null>(null);
+  const [share, setShare] = useState<boolean | null>(null);
   const [needs, setNeeds] = useState<Need[]>([]);
   const [entries, setEntries] = useState<CatalogEntry[]>([]);
   const [plan, setPlan] = useState<TierPlan | null>(null);
@@ -317,7 +375,7 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
     return [...byNeed, ...suggestForHardware(entries, plan?.hardware?.npu_name, byNeed)];
   }, [entries, needs, plan]);
   const steps: StepId[] = useMemo(() => {
-    const base: StepId[] = ["language", "welcome", "level"];
+    const base: StepId[] = ["language", "welcome", "logs", "level"];
     if (mode !== "simple") return base;
     return [
       ...base,
@@ -376,6 +434,14 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
     );
   };
 
+  const pickLogs = (yes: boolean) => {
+    setShare(yes);
+    core
+      .rapportsRegler(yes)
+      .catch((e) => console.error("[Accueil] choix des journaux non enregistré :", e));
+    window.setTimeout(() => go(1), reducedMotion() ? 0 : 650);
+  };
+
   const pickModel = (tier: ModelTier) => {
     const model = plan?.choices.find((m) => m.tier === tier);
     if (model) onInstallModel(model.tag).catch((e) => console.error("[Accueil] installation :", e));
@@ -391,7 +457,7 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
   };
 
   const last = step === "ready";
-  const autoAdvance = step === "level" || step === "models";
+  const autoAdvance = step === "level" || step === "models" || step === "logs";
   // Après le choix du modèle on ne revient pas en arrière : le téléchargement est lancé.
   const canBack = index > 0 && step !== "models" && step !== "needs";
 
@@ -406,6 +472,7 @@ export function Onboarding({ onInstallModel, onInstallExtension }: Props) {
         <div className="lo-ob-step" key={step} data-dir={back ? "back" : "fwd"}>
           {step === "language" && <LanguageStep tx={tx} />}
           {step === "welcome" && <WelcomeStep tx={tx} />}
+          {step === "logs" && <LogsStep tx={tx} picked={share} onPick={pickLogs} />}
           {step === "level" && <LevelStep tx={tx} picked={mode} onPick={pickLevel} />}
           {step === "models" && <ModelsStep tx={tx} lang={lang} plan={plan} onPick={pickModel} />}
           {step === "needs" && (

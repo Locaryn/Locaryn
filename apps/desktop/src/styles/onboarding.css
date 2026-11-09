@@ -675,3 +675,52 @@
   font-size: var(--text-sm);
   line-height: 1.5;
 }
+
+/* Partage des journaux : ce qui part, ce qui ne part jamais, côte à côte. */
+.lo-ob-logs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 4px 0 16px;
+  animation: lo-ob-rise 460ms var(--ease) 120ms both;
+}
+@media (min-width: 640px) {
+  .lo-ob-logs {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.lo-ob-logs > div {
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.lo-ob-logs-head {
+  display: block;
+  margin-bottom: 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.lo-ob-logs ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lo-ob-logs li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.lo-ob-logs li svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--accent);
+}
+.lo-ob-logs li[data-never] svg {
+  color: var(--text-faint);
+}

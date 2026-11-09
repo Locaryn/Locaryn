@@ -17,7 +17,7 @@ export type Need = "browser" | "computer" | "images" | "voice" | "phone";
  * Version des questions de l'accueil. L'augmenter quand on en ajoute : toute
  * personne qui a répondu à une version plus ancienne revoit l'accueil une fois.
  */
-export const ONBOARDING_VERSION = 2;
+export const ONBOARDING_VERSION = 3;
 
 export interface Profile {
   /** L'accueil de la version courante a été traversé. */

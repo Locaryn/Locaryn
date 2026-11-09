@@ -1,0 +1,26 @@
+services:
+  locaryn-logs:
+    image: python:3.12-slim
+    container_name: locaryn-logs
+    restart: unless-stopped
+    user: "1000:1000"
+    working_dir: /app
+    command: ["python", "-u", "/app/app.py"]
+    env_file: .env
+    environment:
+      DB_PATH: /data/logs.db
+      RETENTION_DAYS: "30"
+      MAX_BYTES: "3145728"
+      DB_MAX_BYTES: "209715200"
+      RATE_PER_HOUR: "20"
+    ports:
+      - "127.0.0.1:4510:4510"
+    volumes:
+      - ./app.py:/app/app.py:ro
+      - ./data:/data
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"

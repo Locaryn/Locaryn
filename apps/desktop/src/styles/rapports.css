@@ -1,0 +1,338 @@
+/* Rapports anonymes : pouces des réponses, envoi des journaux sous une erreur. */
+
+/* Pouces : cibles de 40 px, comme les autres actions du message. */
+.locaryn-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.locaryn-note .locaryn-note-btn {
+  min-width: 40px;
+  justify-content: center;
+}
+.locaryn-note-btn[data-done="true"] {
+  color: var(--accent);
+}
+.locaryn-note-btn[data-busy="true"] {
+  animation: locaryn-note-pouls 900ms var(--ease) infinite;
+}
+.locaryn-note-btn:disabled {
+  cursor: default;
+}
+.locaryn-note-btn[data-done="true"] svg {
+  animation: locaryn-note-pop 260ms var(--ease-out);
+}
+/* Une note donnée reste visible, hors survol. */
+.locaryn-msg-meta .locaryn-note[data-noted="true"] .locaryn-note-btn[data-done="true"] {
+  opacity: 1;
+  transform: none;
+}
+.locaryn-note-statut {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.locaryn-note-statut:empty {
+  display: none;
+}
+.locaryn-note-erreur {
+  color: var(--danger, #b4442c);
+}
+
+@keyframes locaryn-note-pouls {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes locaryn-note-pop {
+  0% {
+    transform: scale(0.7);
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Sous une erreur du fil : un bouton discret, cible de 40 px. */
+.locaryn-envoi-journaux {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-family: var(--font-sans, inherit);
+}
+.locaryn-envoi-journaux-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.locaryn-envoi-journaux-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-envoi-journaux-btn:active:not(:disabled) {
+  background: var(--border);
+}
+.locaryn-envoi-journaux-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.locaryn-envoi-journaux-btn:disabled {
+  cursor: default;
+}
+.locaryn-envoi-journaux-btn[data-state="envoi"] {
+  opacity: 0.7;
+}
+.locaryn-envoi-journaux-btn[data-state="envoye"] {
+  color: var(--accent);
+  border-color: transparent;
+}
+.locaryn-envoi-journaux-note {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.locaryn-envoi-journaux-erreur {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--danger, #b4442c);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-note-btn[data-busy="true"],
+  .locaryn-note-btn[data-done="true"] svg {
+    animation: none;
+  }
+}
+
+/* La question après un pouce baissé : ancrée sous les pouces. */
+.locaryn-note {
+  position: relative;
+}
+.locaryn-note-question {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: min(300px, calc(100vw - 32px));
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  animation: lo-rise var(--dur-med) var(--ease-out) both;
+}
+.locaryn-note-question-titre {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+}
+.locaryn-note-choix {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.locaryn-note-choix:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.locaryn-note-choix:active {
+  background: var(--surface-3);
+}
+.locaryn-note-choix:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.locaryn-note-choix span {
+  display: flex;
+  flex-direction: column;
+}
+.locaryn-note-choix strong {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.locaryn-note-choix small,
+.locaryn-note-question-note {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.locaryn-note-question-note {
+  margin-top: var(--space-1);
+}
+
+/* « J'ai un problème » : dans la barre du bas, la cible déborde de la barre
+   (40 px) sans l'épaissir. */
+.locaryn-probleme-declencheur {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  margin-right: var(--space-1);
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.locaryn-probleme-declencheur::before {
+  content: "";
+  position: absolute;
+  inset: -9px -2px;
+}
+.locaryn-probleme-declencheur:hover,
+.locaryn-probleme-declencheur[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-probleme-declencheur:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.locaryn-probleme-panel {
+  font-family: var(--font-sans);
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(560px, calc(100vh - var(--statusbar-h) - 32px));
+}
+.locaryn-probleme-corps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+.locaryn-probleme-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+.locaryn-probleme-texte {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  box-sizing: border-box;
+}
+.locaryn-probleme-texte:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.locaryn-probleme-gravite {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.locaryn-probleme-choix,
+.locaryn-probleme-btn {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.locaryn-probleme-choix:hover,
+.locaryn-probleme-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.locaryn-probleme-choix:active,
+.locaryn-probleme-btn:active:not(:disabled) {
+  background: var(--surface-3);
+}
+.locaryn-probleme-choix:focus-visible,
+.locaryn-probleme-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.locaryn-probleme-choix[data-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-fill);
+}
+.locaryn-probleme-case {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.locaryn-probleme-case input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.locaryn-probleme-info {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+.locaryn-probleme-erreur {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+.locaryn-probleme-merci {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--accent);
+}
+.locaryn-probleme-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.locaryn-probleme-btn-primaire {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.locaryn-probleme-btn-primaire:hover:not(:disabled) {
+  background: var(--accent-600);
+}
+.locaryn-probleme-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

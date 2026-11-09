@@ -21,6 +21,17 @@ export interface Texts {
   welcomeTitle: string;
   welcomeBody: string;
   welcomePoints: { title: string; body: string }[];
+  logsTitle: string;
+  logsBody: string;
+  logsSentTitle: string;
+  logsSent: string[];
+  logsNotSentTitle: string;
+  logsNotSent: string[];
+  logsAlways: string;
+  logsAlwaysHint: string;
+  logsNever: string;
+  logsNeverHint: string;
+  logsNote: string;
   levelTitle: string;
   levelBody: string;
   levelExpert: string;
@@ -73,6 +84,26 @@ const fr: Texts = {
       body: "Images, voix, navigateur… vous ajoutez ce dont vous avez besoin.",
     },
   ],
+  logsTitle: "Nous aider à corriger les bugs ?",
+  logsBody:
+    "Quand quelque chose plante, Locaryn peut envoyer ses journaux à l'équipe. C'est anonyme : aucun compte, aucun nom.",
+  logsSentTitle: "Ce qui est envoyé",
+  logsSent: [
+    "Les journaux du service et du modèle",
+    "La version de l'app, les morphs installés et le modèle utilisé",
+    "L'échange que vous notez d'un pouce, ou décrivez via « J'ai un problème »",
+  ],
+  logsNotSentTitle: "Ce qui n'est jamais envoyé",
+  logsNotSent: [
+    "Vos autres conversations et vos fichiers",
+    "Votre nom, vos chemins, votre adresse IP, vos e-mails",
+    "Vos clés et jetons (retirés avant l'envoi)",
+  ],
+  logsAlways: "Toujours envoyer les journaux automatiquement",
+  logsAlwaysHint: "À chaque erreur, sans rien vous demander.",
+  logsNever: "Je ne veux pas partager",
+  logsNeverHint: "Un petit bouton « Envoyer les journaux » restera sous les erreurs.",
+  logsNote: "Modifiable à tout moment dans Réglages → À propos → Journaux et rapports.",
   levelTitle: "Êtes-vous à l'aise avec l'IA et l'informatique ?",
   levelBody: "Cela nous dit comment vous présenter l'application.",
   levelExpert: "Oui, je m'y connais",
@@ -125,6 +156,26 @@ const en: Texts = {
     { title: "Your conversations stay private", body: "They are kept here and nowhere else." },
     { title: "It can learn new tricks", body: "Images, voice, browser… add what you need." },
   ],
+  logsTitle: "Help us fix bugs?",
+  logsBody:
+    "When something breaks, Locaryn can send its logs to the team. It's anonymous: no account, no name.",
+  logsSentTitle: "What is sent",
+  logsSent: [
+    "Service and model logs",
+    "App version, installed morphs and the model in use",
+    "The exchange you rate with a thumb, or describe through “I have a problem”",
+  ],
+  logsNotSentTitle: "What is never sent",
+  logsNotSent: [
+    "Your other conversations and your files",
+    "Your name, paths, IP address, e-mails",
+    "Your keys and tokens (stripped before sending)",
+  ],
+  logsAlways: "Always send logs automatically",
+  logsAlwaysHint: "On every error, without asking.",
+  logsNever: "I don't want to share",
+  logsNeverHint: "A small “Send logs” button will stay under errors.",
+  logsNote: "You can change this at any time in Settings → About → Logs and reports.",
   levelTitle: "Are you comfortable with AI and computers?",
   levelBody: "This tells us how to present the app to you.",
   levelExpert: "Yes, I know my way around",

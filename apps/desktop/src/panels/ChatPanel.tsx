@@ -2,6 +2,7 @@ import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AttentionStrip } from "../components/AttentionStrip";
+import { EnvoyerJournauxBouton } from "../components/EnvoyerJournauxBouton";
 import { ModalShell } from "../components/ModalShell";
 import { MODELE_ANNULE, MODELE_FORCE, MODELE_REFUSE } from "../components/ModeleTropLourd";
 import { QuickModelSelector } from "../components/QuickModelSelector";
@@ -57,6 +58,15 @@ import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
 import { jouerSon, notifierSysteme } from "../lib/osNotify";
 import { pluginBridge } from "../lib/pluginBridge";
+import {
+  type GraviteNote,
+  type NoteReponse,
+  echangeDe,
+  envoyerNote,
+  etatRapports,
+  publierDernierEchange,
+} from "../lib/rapports";
+import { splitReasoning } from "../lib/reasoning";
 import { appendRunLine, finishTerminalRun, showWebRun, startTerminalRun } from "../lib/runPanel";
 import {
   GABARITS,
@@ -121,7 +131,8 @@ type ChatItem =
       /** La sortie reçue en direct pendant l'exécution. */
       live?: string;
     }
-  | { id: string; kind: "log"; text: string }
+  /** `erreur` : un échec à signaler, avec le bouton « Envoyer les journaux ». */
+  | { id: string; kind: "log"; text: string; erreur?: boolean }
   /** Les fichiers qu'une réponse a créés ou modifiés, cliquables. */
   | { id: string; kind: "fichiers"; fichiers: WorkspaceEntry[] }
   /** Un appel d'outil en train de s'écrire ; remplacé par l'appel complet. */
@@ -683,6 +694,23 @@ export function ChatPanel({
     return () => window.clearInterval(t);
   }, [attente]);
   const [activeModel, setActiveModel] = useState<string>("");
+  // Le modèle utilisé accompagne les rapports anonymes (erreurs, notes).
+  useEffect(() => {
+    if (!activeModel) return;
+    etatRapports(activeModel).catch((e) =>
+      console.warn("[Rapports] modèle non transmis aux rapports :", e),
+    );
+  }, [activeModel]);
+  // Le dernier échange, pour « J'ai un problème » dans la barre du bas.
+  useEffect(() => {
+    const derniere = [...items]
+      .reverse()
+      .find((it) => it.kind === "msg" && it.role === "assistant");
+    publierDernierEchange(
+      derniere ? echangeDe(items, derniere.id, (t) => splitReasoning(t).answer) : null,
+    );
+  }, [items]);
+  useEffect(() => () => publierDernierEchange(null), []);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [quickModelOpen, setQuickModelOpen] = useState(false);
   const [ragOpen, setRagOpen] = useState(false);
@@ -1569,7 +1597,10 @@ ${d.texte}`
       // prefixe « [Log: … ] » convenait a une trace de moteur, pas a un
       // paragraphe qu'on doit lire.
       const texte = ev.level === "error" || ev.level === "warn" ? ev.msg : `[Log: ${ev.msg}]`;
-      setItems((prev) => [...prev, { id: nextId("log"), kind: "log", text: texte }]);
+      setItems((prev) => [
+        ...prev,
+        { id: nextId("log"), kind: "log", text: texte, erreur: ev.level === "error" },
+      ]);
     } else if (ev.type === "context_compaction") {
       // L'animation pendant l'appel au modèle, puis la trace dans le fil.
       if (ev.phase === "started") {
@@ -1949,6 +1980,7 @@ ${d.texte}`
             id: nextId("log"),
             kind: "log",
             text: `La conversation n'a pas pu être créée, votre message n'est pas parti : ${raison}. Il est remis dans le champ.`,
+            erreur: true,
           },
         ]);
         return;
@@ -2193,7 +2225,7 @@ ${d.texte}`
       } else if (runRef.current === run) {
         setItems((prev) => [
           ...prev,
-          { id: nextId("log"), kind: "log", text: `send failed: ${e}` },
+          { id: nextId("log"), kind: "log", text: `send failed: ${e}`, erreur: true },
         ]);
       }
     } finally {
@@ -2977,6 +3009,13 @@ ${preview}`,
     }
   }
 
+  /** Un pouce sur une réponse : l'échange noté part avec les journaux. */
+  async function noterReponse(id: string, note: NoteReponse, gravite: GraviteNote) {
+    const echange = echangeDe(items, id, (t) => splitReasoning(t).answer);
+    if (!echange) throw new Error("Réponse introuvable dans le fil.");
+    await envoyerNote(note, gravite, echange, activeModel);
+  }
+
   const lastUserIdx = (() => {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
@@ -3223,6 +3262,11 @@ ${preview}`,
                       forge={it.forge}
                       forged={it.forged}
                       at={it.at}
+                      onRate={
+                        it.role === "assistant" && !(streaming && i === blocs.length - 1)
+                          ? (note, gravite) => noterReponse(it.id, note, gravite)
+                          : undefined
+                      }
                       canEdit={i === lastUserIdx && !streaming && !it.verification}
                       onEdit={() => void editLastUserMessage()}
                       onRunCode={it.role === "assistant" ? handleRunCode : undefined}
@@ -3276,6 +3320,7 @@ ${preview}`,
               return (
                 <div key={it.id} className="locaryn-chat-log">
                   {it.text}
+                  {it.erreur && <EnvoyerJournauxBouton erreur={it.text} modele={activeModel} />}
                 </div>
               );
             })}

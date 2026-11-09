@@ -141,9 +141,10 @@ export function JournauxSettings() {
             />
           </div>
           <p className="locaryn-field-hint">
-            Un plantage, un moteur qui ne démarre pas ou une conversation qui échoue envoient le
-            résumé de l'erreur et les journaux (masqués) à l'équipe Locaryn, pour corriger plus
-            vite. Jamais vos conversations ni vos fichiers.
+            Envoi anonyme à chaque erreur : les journaux du service et du modèle, la version, les
+            morphs installés et le modèle utilisé. Jamais vos conversations, vos fichiers, votre
+            nom, vos chemins, votre adresse IP ni vos clés. Coupé, le bouton « Envoyer les journaux
+            » reste sous les erreurs ; un pouce sur une réponse envoie seulement l'échange noté.
           </p>
         </div>
       )}
