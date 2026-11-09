@@ -217,6 +217,47 @@ const LANCEURS_DE_PAQUETS: &[&str] = &[
     "uvx", "uv", "npx", "pnpx", "pnpm", "bunx", "bun", "yarn", "pipx", "deno", "docker",
 ];
 
+/// Lire la sortie d'erreur d'un serveur stdio jusqu'à sa fermeture, ligne par
+/// ligne, vers le journal. Un tube que personne ne lit se remplit : le serveur
+/// — ou un processus qu'il a lancé et qui en hérite — se bloque à sa prochaine
+/// écriture, et ses appels ne reviennent plus (#129).
+fn vider_sortie_erreur(command: &str, stderr: tokio::process::ChildStderr) {
+    use tokio::io::AsyncBufReadExt;
+    let serveur = command.to_string();
+    tokio::spawn(async move {
+        let mut lecteur = tokio::io::BufReader::new(stderr);
+        let mut octets = Vec::new();
+        loop {
+            octets.clear();
+            match lecteur.read_until(b'\n', &mut octets).await {
+                Ok(0) => break,
+                Ok(_) => {
+                    // Barres de progression : `\r` sépare les états d'une ligne.
+                    let texte = String::from_utf8_lossy(&octets);
+                    let ligne = texte
+                        .rsplit('\r')
+                        .find(|s| !s.trim().is_empty())
+                        .unwrap_or("");
+                    if !ligne.trim().is_empty() {
+                        tracing::debug!(serveur = %serveur, "{}", tronquer(ligne.trim_end(), 500));
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(serveur = %serveur, erreur = %e, "sortie d'erreur fermée");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn tronquer(texte: &str, max: usize) -> &str {
+    match texte.char_indices().nth(max) {
+        Some((i, _)) => &texte[..i],
+        None => texte,
+    }
+}
+
 fn initialize_timeout(command: &str) -> std::time::Duration {
     // Découpé à la main : sous Linux et macOS, `Path` ne voit pas dans `\` un
     // séparateur, et un chemin Windows écrit dans mcp.json passerait entier.
@@ -313,6 +354,9 @@ impl StdioTransport {
             .stdout
             .take()
             .ok_or_else(|| McpError::Transport("stdout not available".into()))?;
+        if let Some(stderr) = child.stderr.take() {
+            vider_sortie_erreur(command, stderr);
+        }
 
         let mut transport = Self {
             stdin,
@@ -1545,6 +1589,43 @@ pub fn config_path(scope: ExtensionScope, workspace_root: Option<&std::path::Pat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn une_ligne_trop_longue_est_coupee_sur_un_caractere() {
+        assert_eq!(tronquer("dictée", 4), "dict");
+        assert_eq!(tronquer("dictée", 5), "dicté");
+        assert_eq!(tronquer("court", 50), "court");
+    }
+
+    /// Un serveur qui écrit beaucoup sur sa sortie d'erreur doit pouvoir
+    /// continuer : sans lecture, il se bloquait sur un tube plein (#129).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn une_sortie_d_erreur_bavarde_ne_bloque_pas_le_serveur() {
+        use tokio::io::AsyncReadExt;
+        let mut enfant = tokio::process::Command::new("sh")
+            .args(["-c", "head -c 1048576 /dev/zero >&2; echo fini"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("sh se lance");
+        vider_sortie_erreur("sh", enfant.stderr.take().expect("stderr"));
+        let mut sortie = String::new();
+        let lu = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            enfant
+                .stdout
+                .take()
+                .expect("stdout")
+                .read_to_string(&mut sortie),
+        )
+        .await;
+        assert!(
+            lu.is_ok(),
+            "le serveur est resté bloqué sur sa sortie d'erreur"
+        );
+        assert_eq!(sortie.trim(), "fini");
+    }
 
     #[test]
     fn parse_mcp_json_cursor_format() {
