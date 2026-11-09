@@ -973,30 +973,48 @@ pub async fn invoke_extension_tool(
     tool: String,
     args: serde_json::Value,
 ) -> Result<String, String> {
+    // Un bouton d'action enregistre d'abord les réglages, ce qui redémarre le
+    // serveur du plugin : l'outil manque quelques instants. On l'attend au
+    // lieu d'afficher « aucune extension active n'expose ».
+    let limite = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if let Some(client) = client_exposant(&core, &tool).await {
+            let value = client
+                .invoke_tool(&tool, &args)
+                .await
+                .map_err(|error| error.to_string())?;
+            return Ok(value
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| value.to_string()));
+        }
+        if std::time::Instant::now() >= limite {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    }
+    if core.mcp.running.read().await.is_empty() {
+        return Err(raison_absence_serveur(&core).await);
+    }
+    Err(format!("aucune extension active n'expose « {tool} »"))
+}
+
+/// Le serveur MCP en marche qui expose `tool`, s'il y en a un.
+async fn client_exposant(core: &Core, tool: &str) -> Option<Arc<dyn McpClient>> {
     let clients: Vec<Arc<dyn McpClient>> = {
         let running = core.mcp.running.read().await;
         running.values().cloned().collect()
     };
-    if clients.is_empty() {
-        return Err(raison_absence_serveur(&core).await);
-    }
     for client in clients {
-        let Ok(capabilities) = client.discover().await else {
-            continue;
-        };
-        if !capabilities.tools.iter().any(|entry| entry.name == tool) {
-            continue;
+        match client.discover().await {
+            Ok(capabilities) if capabilities.tools.iter().any(|e| e.name == tool) => {
+                return Some(client);
+            }
+            Ok(_) => {}
+            Err(error) => tracing::debug!(%error, "serveur MCP muet à la découverte"),
         }
-        let value = client
-            .invoke_tool(&tool, &args)
-            .await
-            .map_err(|error| error.to_string())?;
-        return Ok(value
-            .as_str()
-            .map(str::to_string)
-            .unwrap_or_else(|| value.to_string()));
     }
-    Err(format!("aucune extension active n'expose « {tool} »"))
+    None
 }
 
 #[tauri::command]
