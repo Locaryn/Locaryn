@@ -1610,6 +1610,41 @@ fn parse_list_devices(texte: &str) -> Option<Vec<String>> {
     )
 }
 
+/// Une puce graphique intégrée au processeur, d'après le nom que Vulkan lui
+/// donne. Elle annonce comme « VRAM » une part de la RAM : `--fit` y pose
+/// alors des couches à côté de la vraie carte, et toute la génération
+/// s'aligne sur elle. Mesuré sur un portable Radeon intégré + RTX 4050 :
+/// 0,7 jeton/s au lieu d'une vingtaine.
+fn puce_integree(peripherique: &str) -> bool {
+    let nom = peripherique.to_lowercase();
+    let intel = nom.contains("intel")
+        && !["arc(tm) a", "arc a", "arc(tm) b", "arc b"]
+            .iter()
+            .any(|d| nom.contains(d));
+    let amd = nom.contains("radeon")
+        && !nom.contains(" rx ")
+        && !nom.contains(" pro ")
+        && (nom.contains("graphics") || nom.contains("vega") || nom.contains("m graphics"));
+    intel || amd || nom.contains("adreno") || nom.contains("llvmpipe")
+}
+
+/// Les périphériques à donner à `--device` : les cartes dédiées seules,
+/// quand la machine en a une à côté d'une puce intégrée. `None` : rien à
+/// imposer (une seule sorte de carte, ou rien que des puces intégrées).
+fn peripheriques_dedies(peripheriques: &[String]) -> Option<String> {
+    let dedies: Vec<&str> = peripheriques
+        .iter()
+        .filter(|p| !puce_integree(p))
+        .filter_map(|p| p.split(':').next())
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .collect();
+    if dedies.is_empty() || dedies.len() == peripheriques.len() {
+        return None;
+    }
+    Some(dedies.join(","))
+}
+
 /// La version de llama.cpp que l'application connaît — le pin unique du
 /// runtime géré (l'écran de réglages l'affiche, l'installateur le télécharge).
 pub const LLAMA_BUILD: &str = "b11003";
@@ -2461,6 +2496,16 @@ async fn spawn_llama_server(
     // Repli processeur : le pilote GPU a fait tomber le moteur au démarrage
     // (OpenCL d'un Snapdragon, Vulkan d'une vieille carte). `--device none`
     // n'initialise aucun périphérique — vérifié sur le `--help` de b11003.
+    if !cpu_only {
+        if let Some(choix) = llama_devices(&bin)
+            .await
+            .as_deref()
+            .and_then(peripheriques_dedies)
+        {
+            tracing::info!(peripheriques = %choix, "puce intégrée écartée : carte dédiée seule");
+            cmd.arg("--device").arg(choix);
+        }
+    }
     if cpu_only {
         cmd.arg("--device").arg("none");
     } else if gpu_layers >= 0 {
@@ -3038,6 +3083,28 @@ mod tests {
 
         let pris = std::io::Error::from(std::io::ErrorKind::AddrInUse);
         assert!(port_error_message(8080, &pris).contains("déjà utilisé"));
+    }
+
+    #[test]
+    fn une_puce_integree_est_ecartee_quand_une_carte_dediee_existe() {
+        let portable = parse_list_devices(
+            "Available devices:\n  Vulkan0: AMD Radeon(TM) Graphics (12190 MiB, 11580 MiB free)\n  Vulkan1: NVIDIA GeForce RTX 4050 Laptop GPU (5920 MiB, 5152 MiB free)\n",
+        )
+        .unwrap_or_default();
+        assert_eq!(peripheriques_dedies(&portable).as_deref(), Some("Vulkan1"));
+
+        let intel = vec![
+            "Vulkan0: Intel(R) UHD Graphics 770 (8000 MiB, 7000 MiB free)".to_string(),
+            "Vulkan1: Intel(R) Arc(TM) A770 Graphics (16000 MiB, 15000 MiB free)".to_string(),
+        ];
+        assert_eq!(peripheriques_dedies(&intel).as_deref(), Some("Vulkan1"));
+
+        // Une carte seule, ou rien que des puces intégrées : rien à imposer.
+        let seule = vec!["Vulkan0: AMD Radeon RX 570 Series (8192 MiB, 7900 MiB free)".to_string()];
+        assert_eq!(peripheriques_dedies(&seule), None);
+        let apu = vec!["Vulkan0: AMD Radeon(TM) Graphics (12190 MiB, 11580 MiB free)".to_string()];
+        assert_eq!(peripheriques_dedies(&apu), None);
+        assert_eq!(peripheriques_dedies(&[]), None);
     }
 
     #[test]
