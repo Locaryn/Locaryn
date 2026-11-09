@@ -19,6 +19,34 @@ pub trait HostTools: Send + Sync {
 
     /// Exécute `tool`. Appelé seulement après la porte d'approbation.
     async fn call(&self, tool: &str, args: &serde_json::Value) -> ToolResult;
+
+    /// La page que la personne a sous les yeux dans le navigateur de l'hôte,
+    /// si elle en a une. Sans elle, « réponds au test » devant un
+    /// questionnaire ouvert faisait chercher des fichiers au modèle.
+    fn page_ouverte(&self) -> Option<PageOuverte> {
+        None
+    }
+}
+
+/// Une page affichée par le navigateur de l'hôte.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageOuverte {
+    pub titre: String,
+    pub url: String,
+}
+
+impl PageOuverte {
+    /// La ligne d'état ajoutée au message : un fait, aucune consigne.
+    pub fn ligne_d_etat(&self) -> String {
+        if self.titre.is_empty() {
+            format!("[Navigateur intégré ouvert : {}]", self.url)
+        } else {
+            format!(
+                "[Navigateur intégré ouvert : « {} » — {}]",
+                self.titre, self.url
+            )
+        }
+    }
 }
 
 /// Enveloppe les outils de l'hôte pour qu'ils traversent une structure

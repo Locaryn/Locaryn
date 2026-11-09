@@ -544,3 +544,91 @@ async fn la_limite_de_60_actions_arrete_la_tache() {
         "exactement 60 envois au modèle"
     );
 }
+
+/// Un hôte dont le navigateur intégré affiche un questionnaire.
+struct NavigateurOuvert;
+
+#[async_trait::async_trait]
+impl locaryn_agent_runtime::host_tools::HostTools for NavigateurOuvert {
+    fn specs(&self) -> Vec<locaryn_agent_runtime::tools::ToolSpec> {
+        ["browser_open", "browser_read", "browser_click"]
+            .iter()
+            .map(|n| locaryn_agent_runtime::tools::ToolSpec {
+                name: (*n).into(),
+                description: "Navigateur intégré.".into(),
+                input_schema: serde_json::json!({ "type": "object", "properties": {} }),
+                risk: locaryn_agent_runtime::tools::Risk::Low,
+                required_permissions: Vec::new(),
+            })
+            .collect()
+    }
+
+    async fn call(&self, tool: &str, _args: &Value) -> locaryn_agent_runtime::tools::ToolResult {
+        locaryn_agent_runtime::tools::ToolResult {
+            ok: true,
+            output: format!("{tool} : rien"),
+            artifact: None,
+        }
+    }
+
+    fn page_ouverte(&self) -> Option<locaryn_agent_runtime::host_tools::PageOuverte> {
+        Some(locaryn_agent_runtime::host_tools::PageOuverte {
+            titre: "Test diagnostic CCNA 1".into(),
+            url: "file:///D:/dl/Diagnostic_CCNA1_B3.html".into(),
+        })
+    }
+}
+
+/// « Réponds au test » devant un questionnaire ouvert : le modèle reçoit les
+/// outils du navigateur et apprend quelle page est affichée, sans que le
+/// message nomme le navigateur.
+#[tokio::test]
+async fn la_page_ouverte_et_ses_outils_partent_avec_le_message() {
+    let (base, vu) = fausse_passerelle().await;
+    let client = reqwest::Client::new();
+    let mut input = entree("qwen3.5-4b");
+    input.message = "réponds à tout le test".into();
+    input.host_tools = Some(locaryn_agent_runtime::host_tools::HostToolsHandle::new(
+        NavigateurOuvert,
+    ));
+
+    let flux = run_openai_tool_loop(&base, &client, &input)
+        .await
+        .expect("le flux doit s'ouvrir");
+    vider(flux).await;
+
+    let body = vu
+        .lock()
+        .expect("verrou")
+        .body
+        .clone()
+        .expect("un corps JSON");
+    let outils: Vec<&str> = body["tools"]
+        .as_array()
+        .expect("des outils")
+        .iter()
+        .filter_map(|t| t["function"]["name"].as_str())
+        .collect();
+    assert!(
+        outils.contains(&"browser_read"),
+        "outils offerts : {outils:?}"
+    );
+    assert!(
+        outils.contains(&"browser_click"),
+        "outils offerts : {outils:?}"
+    );
+    let dernier = body["messages"]
+        .as_array()
+        .and_then(|m| m.last())
+        .and_then(|m| m["content"].as_str())
+        .expect("message de la personne");
+    assert_eq!(
+        dernier,
+        "réponds à tout le test\n\n[Navigateur intégré ouvert : « Test diagnostic CCNA 1 » — file:///D:/dl/Diagnostic_CCNA1_B3.html]"
+    );
+    let systeme = body["messages"][0]["content"].as_str().unwrap_or_default();
+    assert!(
+        !systeme.contains("Diagnostic_CCNA1"),
+        "l'état suit le message, jamais l'invite système"
+    );
+}

@@ -63,11 +63,29 @@ pub struct EtatNavigateur {
     /// compteur avance, plutôt qu'un drapeau qu'il aurait pu lire trop tôt.
     #[serde(skip)]
     pub chargements: u64,
+    /// La vue est à l'écran. Cachée (onglet fermé, autre conversation), sa
+    /// page n'est plus ce que la personne regarde.
+    #[serde(skip)]
+    pub visible: bool,
 }
 
 /// L'état de la vue de chaque conversation.
 static ETATS: LazyLock<Mutex<HashMap<String, EtatNavigateur>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// La page que la personne a sous les yeux dans le navigateur de `session` :
+/// `(titre, adresse)`, ou rien si la vue est cachée ou vide.
+pub fn page_affichee(app: &AppHandle, session: &str) -> Option<(String, String)> {
+    let e = etat(session);
+    if !e.visible || vue(app, session).is_none() {
+        return None;
+    }
+    let url = e.url.trim();
+    if url.is_empty() || url == "about:blank" {
+        return None;
+    }
+    Some((e.title.trim().to_string(), url.to_string()))
+}
 
 fn etat_vide(session: &str) -> EtatNavigateur {
     EtatNavigateur {
@@ -379,6 +397,11 @@ fn aller(app: &AppHandle, session: &str, saisie: &str) -> Result<(), String> {
 
 /// Cacher la vue d'une conversation, sans la fermer : sa page reste chargée.
 fn cacher(app: &AppHandle, session: &str) -> Result<(), String> {
+    if let Ok(mut tous) = ETATS.lock() {
+        if let Some(e) = tous.get_mut(session) {
+            e.visible = false;
+        }
+    }
     match vue(app, session) {
         Some(v) => v.hide().map_err(|e| e.to_string()),
         None => Ok(()),
@@ -428,6 +451,7 @@ pub async fn browser_show(
     }
     poser(&v, cadre)?;
     v.show().map_err(|e| e.to_string())?;
+    modifier(&app, &session, |e| e.visible = true);
     Ok(etat(&session))
 }
 

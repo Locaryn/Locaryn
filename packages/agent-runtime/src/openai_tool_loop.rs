@@ -280,8 +280,13 @@ pub async fn run_openai_tool_loop(
     let impose = |noms: &std::collections::HashSet<String>| {
         input.forced_tools.iter().any(|f| noms.contains(f))
     };
-    let veut_navigateur =
-        recents.iter().any(|d| d.navigateur) || nav_avant || impose(&ecran.navigateur);
+    // Une page ouverte dans le navigateur intégré est sous les yeux de la
+    // personne : « réponds au test » la désigne sans nommer le navigateur.
+    let page_ouverte = input.host_tools.as_ref().and_then(|h| h.0.page_ouverte());
+    let veut_navigateur = recents.iter().any(|d| d.navigateur)
+        || nav_avant
+        || impose(&ecran.navigateur)
+        || page_ouverte.is_some();
     // Le bureau : le dernier avis exprimé l'emporte (« n'utilise pas desktop »
     // le retire), et une page web ne l'appelle pas.
     let veut_bureau = impose(&ecran.bureau)
@@ -398,12 +403,15 @@ pub async fn run_openai_tool_loop(
         Some(ollama_tools_json(&all_tools))
     };
 
+    // L'état de l'hôte suit le message du tour, jamais l'invite système : le
+    // début du prompt reste en cache quand la page change.
+    let message = message_avec_etat(&input.message, page_ouverte.as_ref(), &all_tools, &differes);
     // OpenAI vision: images go in `content` as an array of parts.
     let user_content: serde_json::Value = if input.images.is_empty() {
-        serde_json::json!(input.message)
+        serde_json::json!(message)
     } else {
         let mut parts: Vec<serde_json::Value> =
-            vec![serde_json::json!({ "type": "text", "text": input.message })];
+            vec![serde_json::json!({ "type": "text", "text": message })];
         for img_b64 in &input.images {
             let url = if img_b64.starts_with("data:") {
                 img_b64.clone()
@@ -1897,6 +1905,26 @@ async fn stream_one_round(
     Ok(out)
 }
 
+/// Le message du tour, suivi de la page ouverte dans le navigateur intégré
+/// quand ses outils sont offerts (ou chargeables) : un fait sur l'état de
+/// l'application, aucune consigne. Sans outil pour la lire, la ligne ne
+/// servirait à rien et n'est pas ajoutée.
+fn message_avec_etat(
+    message: &str,
+    page: Option<&crate::host_tools::PageOuverte>,
+    offerts: &[crate::tools::ToolSpec],
+    differes: &[crate::tools::ToolSpec],
+) -> String {
+    let lisible = offerts
+        .iter()
+        .chain(differes)
+        .any(|t| t.name == "browser_read");
+    match page {
+        Some(p) if lisible => format!("{message}\n\n{}", p.ligne_d_etat()),
+        _ => message.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests_annonce {
     #[test]
@@ -1941,6 +1969,47 @@ mod tests_annonce {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn outil(nom: &str) -> crate::tools::ToolSpec {
+        crate::tools::ToolSpec {
+            name: nom.into(),
+            description: String::new(),
+            input_schema: serde_json::json!({ "type": "object" }),
+            risk: crate::tools::Risk::Low,
+            required_permissions: Vec::new(),
+        }
+    }
+
+    /// La page ouverte suit le message seulement si le modèle peut la lire.
+    #[test]
+    fn la_page_ouverte_suit_le_message_quand_on_peut_la_lire() {
+        let page = crate::host_tools::PageOuverte {
+            titre: "Test diagnostic CCNA 1".into(),
+            url: "file:///D:/dl/Diagnostic_CCNA1_B3.html".into(),
+        };
+        let avec = message_avec_etat(
+            "réponds au test",
+            Some(&page),
+            &[outil("browser_read")],
+            &[],
+        );
+        assert_eq!(
+            avec,
+            "réponds au test\n\n[Navigateur intégré ouvert : « Test diagnostic CCNA 1 » — file:///D:/dl/Diagnostic_CCNA1_B3.html]"
+        );
+        // Différé : chargeable, donc la ligne reste utile.
+        let differe = message_avec_etat("x", Some(&page), &[], &[outil("browser_read")]);
+        assert!(differe.contains("Navigateur intégré ouvert"));
+        // Sans outil de lecture, ou sans page : le message tel quel.
+        assert_eq!(
+            message_avec_etat("x", Some(&page), &[outil("read_file")], &[]),
+            "x"
+        );
+        assert_eq!(
+            message_avec_etat("x", None, &[outil("browser_read")], &[]),
+            "x"
+        );
+    }
 
     /// Un moteur qui revient (ici : qui répond 200 sur /health) est attendu ;
     /// un port fermé ne bloque que le délai donné.

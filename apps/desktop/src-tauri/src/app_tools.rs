@@ -10,7 +10,7 @@
 //! « aucun caractère injecté ») : quand s'en servir reste l'affaire du modèle.
 
 use crate::{browser, extensions, mcp_servers, Core};
-use locaryn_agent_runtime::host_tools::HostTools;
+use locaryn_agent_runtime::host_tools::{HostTools, PageOuverte};
 use locaryn_agent_runtime::tools::{Risk, ToolResult, ToolSpec};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
@@ -207,6 +207,11 @@ pub(crate) fn specs_app() -> Vec<ToolSpec> {
 impl HostTools for AppTools {
     fn specs(&self) -> Vec<ToolSpec> {
         specs_app()
+    }
+
+    fn page_ouverte(&self) -> Option<PageOuverte> {
+        browser::page_affichee(&self.app, &self.session.to_string())
+            .map(|(titre, url)| PageOuverte { titre, url })
     }
 
     async fn call(&self, tool: &str, args: &Value) -> ToolResult {
