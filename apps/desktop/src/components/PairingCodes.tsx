@@ -248,10 +248,6 @@ export function PairingCodes() {
         </span>
       </div>
 
-      <p className="locaryn-pairing-intro">
-        Rien à saisir sur le téléphone : le code porte l'adresse et l'empreinte du certificat.
-      </p>
-
       <div key={mode} className={`locaryn-pairing-card locaryn-mode-${sens}`}>
         {/* ── Ce qu'une extension ajoute, c'est elle qui le dessine ──
             L'application ne connait ni son transport ni sa facon d'appairer :
@@ -300,12 +296,7 @@ export function PairingCodes() {
             </button>
             <div className="locaryn-travel-say">
               <p className="locaryn-travel-title">Scannez avec le téléphone</p>
-              <p className="locaryn-travel-sub">
-                Depuis l'application Locaryn du téléphone, bouton « Scanner un QR code » — pas avec
-                l'appareil photo, qui ne sait pas le lire. Le code porte l'adresse et l'empreinte de
-                cette machine ; le code de confirmation n'apparaît ici qu'une fois le téléphone
-                arrivé sur ce serveur.
-              </p>
+              <p className="locaryn-travel-sub">Dans l'app Locaryn : « Scanner un QR code ».</p>
 
               {/* Personne n'a encore scanné : on le dit, plutôt que de laisser
                   un blanc qui passerait pour une panne. */}
@@ -346,7 +337,7 @@ export function PairingCodes() {
                       l'adresse, elle, est constatee. Le dire evite de prendre
                       une etiquette pour une identite. */}
                   <p className="locaryn-pairing-frappe-avis">
-                    Le nom est celui que l'appareil se donne. Si ce n'est pas le vôtre, refusez.
+                    Nom non vérifié : refusez si ce n'est pas le vôtre.
                   </p>
 
                   {appairage.pairing_code && (
@@ -442,10 +433,7 @@ export function PairingCodes() {
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG local
                 dangerouslySetInnerHTML={{ __html: qrGrand }}
               />
-              <p className="locaryn-field-hint">
-                Sur le téléphone, ouvrez Locaryn et touchez « Scanner un QR code ». L'appareil photo
-                du téléphone seul ne sait pas lire ce code.
-              </p>
+              <p className="locaryn-field-hint">Dans l'app Locaryn : « Scanner un QR code ».</p>
             </div>
           </dialog>,
           document.body,

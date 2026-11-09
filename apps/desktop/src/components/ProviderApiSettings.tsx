@@ -75,10 +75,7 @@ export function ProviderApiSettings() {
     <div className="locaryn-field">
       <div className="locaryn-field-label">API fournisseur</div>
       <p className="locaryn-field-hint">
-        Sert les modèles de ce Locaryn à d'autres applications — Cursor, VS Code (Continue, Cline),
-        Claude Code, OpenCode ou un script — par une API compatible OpenAI et Anthropic. Chaque
-        application se connecte avec sa propre clé d'API, qui ne donne accès qu'aux modèles : ni aux
-        conversations, ni aux fichiers, ni aux comptes.
+        Prête vos modèles à d'autres applications (Cursor, VS Code, scripts), chacune avec sa clé.
       </p>
 
       <div className="locaryn-srv-row">
@@ -110,9 +107,7 @@ export function ProviderApiSettings() {
             <Copiable texte={etat.network_url} />
           </div>
           <p className="locaryn-field-hint">
-            L'adresse du réseau est en HTTPS avec le certificat de ce serveur (auto-signé) :
-            l'application qui s'y connecte doit l'accepter. Sur cette machine, l'adresse locale
-            évite cette étape.
+            Sur cette machine, préférez l'adresse locale : pas de certificat à accepter.
           </p>
 
           <button

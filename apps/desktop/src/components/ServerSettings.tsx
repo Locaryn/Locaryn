@@ -168,14 +168,7 @@ export function ServerSettings() {
   return (
     <div className="locaryn-field">
       <div className="locaryn-field-label">Service & Mode Serveur</div>
-      <p className="locaryn-field-hint">
-        Démarre le serveur qui expose les fonctions de Locaryn — modèles, conversations et outils —
-        aux appareils autorisés sur votre réseau (application mobile, interface web).
-      </p>
-      <p className="locaryn-field-hint">
-        Fermer la fenêtre la place dans la zone de notification et conserve le service actif.
-        Utilisez <strong>Quitter Locaryn</strong> depuis l'icône du tray pour arrêter les deux.
-      </p>
+      <p className="locaryn-field-hint">Ouvre Locaryn à vos autres appareils.</p>
 
       {/* Un seul choix : qui peut joindre ce serveur. Chaque palier garde le
           précédent — l'accès par Internet ou par un tunnel sert aussi le
@@ -246,8 +239,7 @@ export function ServerSettings() {
             Définir un identifiant de connexion
           </div>
           <p className="locaryn-field-hint" style={{ marginBottom: 12 }}>
-            Cet identifiant (nom d'utilisateur et mot de passe) sera requis pour vous connecter
-            depuis l'application mobile ou l'interface web.
+            Pour se connecter depuis un autre appareil.
           </p>
 
           <form
@@ -318,8 +310,8 @@ export function ServerSettings() {
             </div>
             <p className="locaryn-field-hint" style={{ margin: 0 }}>
               {aucunAdmin
-                ? "Le premier compte est administrateur : c'est lui qui gère le serveur."
-                : "Un administrateur gère les comptes et crée les clés de l'API fournisseur. Un membre utilise Locaryn, sans plus."}
+                ? "Le premier compte est administrateur."
+                : "Un administrateur gère les comptes et les clés d'API."}
             </p>
 
             {userError && <div className="locaryn-vp-error">{userError}</div>}
@@ -358,7 +350,7 @@ export function ServerSettings() {
             marginBottom: 8,
           }}
         >
-          <div className="locaryn-field-label">Identifiants configurés ({users.length})</div>
+          <div className="locaryn-field-label">Identifiants ({users.length})</div>
           {!showAddUser && (
             <button
               type="button"
@@ -416,7 +408,7 @@ export function ServerSettings() {
                     className="locaryn-btn-ghost"
                     style={{ fontSize: 11, padding: "2px 8px" }}
                     disabled={u.disabled}
-                    title="Un QR à scanner depuis l'app mobile : la session de ce compte s'ouvre sans mot de passe"
+                    title="Ouvre la session de ce compte sur un téléphone, sans mot de passe"
                     onClick={() => setQrCompte({ id: u.id, username: u.username })}
                   >
                     QR de connexion
@@ -449,18 +441,14 @@ export function ServerSettings() {
         <>
           {/* Une seule adresse, celle du mode choisi. Hors du réseau local, elle
               n'est écrite que dans le QR : une IP publique ne s'affiche pas. */}
-          <div className="locaryn-kv-list" style={{ marginTop: 20 }}>
-            {choisi.id === SEGMENT_LOCAL.id && (
+          {choisi.id === SEGMENT_LOCAL.id && (
+            <div className="locaryn-kv-list" style={{ marginTop: 20 }}>
               <div className="locaryn-kv">
-                <span className="locaryn-kv-key">Adresse de connexion (Mobile / Web)</span>
+                <span className="locaryn-kv-key">Adresse de connexion</span>
                 <span className="locaryn-kv-val locaryn-kv-mono">{status.url}</span>
               </div>
-            )}
-            <div className="locaryn-kv">
-              <span className="locaryn-kv-key">Comptes actifs</span>
-              <span className="locaryn-kv-val locaryn-kv-mono">{status.accounts}</span>
             </div>
-          </div>
+          )}
 
           {choisi.id === SEGMENT_LOCAL.id && (
             <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
@@ -481,25 +469,6 @@ export function ServerSettings() {
               </button>
             </div>
           )}
-
-          {status.fingerprint && (
-            <>
-              <div className="locaryn-field-label" style={{ marginTop: 20 }}>
-                Empreinte du certificat
-              </div>
-              <p className="locaryn-field-hint">
-                Le certificat est généré par cette machine, donc les postes clients afficheront un
-                avertissement au premier contact. C'est attendu : cette empreinte est ce qui permet
-                de vérifier qu'ils parlent bien à<em> cet</em> ordinateur et pas à un autre.
-              </p>
-              <div className="locaryn-srv-fingerprint">{status.fingerprint}</div>
-            </>
-          )}
-
-          <p className="locaryn-field-hint" style={{ marginTop: 16 }}>
-            Pour éviter toute configuration à vos collègues, faites-leur scanner le QR du panneau
-            d'appairage : il porte l'adresse et cette empreinte. Il n'y a aucun code à saisir.
-          </p>
         </>
       )}
 
@@ -508,6 +477,35 @@ export function ServerSettings() {
           {error}
         </div>
       )}
+
+      {/* Le technique, pour qui le cherche : rien ici ne sert à agir. */}
+      <details className="locaryn-voir-plus">
+        <summary>Voir plus</summary>
+        <div className="locaryn-kv-list">
+          <div className="locaryn-kv">
+            <span className="locaryn-kv-key">Port</span>
+            <span className="locaryn-kv-val locaryn-kv-mono">{status?.port ?? "—"}</span>
+          </div>
+          {status?.running && (
+            <div className="locaryn-kv">
+              <span className="locaryn-kv-key">Écoute</span>
+              <span className="locaryn-kv-val locaryn-kv-mono">{status.bind}</span>
+            </div>
+          )}
+        </div>
+        {status?.fingerprint && (
+          <>
+            <p className="locaryn-field-hint">
+              Empreinte du certificat : le téléphone la vérifie seul, via le QR.
+            </p>
+            <div className="locaryn-srv-fingerprint">{status.fingerprint}</div>
+          </>
+        )}
+        <p className="locaryn-field-hint">
+          Fermer la fenêtre garde le service actif ; « Quitter Locaryn » dans la zone de
+          notification arrête les deux.
+        </p>
+      </details>
     </div>
   );
 }

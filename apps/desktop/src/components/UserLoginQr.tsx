@@ -141,9 +141,7 @@ export function UserLoginQr({ userId, username, distant, onClose }: Props) {
           </>
         )}
         <p className="locaryn-field-hint">
-          Sur le téléphone, ouvrez Locaryn et touchez « Scanner un QR code » : la session de{" "}
-          <strong>{username}</strong> s'ouvre directement. Nouveau code dans {reste} s ; chaque code
-          ne sert qu'une fois.
+          Dans l'app Locaryn : « Scanner un QR code ». Nouveau code dans {reste} s.
         </p>
         {erreur && qr && <p className="locaryn-vp-error">{erreur}</p>}
       </div>
