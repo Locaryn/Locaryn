@@ -2,18 +2,18 @@ import { Icon } from "@locaryn/ui-core";
 import { open as ouvrirLien } from "@tauri-apps/plugin-shell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { SEGMENT_LOCAL, useSegmentsAppairage } from "../hooks/useSegmentsAppairage";
 import {
-  type InstalledExtension,
   type PairingCode,
   type PairingMode,
   type PairingState,
   type ServerStatus,
   core,
 } from "../lib/core";
+import { annoncerTransport, choisirSegment, useModeAcces } from "../lib/modeAcces";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { LOCAL_STEPS, PairingCheckerboard, PairingStepList, useStepProgress } from "./PairingSteps";
 import { DynamicPluginWidget } from "./extensions/DynamicPluginWidget";
-import { type ResolvedSlotContribution, getSlotContributions } from "./extensions/SlotRegistry";
 
 /**
  * Panneau d'appairage.
@@ -24,29 +24,16 @@ import { type ResolvedSlotContribution, getSlotContributions } from "./extension
  * Un seul mode est natif : le réseau local. L'accès distant et le tunnel ne
  * sont pas des variantes de celui-ci — ce sont d'autres transports, avec
  * d'autres risques, et l'application seule n'en propose aucun. Une extension
- * qui les apporte declare ses propres segments sur le point d'extension
- * ci-dessous : c'est elle qui nomme, decrit et dessine ce qu'elle ajoute.
+ * qui les apporte declare ses propres segments sur le point d'extension :
+ * c'est elle qui nomme, decrit et dessine ce qu'elle ajoute.
+ *
+ * Le mode se choisit une seule fois, dans « Service & Mode Serveur » : ce
+ * panneau le suit et n'a plus de sélecteur à lui.
  */
-const SLOT_APPAIRAGE = "settings.server.pairing";
-
-/** Le segment natif, et le seul que l'application connaisse d'elle-même. */
-const SEGMENT_LOCAL: {
-  id: string;
-  label: string;
-  description: string;
-  apport?: ResolvedSlotContribution;
-} = {
-  id: "local",
-  label: "Réseau local",
-  description:
-    "Pour un téléphone sur le même Wi‑Fi. Le QR porte l'adresse locale et l'empreinte du certificat ; mDNS évite la saisie.",
-};
-
 export function PairingCodes() {
-  const [mode, setMode] = useState<string>("local");
+  const { segment } = useModeAcces();
   const [code, setCode] = useState<PairingCode | null>(null);
   const [server, setServer] = useState<ServerStatus | null>(null);
-  const [extensions, setExtensions] = useState<InstalledExtension[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -65,7 +52,7 @@ export function PairingCodes() {
   }, [enlarged]);
   /** Le sens du glissement : la carte suit la direction du déplacement. */
   const [sens, setSens] = useState<"a" | "b">("a");
-  const precedent = useRef<string>("local");
+  const precedent = useRef<string>(segment);
   /** Un numero de passage : il s'incremente a chaque fabrication demandee. */
   const [passage, setPassage] = useState(0);
   /**
@@ -79,29 +66,11 @@ export function PairingCodes() {
   const [appairage, setAppairage] = useState<PairingState | null>(null);
   const [refus, setRefus] = useState(false);
 
-  // Les segments apportes par une extension. Elle en declare le nom, la
-  // description et le panneau ; l'application ne fait que les ranger a la
-  // suite du sien.
-  const segments = useMemo<
-    Array<{
-      id: string;
-      label: string;
-      description: string;
-      apport?: ResolvedSlotContribution;
-    }>
-  >(
-    () => [
-      SEGMENT_LOCAL,
-      ...getSlotContributions(extensions, SLOT_APPAIRAGE).map((c) => ({
-        id: `${c.extensionId}:${c.id}`,
-        label: c.label ?? c.id,
-        description: c.hint ?? "",
-        apport: c,
-      })),
-    ],
-    [extensions],
-  );
-  const choisi = segments.find((m) => m.id === mode) ?? SEGMENT_LOCAL;
+  // Les segments apportes par une extension. Un segment memorise dont
+  // l'extension a disparu (ou n'est pas encore lue) retombe sur le local.
+  const segments = useSegmentsAppairage();
+  const choisi = segments.find((m) => m.id === segment) ?? SEGMENT_LOCAL;
+  const mode = choisi.id;
   const natif = choisi.apport === undefined;
   /** Le QR montré en plein écran : celui du réseau local, ou celui d'un panneau. */
   const qrGrand = natif ? code?.qr_svg : qrApporte;
@@ -140,26 +109,6 @@ export function PairingCodes() {
       window.clearInterval(t);
     };
   }, [code?.qr_svg]);
-
-  useEffect(() => {
-    let annule = false;
-    const lire = () => {
-      core
-        .listExtensions()
-        .then((l) => {
-          if (!annule) setExtensions(l);
-        })
-        .catch(() => {
-          if (!annule) setExtensions([]);
-        });
-    };
-    lire();
-    window.addEventListener("locaryn:extensions-changed", lire);
-    return () => {
-      annule = true;
-      window.removeEventListener("locaryn:extensions-changed", lire);
-    };
-  }, []);
 
   const refreshAvailability = useCallback(async () => {
     try {
@@ -207,16 +156,22 @@ export function PairingCodes() {
       setError(null);
       return;
     }
+    annoncerTransport("local");
     void charger();
   }, [natif, server?.running, charger]);
 
-  // Le segment choisi vient de disparaitre — l'extension a ete desactivee ou
-  // retiree. On revient au seul mode que l'application tient d'elle-meme.
+  // Le mode a changé (ici ou dans la colonne de gauche) : la carte glisse dans
+  // le sens du déplacement, et l'ancien code s'efface.
   useEffect(() => {
-    if (segments.some((m) => m.id === mode)) return;
-    setMode("local");
-    precedent.current = "local";
-  }, [segments, mode]);
+    if (precedent.current === mode) return;
+    const from = segments.findIndex((x) => x.id === precedent.current);
+    const to = segments.findIndex((x) => x.id === mode);
+    precedent.current = mode;
+    setSens(to >= from ? "a" : "b");
+    setError(null);
+    setEnlarged(false);
+    setQrApporte(null);
+  }, [mode, segments]);
 
   /**
    * Ce que l'hote prete au panneau d'une extension.
@@ -230,7 +185,13 @@ export function PairingCodes() {
   const contexteAppairage = useMemo(
     () => ({
       serveurActif: Boolean(server?.running),
-      demanderCode: (mode: string, url?: string) => core.pairingCode(mode as PairingMode, url),
+      // Le transport demandé est retenu : le QR de connexion d'un compte
+      // reprend le même, sans connaître l'extension.
+      demanderCode: async (mode: string, url?: string) => {
+        const c = await core.pairingCode(mode as PairingMode, url);
+        annoncerTransport(mode as PairingMode, url);
+        return c;
+      },
       // Le partage sortant appartient au service, pas au panneau : il doit
       // survivre a la fermeture de la fenetre, et c'est le service qui produit
       // ensuite le code correspondant. Une extension qui ouvrirait le sien
@@ -272,20 +233,8 @@ export function PairingCodes() {
     const cible =
       segments.find((m) => m.apport?.id === id && m.apport.extensionId === meme) ??
       segments.find((m) => m.apport?.id === id);
-    if (cible) choisir(cible.id);
+    if (cible) choisirSegment(cible.id);
   };
-
-  function choisir(next: string) {
-    const from = segments.findIndex((x) => x.id === precedent.current);
-    const to = segments.findIndex((x) => x.id === next);
-    precedent.current = next;
-    setSens(to >= from ? "a" : "b");
-    setMode(next);
-    setError(null);
-    setCode(null);
-    setEnlarged(false);
-    setQrApporte(null);
-  }
 
   return (
     <aside className="locaryn-pairing-panel" aria-label="Appairage par QR">
@@ -295,7 +244,7 @@ export function PairingCodes() {
           <h3 className="locaryn-pairing-title">Code QR à faire scanner</h3>
         </div>
         <span className={`locaryn-pairing-status${server?.running ? " is-on" : ""}`}>
-          {server?.running ? "Serveur actif" : "Serveur arrêté"}
+          {server?.running ? choisi.label : "Désactivé"}
         </span>
       </div>
 
@@ -303,27 +252,7 @@ export function PairingCodes() {
         Rien à saisir sur le téléphone : le code porte l'adresse et l'empreinte du certificat.
       </p>
 
-      {/* Un seul segment ne se choisit pas : sans extension installee, le
-          selecteur n'offrirait qu'une option deja active. */}
-      {segments.length > 1 && (
-        <div className="locaryn-segmented locaryn-pairing-segments" role="group">
-          {segments.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={`locaryn-segment${mode === m.id ? " locaryn-segment-on" : ""}`}
-              aria-pressed={mode === m.id}
-              onClick={() => choisir(m.id)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div key={mode} className={`locaryn-pairing-card locaryn-mode-${sens}`}>
-        <p className="locaryn-pairing-description">{choisi.description}</p>
-
         {/* ── Ce qu'une extension ajoute, c'est elle qui le dessine ──
             L'application ne connait ni son transport ni sa facon d'appairer :
             elle lui prete la place et le style de la carte, rien de plus. */}
@@ -339,8 +268,8 @@ export function PairingCodes() {
           <div className="locaryn-pairing-notice">
             <Icon name="server" size={15} />
             <span>
-              Activez <strong>Serveur actif</strong> dans la colonne de gauche. Le code apparaîtra
-              dès que le service sera en écoute.
+              Choisissez un mode d'accès dans <strong>Service & Mode Serveur</strong>. Le code
+              apparaîtra dès que le service sera en écoute.
             </span>
           </div>
         )}

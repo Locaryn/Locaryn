@@ -478,8 +478,22 @@ pub struct LoginQr {
 }
 
 #[tauri::command]
-pub async fn user_login_qr(user_id: String) -> Result<LoginQr, String> {
-    let req = daemon(&format!("/v1/users/{user_id}/login-qr?mode=local")).await?;
+pub async fn user_login_qr(
+    user_id: String,
+    mode: Option<String>,
+    url: Option<String>,
+) -> Result<LoginQr, String> {
+    // Le même transport que le code d'appairage : local, public ou tunnel.
+    let mode = mode
+        .as_deref()
+        .filter(|m| matches!(*m, "local" | "public" | "tunnel"))
+        .unwrap_or("local");
+    let mut route = format!("/v1/users/{user_id}/login-qr?mode={mode}");
+    if let Some(u) = url.as_deref().filter(|u| !u.trim().is_empty()) {
+        route.push_str("&url=");
+        route.push_str(&urlencode(u.trim()));
+    }
+    let req = daemon(&route).await?;
     let resp = req.send().await.map_err(|_| not_running())?;
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;

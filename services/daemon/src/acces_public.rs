@@ -105,9 +105,15 @@ fn avertir(
     refus: Option<&port_forward::ForwardError>,
     operateur: bool,
 ) -> Avertissement {
+    // L'adresse locale, pas la publique : c'est elle que la box doit viser, et
+    // elle change avec le réseau (une redirection posée vers l'ancienne ne
+    // mène plus ici).
+    let cible = port_forward::local_ipv4()
+        .map(|ip| format!("cette machine ({ip})"))
+        .unwrap_or_else(|| "cette machine".into());
     let redirection = format!(
         "Le code ne fonctionne de l'extérieur que si la box redirige le port {port} (TCP) \
-         vers cette machine."
+         vers {cible}. Une redirection posée vers une ancienne adresse locale ne mène plus ici."
     );
     if operateur {
         return Avertissement {

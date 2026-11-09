@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
+import { SEGMENT_LOCAL, useSegmentsAppairage } from "../hooks/useSegmentsAppairage";
 import { type ServerStatus, type ServerUserSummary, core } from "../lib/core";
+import { confirmer } from "../lib/dialog";
+import { choisirSegment, useModeAcces } from "../lib/modeAcces";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { UserLoginQr } from "./UserLoginQr";
 
-import { confirmer } from "../lib/dialog";
+/** Le serveur arrêté : pas un segment d'appairage, l'état du service. */
+const OFF = "off";
+
 /**
  * Share this machine's models with other people.
  *
@@ -21,6 +26,8 @@ export function ServerSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const segments = useSegmentsAppairage();
+  const { segment } = useModeAcces();
 
   // Modal d'ajout d'identifiant / configuration initiale
   const [showAddUser, setShowAddUser] = useState(false);
@@ -142,6 +149,21 @@ export function ServerSettings() {
   }
 
   const blocked = Boolean(status?.blocker);
+  const bloqueSansCompte = blocked && !status?.running && (status?.accounts ?? 0) > 0;
+  const choisi = segments.find((m) => m.id === segment) ?? SEGMENT_LOCAL;
+  const actif = status?.running ? choisi.id : OFF;
+  const quiPeutSeConnecter = !status?.running
+    ? "Personne : le serveur est arrêté, Locaryn reste sur cette machine."
+    : choisi.description;
+
+  async function choisirMode(id: string) {
+    if (id === OFF) {
+      await toggle(false);
+      return;
+    }
+    choisirSegment(id);
+    if (!status?.running) await toggle(true);
+  }
 
   return (
     <div className="locaryn-field">
@@ -155,17 +177,37 @@ export function ServerSettings() {
         Utilisez <strong>Quitter Locaryn</strong> depuis l'icône du tray pour arrêter les deux.
       </p>
 
-      <div className="locaryn-srv-row">
-        <label className="locaryn-srv-toggle">
-          <input
-            type="checkbox"
-            checked={Boolean(status?.running)}
-            disabled={busy || (blocked && !status?.running && (status?.accounts ?? 0) > 0)}
-            onChange={(e) => toggle(e.target.checked)}
-          />
-          <span>{busy ? "…" : status?.running ? "Serveur actif" : "Serveur arrêté"}</span>
-        </label>
-        {status?.running && <span className="locaryn-srv-live">en écoute</span>}
+      {/* Un seul choix : qui peut joindre ce serveur. Chaque palier garde le
+          précédent — l'accès par Internet ou par un tunnel sert aussi le
+          réseau local. */}
+      <div
+        className="locaryn-segmented locaryn-srv-modes"
+        role="radiogroup"
+        aria-label="Mode d'accès"
+      >
+        {[{ id: OFF, label: "Désactivé" }, ...segments].map((m) => {
+          const on = actif === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              className={`locaryn-segment${on ? " locaryn-segment-on" : ""}`}
+              disabled={busy || (m.id !== OFF && bloqueSansCompte)}
+              onClick={() => void choisirMode(m.id)}
+            >
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="locaryn-srv-row" aria-live="polite">
+        <span
+          className={`locaryn-srv-dot${status?.running ? " is-on" : busy ? " is-busy" : ""}`}
+          aria-hidden
+        />
+        <span className="locaryn-srv-who">{busy ? "Un instant…" : quiPeutSeConnecter}</span>
       </div>
 
       {status?.blocker && !status.running && (status.accounts ?? 0) === 0 && (
@@ -398,40 +440,47 @@ export function ServerSettings() {
         <UserLoginQr
           userId={qrCompte.id}
           username={qrCompte.username}
+          distant={choisi.id === SEGMENT_LOCAL.id ? null : choisi.label}
           onClose={() => setQrCompte(null)}
         />
       )}
 
       {status?.running && (
         <>
+          {/* Une seule adresse, celle du mode choisi. Hors du réseau local, elle
+              n'est écrite que dans le QR : une IP publique ne s'affiche pas. */}
           <div className="locaryn-kv-list" style={{ marginTop: 20 }}>
-            <div className="locaryn-kv">
-              <span className="locaryn-kv-key">Adresse de connexion (Mobile / Web)</span>
-              <span className="locaryn-kv-val locaryn-kv-mono">{status.url}</span>
-            </div>
+            {choisi.id === SEGMENT_LOCAL.id && (
+              <div className="locaryn-kv">
+                <span className="locaryn-kv-key">Adresse de connexion (Mobile / Web)</span>
+                <span className="locaryn-kv-val locaryn-kv-mono">{status.url}</span>
+              </div>
+            )}
             <div className="locaryn-kv">
               <span className="locaryn-kv-key">Comptes actifs</span>
               <span className="locaryn-kv-val locaryn-kv-mono">{status.accounts}</span>
             </div>
           </div>
 
-          <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              onClick={async () => {
-                try {
-                  await ecrirePressePapiers(status.url);
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1500);
-                } catch {
-                  /* clipboard unavailable — the address is visible above */
-                }
-              }}
-            >
-              {copied ? "Adresse copiée" : "Copier l'adresse"}
-            </button>
-          </div>
+          {choisi.id === SEGMENT_LOCAL.id && (
+            <div className="locaryn-field-actions" style={{ marginTop: 10 }}>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                onClick={async () => {
+                  try {
+                    await ecrirePressePapiers(status.url);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1500);
+                  } catch (e) {
+                    setError(`Presse-papiers indisponible : ${String(e)}`);
+                  }
+                }}
+              >
+                {copied ? "Adresse copiée" : "Copier l'adresse"}
+              </button>
+            </div>
+          )}
 
           {status.fingerprint && (
             <>

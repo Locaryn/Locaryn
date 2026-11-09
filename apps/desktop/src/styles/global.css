@@ -10274,6 +10274,58 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-srv-toggle input:disabled + span {
   color: var(--text-faint);
 }
+/* Le sélecteur du mode d'accès : toute la largeur, un segment par palier. */
+.locaryn-srv-modes {
+  display: flex;
+  width: 100%;
+  margin-top: var(--space-3);
+}
+.locaryn-srv-modes .locaryn-segment {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: 40px;
+}
+.locaryn-segment:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+/* Le voyant : éteint, en cours, en écoute. */
+.locaryn-srv-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition: background var(--dur-fast) var(--ease);
+}
+.locaryn-srv-dot.is-on {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+}
+.locaryn-srv-dot.is-busy {
+  background: var(--text-dim);
+  animation: lo-srv-pulse 1s var(--ease) infinite alternate;
+}
+@keyframes lo-srv-pulse {
+  to {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-srv-dot.is-busy {
+    animation: none;
+  }
+}
+.locaryn-srv-who {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+/* Le choix d'adresse au-dessus du QR de connexion d'un compte. */
+.locaryn-login-qr-voies {
+  display: flex;
+  align-self: center;
+}
 .locaryn-srv-live {
   font-size: var(--text-xs);
   color: var(--accent);

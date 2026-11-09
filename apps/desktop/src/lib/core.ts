@@ -2233,7 +2233,8 @@ export interface CoreApi {
   restartServer(): Promise<ServerStatus>;
   listServerUsers(): Promise<ServerUserSummary[]>;
   /** Le QR de connexion d'un compte : code temporaire, sans mot de passe. */
-  userLoginQr(userId: string): Promise<UserLoginQr>;
+  /** `mode` : le transport du QR (local par défaut), `url` : son adresse ou son port. */
+  userLoginQr(userId: string, mode?: PairingMode, url?: string): Promise<UserLoginQr>;
   /** Suivre la réponse en cours d'une conversation servie par le service local
    *  (lancée depuis le téléphone). `false` si aucune ne tourne. */
   watchLiveSession(sessionId: string, onEvent: (ev: StreamEvent) => void): Promise<boolean>;
@@ -2890,7 +2891,8 @@ const tauriCore: CoreApi = {
     invoke<ServerStatus>("set_server_mode", { args: { enabled, port: port ?? null } }),
   restartServer: () => invoke<ServerStatus>("restart_server"),
   listServerUsers: () => invoke<ServerUserSummary[]>("list_server_users"),
-  userLoginQr: (userId) => invoke<UserLoginQr>("user_login_qr", { userId }),
+  userLoginQr: (userId, mode, url) =>
+    invoke<UserLoginQr>("user_login_qr", { userId, mode: mode ?? null, url: url ?? null }),
   watchLiveSession: (sessionId, onEvent) => {
     const chan = new Channel<StreamEvent>();
     chan.onmessage = onEvent;

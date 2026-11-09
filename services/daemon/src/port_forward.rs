@@ -66,7 +66,7 @@ impl std::error::Error for ForwardError {}
 
 /// The address of this machine on the local network, which is what the router
 /// must forward to.
-fn local_ipv4() -> Option<std::net::Ipv4Addr> {
+pub(crate) fn local_ipv4() -> Option<std::net::Ipv4Addr> {
     // Connecting a UDP socket sends nothing; it only asks the OS which
     // interface it would route from.
     let sock = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;

@@ -2,10 +2,13 @@ import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { type UserLoginQr as LoginQr, core } from "../lib/core";
+import { useModeAcces } from "../lib/modeAcces";
 
 type Props = {
   userId: string;
   username: string;
+  /** Le nom du mode d'accès choisi quand ce n'est pas le réseau local. */
+  distant?: string | null;
   onClose: () => void;
 };
 
@@ -18,21 +21,30 @@ const RENOUVELLEMENT_S = 150;
  * téléphone : on scanne, la session de ce compte s'ouvre, sans identifiant ni
  * mot de passe. Le code change toutes les minutes et ne sert qu'une fois ; il
  * s'affiche aussi en clair pour une saisie à la main.
+ *
+ * Il porte l'adresse du mode d'accès choisi : celle que le panneau
+ * d'appairage vient d'obtenir (Internet, tunnel), ou l'adresse locale. Les
+ * deux valent quand le serveur sort du réseau local : un petit choix les
+ * départage.
  */
-export function UserLoginQr({ userId, username, onClose }: Props) {
+export function UserLoginQr({ userId, username, distant, onClose }: Props) {
+  const { transport } = useModeAcces();
   const [qr, setQr] = useState<LoginQr | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [reste, setReste] = useState(RENOUVELLEMENT_S);
+  const deuxVoies = Boolean(distant && transport);
+  const [voie, setVoie] = useState<"distant" | "local">("distant");
+  const cible = deuxVoies && voie === "distant" ? transport : null;
 
   const renouveler = useCallback(async () => {
     try {
-      setQr(await core.userLoginQr(userId));
+      setQr(await core.userLoginQr(userId, cible?.mode ?? "local", cible?.url));
       setErreur(null);
       setReste(RENOUVELLEMENT_S);
     } catch (e) {
       setErreur(String(e).replace(/^Error:\s*/, ""));
     }
-  }, [userId]);
+  }, [userId, cible?.mode, cible?.url]);
 
   useEffect(() => {
     void renouveler();
@@ -77,6 +89,35 @@ export function UserLoginQr({ userId, username, onClose }: Props) {
             <Icon name="close" size={16} />
           </button>
         </div>
+        {deuxVoies && (
+          <div className="locaryn-segmented locaryn-login-qr-voies" role="radiogroup">
+            {(
+              [
+                ["distant", distant],
+                ["local", "Réseau local"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={voie === id}
+                className={`locaryn-segment${voie === id ? " locaryn-segment-on" : ""}`}
+                onClick={() => {
+                  setQr(null);
+                  setVoie(id);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {distant && !transport && (
+          <p className="locaryn-field-hint">
+            Le code {distant} n'est pas encore prêt : ce QR porte l'adresse du réseau local.
+          </p>
+        )}
         {qr?.qr_svg ? (
           <div
             className="locaryn-qr-overlay-code"
