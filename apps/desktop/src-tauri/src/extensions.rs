@@ -1160,6 +1160,10 @@ async fn installer_ici(
         .await
         .map_err(|e| e.to_string())?;
 
+    if remplacer_les_anciens_noms(core, &record, &outcome, workspace_root).await {
+        reload(core).await?;
+    }
+
     // Les figures du dépôt entrent en base dès l'installation : l'écran
     // Figures les montre aussitôt, et réinstaller les met à jour sans
     // toucher à celles écrites à la main.
@@ -1345,7 +1349,7 @@ async fn reinstall_from_source(
             .map(|(p, _)| p)
             .collect();
 
-    let updated = core
+    let mut updated = core
         .storage
         .extensions
         .upsert(NewExtension {
@@ -1361,6 +1365,14 @@ async fn reinstall_from_source(
         })
         .await
         .map_err(|e| e.to_string())?;
+
+    // Une mise à jour peut changer le nom : la nouvelle ligne reprend alors
+    // l'état de l'ancienne, qui disparaît.
+    if remplacer_les_anciens_noms(core, &updated, &outcome, None).await {
+        if let Ok(Some(relue)) = core.storage.extensions.get(updated.id).await {
+            updated = relue;
+        }
+    }
 
     let importees = locaryn_storage::figures_import::importer(
         &core.storage.figures,
@@ -1393,6 +1405,90 @@ async fn reinstall_from_source(
         .into_iter()
         .find(|e| e.id == updated.id)
         .ok_or_else(|| "extension introuvable après mise à jour".to_string())
+}
+
+/// Retire les extensions que la nouvelle déclare remplacer (`replaces` du
+/// manifeste) : un morph renommé s'installait à côté de son ancienne copie,
+/// sous l'ancien nom, au lieu de la remplacer (#135). La nouvelle reprend
+/// l'activation, les permissions accordées qu'elle demande encore et les
+/// réglages (`.data/`). Vrai si une ancienne copie a été retirée.
+async fn remplacer_les_anciens_noms(
+    core: &Core,
+    nouvelle: &locaryn_storage::ExtensionRecord,
+    outcome: &locaryn_extensions::InstallOutcome,
+    workspace_root: Option<&Path>,
+) -> bool {
+    let mut retiree = false;
+    for ancien in &outcome.manifest.replaces {
+        if *ancien == outcome.manifest.name {
+            continue;
+        }
+        let vieille = match core
+            .storage
+            .extensions
+            .get_by_name(ancien, nouvelle.scope)
+            .await
+        {
+            Ok(Some(v)) => v,
+            Ok(None) => continue,
+            Err(e) => {
+                tracing::warn!(ancien, erreur = %e, "ancienne extension illisible : non remplacée");
+                continue;
+            }
+        };
+        reprendre_l_ancienne(core, nouvelle, &vieille, &outcome.root).await;
+        stop_plugin_mcp(core, &vieille.name).await;
+        let dossier = plugin_root(&vieille.manifest_path);
+        if let Some(d) = &dossier {
+            liberer_dossier(d);
+        }
+        if let Err(e) = core.storage.extensions.delete(vieille.id).await {
+            tracing::warn!(ancien, erreur = %e, "ancienne extension non retirée de la base");
+            continue;
+        }
+        if let Some(d) = &dossier {
+            if !locaryn_extensions::remove_files(d, vieille.scope, workspace_root) {
+                tracing::warn!(path = %d.display(), "fichiers de l'ancienne extension non supprimés");
+            }
+        }
+        tracing::info!(ancien, nouveau = %outcome.manifest.name, "extension renommée : ancienne copie remplacée");
+        retiree = true;
+    }
+    retiree
+}
+
+/// Ce que la nouvelle copie reprend de l'ancienne : réglages, permissions
+/// accordées, activation.
+async fn reprendre_l_ancienne(
+    core: &Core,
+    nouvelle: &locaryn_storage::ExtensionRecord,
+    vieille: &locaryn_storage::ExtensionRecord,
+    racine_neuve: &Path,
+) {
+    if let Some(d) = plugin_root(&vieille.manifest_path) {
+        locaryn_extensions::install::garder_les_reglages(&d, racine_neuve);
+    }
+    let mut accordees = nouvelle.granted.clone();
+    for p in &vieille.granted {
+        if nouvelle.requested.contains(p) && !accordees.contains(p) {
+            accordees.push(p.clone());
+        }
+    }
+    if accordees.len() > nouvelle.granted.len() {
+        if let Err(e) = core
+            .storage
+            .extensions
+            .set_granted(nouvelle.id, &accordees)
+            .await
+        {
+            tracing::warn!(nom = %nouvelle.name, erreur = %e, "permissions de l'ancienne copie non reprises");
+        }
+    }
+    if vieille.enabled && !nouvelle.enabled {
+        if let Err(e) = core.storage.extensions.set_enabled(nouvelle.id, true).await {
+            tracing::warn!(nom = %nouvelle.name, erreur = %e, "activation de l'ancienne copie non reprise");
+        }
+    }
 }
 
 /// Un seul reload du runtime des extensions, après la mise à jour en lot.

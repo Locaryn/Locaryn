@@ -612,6 +612,69 @@ async fn persist_removed(state: &DaemonState, name: &str) {
     }
 }
 
+/// Retire les extensions que la nouvelle déclare remplacer (`replaces` du
+/// manifeste) : un morph renommé s'installait à côté de son ancienne copie
+/// au lieu de la remplacer (Locaryn/Locaryn#135). La nouvelle reprend les
+/// permissions accordées qu'elle demande encore, et l'activation.
+async fn remplacer_les_anciens_noms(state: &DaemonState, dir: &std::path::Path, nom: &str) {
+    let manifeste = match locaryn_extensions::manifest::load(dir) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!(nom, erreur = %e, "manifeste relu sans succès : anciens noms ignorés");
+            return;
+        }
+    };
+    let mut retiree = false;
+    for ancien in manifeste.replaces.iter().filter(|a| a.as_str() != nom) {
+        let Some(vieille) = state.extensions.get(ancien) else {
+            continue;
+        };
+        let demandees: Vec<_> = state
+            .extensions
+            .get(nom)
+            .map(|n| {
+                n.permissions
+                    .requested
+                    .into_iter()
+                    .map(|(p, _)| p)
+                    .collect()
+            })
+            .unwrap_or_default();
+        for permission in demandees {
+            if vieille.permissions.granted.contains(&permission) {
+                if let Err(e) = state.extensions.grant_permission(nom, permission) {
+                    tracing::warn!(nom, erreur = %e, "permission de l'ancienne copie non reprise");
+                }
+            }
+        }
+        liberer_extension(state, ancien).await;
+        if let Err(e) = state.extensions.remove(ancien) {
+            tracing::warn!(ancien, erreur = %e, "ancienne extension non retirée");
+            continue;
+        }
+        persist_removed(state, ancien).await;
+        if let (Some(rec), Some(neuve)) = (find_record(state, nom).await, state.extensions.get(nom))
+        {
+            if let Err(e) = state
+                .storage
+                .extensions
+                .set_granted(rec.id, &neuve.permissions.granted)
+                .await
+            {
+                tracing::warn!(nom, erreur = %e, "permissions reprises mais non enregistrées");
+            }
+        }
+        if vieille.enabled && state.extensions.enable(nom).is_ok() {
+            persist_enabled(state, nom, true).await;
+        }
+        tracing::info!(ancien, nom, "extension renommée : ancienne copie remplacée");
+        retiree = true;
+    }
+    if retiree {
+        sync_extension_runtime(state).await;
+    }
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -750,6 +813,7 @@ pub async fn install_extension(
     match s.extensions.install_from_dir(dir, scope) {
         Ok(entry) => {
             persist(&s, &entry).await;
+            remplacer_les_anciens_noms(&s, dir, &entry.name).await;
             // Ce que l'extension transporte comme figures entre en base dès
             // l'installation : l'écran Figures les montre aussitôt, sur
             // l'ordinateur comme sur le téléphone.

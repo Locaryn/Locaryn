@@ -29,6 +29,11 @@ pub struct PluginManifest {
         skip_serializing_if = "Option::is_none"
     )]
     pub display_name: Option<String>,
+    /// Les noms que l'extension a portés avant. Une fois installée, elle
+    /// remplace l'extension restée sous l'un de ces noms — activation,
+    /// permissions et réglages repris — au lieu de s'installer à côté.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replaces: Vec<String>,
     pub version: String,
     #[serde(default)]
     pub description: Option<String>,
@@ -1245,6 +1250,17 @@ mod tests {
         }"#;
         let m: PluginManifest = serde_json::from_str(json).unwrap();
         assert!(validate(&m).is_ok());
+    }
+
+    #[test]
+    fn un_morph_renomme_declare_ses_anciens_noms() {
+        let json = r#"{"apiVersion":"0.1","name":"morph-remote","version":"3.2.0",
+            "replaces":["morph-travel-tunnel"]}"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.replaces, vec!["morph-travel-tunnel".to_string()]);
+        let sans: PluginManifest =
+            serde_json::from_str(r#"{"apiVersion":"0.1","name":"ok","version":"1"}"#).unwrap();
+        assert!(sans.replaces.is_empty());
     }
 
     #[test]

@@ -139,7 +139,7 @@ async fn install_into(
 /// jour. Le dossier entier était remplacé : chaque nouvelle version repartait
 /// des valeurs par défaut, et un choix fait dans les réglages — le navigateur
 /// à relier, par exemple — disparaissait sans un mot (#133).
-fn garder_les_reglages(ancien: &Path, nouveau: &Path) {
+pub fn garder_les_reglages(ancien: &Path, nouveau: &Path) {
     let source = ancien.join(".data");
     let cible = nouveau.join(".data");
     if !source.is_dir() || cible.exists() {
