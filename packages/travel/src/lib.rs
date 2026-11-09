@@ -9,9 +9,11 @@
 //! - [`link`] produces the signed `locaryn://` address the phone will read,
 //! - [`qr`] turns that address into something a camera can see.
 
+pub mod account;
 pub mod link;
 pub mod providers;
 pub mod qr;
 
+pub use account::{sign_in, SignIn, SignInError};
 pub use link::{sign, verify, LinkError, Mode, PairingLink};
 pub use providers::{start, Provider, SshTarget, Tunnel, TunnelError};

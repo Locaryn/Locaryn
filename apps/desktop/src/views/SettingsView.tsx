@@ -23,7 +23,6 @@ import {
 import { SecretsSettings } from "../components/SecretsSettings";
 import { ServerSettings } from "../components/ServerSettings";
 import { StorageSettings } from "../components/StorageSettings";
-import { TravelSettings } from "../components/TravelSettings";
 import { DynamicPluginWidget } from "../components/extensions/DynamicPluginWidget";
 import {
   type ResolvedSlotContribution,
@@ -420,7 +419,6 @@ export function SettingsView({
     section === "account" && currentAccount
       ? { icon: currentAccount.icon, label: currentAccount.label }
       : { icon: current.icon, label: current.label };
-  const remoteEnabled = activeCapabilities.includes("travel-tunnel");
 
   return (
     <section className="locaryn-view-container locaryn-settings-page">
@@ -628,7 +626,6 @@ export function SettingsView({
               <div className="locaryn-network-config">
                 <ServerSettings />
                 <ProviderApiSettings />
-                {remoteEnabled && <TravelSettings />}
                 <ModeleAutrePc />
                 <ConnectionSettings />
               </div>

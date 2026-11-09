@@ -7719,6 +7719,7 @@ pub fn run() {
             setup_llama_runtime,
             list_connector_types,
             travel_mode::travel_relays,
+            travel_mode::travel_relay_sign_in,
             travel_mode::travel_status,
             travel_mode::set_travel_mode,
             travel_mode::travel_home_code,

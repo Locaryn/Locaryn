@@ -53,6 +53,16 @@ pub struct RelayChoice {
     pub needs_target: bool,
     /// What to do about it when it is missing.
     pub install_hint: String,
+    /// Le compte est-il prêt (jeton enregistré, session ouverte) ? Vrai pour
+    /// un relais sans compte. `needs_account` dit qu'il en faut un ; ceci dit
+    /// s'il reste quelque chose à faire.
+    pub account_ready: bool,
+    /// Comment se connecter : `none`, `paste_token` ou `command`.
+    pub sign_in: &'static str,
+    /// La page officielle de téléchargement, s'il y a un outil à obtenir.
+    pub download_url: Option<String>,
+    /// La page officielle où lire le jeton à coller.
+    pub login_url: Option<String>,
 }
 
 /// The relays, with the state of each on this machine.
@@ -61,18 +71,49 @@ pub struct RelayChoice {
 /// one you picked needs an account, at the moment you are trying to leave, is
 /// the worst possible time to find out.
 #[tauri::command]
-pub fn travel_relays() -> Vec<RelayChoice> {
-    locaryn_travel::Provider::ALL
-        .into_iter()
-        .map(|p| RelayChoice {
+pub async fn travel_relays() -> Vec<RelayChoice> {
+    let mut out = Vec::new();
+    for p in locaryn_travel::Provider::ALL {
+        let installed = p.is_available();
+        out.push(RelayChoice {
             id: p.id().to_string(),
             label: p.label().to_string(),
-            installed: p.is_available(),
+            installed,
             needs_account: p.needs_account(),
             needs_target: p.needs_target(),
             install_hint: p.install_hint().to_string(),
-        })
-        .collect()
+            // Un outil absent ne dit rien de son compte.
+            account_ready: installed && p.account_ready().await,
+            sign_in: match p.sign_in() {
+                locaryn_travel::SignIn::None => "none",
+                locaryn_travel::SignIn::PasteToken => "paste_token",
+                locaryn_travel::SignIn::Command => "command",
+            },
+            download_url: p.download_url().map(str::to_string),
+            login_url: p.login_url().map(str::to_string),
+        });
+    }
+    out
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelaySignIn {
+    pub provider: String,
+    /// Le jeton collé par la personne, pour un relais qui en demande un.
+    pub token: Option<String>,
+}
+
+/// Connecter le compte d'un relais : enregistrer le jeton collé, ou lancer la
+/// commande de connexion de l'outil (qui ouvre elle-même le navigateur).
+/// Jamais d'identifiant saisi à la place de la personne.
+#[tauri::command]
+pub async fn travel_relay_sign_in(args: RelaySignIn) -> Result<(), String> {
+    let provider = locaryn_travel::Provider::parse(&args.provider)
+        .ok_or_else(|| format!("Relais inconnu : « {} ».", args.provider))?;
+    locaryn_travel::sign_in(provider, args.token.as_deref())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Ask the running daemon.
@@ -535,9 +576,9 @@ mod pairing_tests {
 mod tests {
     use super::*;
 
-    #[test]
-    fn every_relay_says_whether_it_needs_an_account() {
-        let relays = travel_relays();
+    #[tokio::test]
+    async fn every_relay_says_whether_it_needs_an_account() {
+        let relays = travel_relays().await;
         assert_eq!(relays.len(), 4);
         // Exactly one requires nothing — that is the one to default to.
         // Deux se passent de compte, pour des raisons opposees : Cloudflare

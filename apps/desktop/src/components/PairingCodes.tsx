@@ -1,4 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
+import { open as ouvrirLien } from "@tauri-apps/plugin-shell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -234,6 +235,16 @@ export function PairingCodes() {
       etatPartage: () => core.travelStatus(),
       // `null` ferme le partage ; un identifiant de relais l'ouvre avec lui.
       reglerPartage: (relais: string | null) => core.setTravelMode(relais),
+      // Guider un relais incomplet. Le panneau ne choisit pas l'adresse : il
+      // nomme une page (`download` ou `login`) et l'hôte ouvre celle que le
+      // relais déclare, jamais une URL quelconque.
+      ouvrirPageRelais: async (relais: string, page: "download" | "login") => {
+        const r = (await core.travelRelays()).find((x) => x.id === relais);
+        const url = page === "download" ? r?.download_url : r?.login_url;
+        if (!url) throw new Error("Aucune page officielle pour ce relais.");
+        await ouvrirLien(url);
+      },
+      connecterRelais: (relais: string, jeton?: string) => core.travelRelaySignIn(relais, jeton),
     }),
     [server?.running],
   );

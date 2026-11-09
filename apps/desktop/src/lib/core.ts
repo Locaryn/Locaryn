@@ -1029,7 +1029,16 @@ export interface RelayChoice {
   label: string;
   installed: boolean;
   needs_account: boolean;
+  needs_target?: boolean;
   install_hint: string;
+  /** Compte prêt (jeton enregistré, session ouverte) ; vrai sans compte. */
+  account_ready: boolean;
+  /** Comment connecter le compte. */
+  sign_in: "none" | "paste_token" | "command";
+  /** Page officielle de téléchargement de l'outil. */
+  download_url: string | null;
+  /** Page officielle où lire le jeton à coller. */
+  login_url: string | null;
 }
 
 /** An MCP server registered in `mcp.json`. */
@@ -2369,6 +2378,9 @@ export interface CoreApi {
   travelRelays(): Promise<RelayChoice[]>;
   /** `null` switches it off. */
   setTravelMode(provider: string | null): Promise<TravelStatus>;
+  /** Connecter le compte d'un relais : jeton collé, ou commande de connexion
+   *  de l'outil qui ouvre elle-même le navigateur. */
+  travelRelaySignIn(provider: string, token?: string): Promise<void>;
   /** The code that puts a phone back on the local network. */
   travelHomeCode(): Promise<TravelStatus>;
   /** Le code d'appairage d'un téléphone : `local`, `public` ou `tunnel`. */
@@ -2991,6 +3003,8 @@ const tauriCore: CoreApi = {
   travelStatus: () => invoke<TravelStatus>("travel_status"),
   travelRelays: () => invoke<RelayChoice[]>("travel_relays"),
   setTravelMode: (provider) => invoke<TravelStatus>("set_travel_mode", { args: { provider } }),
+  travelRelaySignIn: (provider, token) =>
+    invoke<void>("travel_relay_sign_in", { args: { provider, token: token ?? null } }),
   travelHomeCode: () => invoke<TravelStatus>("travel_home_code"),
   pairingCode: (mode, url) => invoke<PairingCode>("pairing_code", { mode, url }),
   systemPrompt: () => invoke<SystemPrompt>("consigne_systeme"),
@@ -5452,6 +5466,11 @@ Contenu de démonstration, avec **du gras** et une liste :
       needs_account: false,
       install_hint:
         "Installez cloudflared (winget install Cloudflare.cloudflared). Aucun compte requis.",
+      account_ready: true,
+      sign_in: "none",
+      download_url:
+        "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
+      login_url: null,
     },
     {
       id: "ngrok",
@@ -5460,6 +5479,10 @@ Contenu de démonstration, avec **du gras** et une liste :
       needs_account: true,
       install_hint:
         "Installez ngrok depuis ngrok.com, puis « ngrok config add-authtoken <jeton> ».",
+      account_ready: false,
+      sign_in: "paste_token",
+      download_url: "https://ngrok.com/download",
+      login_url: "https://dashboard.ngrok.com/get-started/your-authtoken",
     },
     {
       id: "devtunnel",
@@ -5467,8 +5490,13 @@ Contenu de démonstration, avec **du gras** et une liste :
       installed: false,
       needs_account: true,
       install_hint: "Installez devtunnel, puis « devtunnel user login ».",
+      account_ready: false,
+      sign_in: "command",
+      download_url: "https://learn.microsoft.com/azure/developer/dev-tunnels/get-started",
+      login_url: null,
     },
   ],
+  travelRelaySignIn: async () => {},
   setTravelMode: async () => ({
     active: false,
     provider: null,
