@@ -109,7 +109,7 @@ struct Charge {
     charge: String,
     svg: String,
     /// Mode `public` : pourquoi le port risque de ne pas être joignable.
-    avertissement: Option<String>,
+    avertissement: Option<crate::acces_public::Avertissement>,
 }
 
 /// GET /v1/pairing — l'adresse, la configuration, et le code qui la porte.
@@ -155,7 +155,11 @@ pub async fn qr(
         "pairing_ttl_seconds": PAIRING_TTL.as_secs(),
         // Le même serveur pour un PC d'un autre réseau, sans QR.
         "connect_link": crate::acces_public::lien_pc(&url),
-        "warning": avertissement,
+        // Une ligne courte ; la cause dit à l'interface quelle action proposer,
+        // le détail reste replié.
+        "warning": avertissement.as_ref().map(|a| a.ligne.clone()),
+        "warning_cause": avertissement.as_ref().map(|a| a.cause),
+        "warning_detail": avertissement.as_ref().map(|a| a.detail.clone()),
     }))
     .into_response()
 }

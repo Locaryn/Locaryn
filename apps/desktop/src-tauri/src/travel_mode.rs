@@ -412,9 +412,16 @@ pub struct PairingCode {
     /// serveur, sans QR. Vide si le serveur est trop vieux.
     #[serde(default)]
     pub connect_link: String,
-    /// Pourquoi l'adresse risque de ne pas être joignable de dehors.
+    /// Pourquoi l'adresse risque de ne pas être joignable de dehors, en une
+    /// ligne.
     #[serde(default)]
     pub warning: Option<String>,
+    /// Sa cause : `certificat`, `box`, `operateur` ou `port`.
+    #[serde(default)]
+    pub warning_cause: Option<String>,
+    /// Le détail technique, à replier.
+    #[serde(default)]
+    pub warning_detail: Option<String>,
 }
 
 /// Le code à photographier pour un premier appairage.
@@ -455,6 +462,8 @@ pub async fn pairing_code(mode: String, url: Option<String>) -> Result<PairingCo
             .unwrap_or_default()
             .to_string(),
         warning: body["warning"].as_str().map(str::to_string),
+        warning_cause: body["warning_cause"].as_str().map(str::to_string),
+        warning_detail: body["warning_detail"].as_str().map(str::to_string),
     })
 }
 

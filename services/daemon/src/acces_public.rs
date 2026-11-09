@@ -23,9 +23,23 @@ const SERVICE_IP: &str = "https://api.ipify.org";
 #[derive(Debug, Clone)]
 pub struct AdressePublique {
     pub url: String,
-    /// Rien ne garantit que le port est joignable de dehors : la raison, et
-    /// quoi faire. `None` quand la box a accepté la redirection.
-    pub avertissement: Option<String>,
+    /// Rien ne garantit que le port est joignable de dehors. `None` quand la
+    /// box a accepté la redirection.
+    pub avertissement: Option<Avertissement>,
+}
+
+/// Pourquoi le port risque d'être fermé : une ligne à afficher, une cause que
+/// l'interface sait traiter, et le détail technique à part.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Avertissement {
+    /// `certificat` (ouverture refusée sans certificat client), `box` (pas de
+    /// box UPnP, ou refus), `operateur` (NAT d'opérateur), `port` (port choisi
+    /// à la main, redirection non vérifiable).
+    pub cause: &'static str,
+    /// Une ligne courte, lisible d'un coup d'œil.
+    pub ligne: String,
+    /// Ce qui s'est passé, pour qui veut savoir.
+    pub detail: String,
 }
 
 /// La redirection UPnP ouverte à la demande, gardée pour la durée du service
@@ -59,7 +73,7 @@ pub async fn par_defaut(
 
     // La box ne redirige que le port du service vers lui-même : un autre port
     // choisi à la main suppose une redirection posée par la personne.
-    let (ip, raison) = if port == port_service {
+    let (ip, refus) = if port == port_service {
         match ouvrir(port_service, certificats_exiges).await {
             Ok(ip) => (Some(ip), None),
             Err(e) => (None, Some(e)),
@@ -73,21 +87,10 @@ pub async fn par_defaut(
         None => ip_exterieure(http).await?,
     };
 
-    let avertissement = if raison.is_none() && port == port_service {
+    let avertissement = if refus.is_none() && port == port_service {
         None
-    } else if partagee_par_l_operateur(ip) {
-        Some(
-            "Votre opérateur partage cette adresse publique entre plusieurs abonnés : aucun \
-             port ne peut être ouvert vers cette machine. Utilisez l'onglet Tunnel."
-                .to_string(),
-        )
     } else {
-        let pourquoi = raison.map(|r| format!(" ({r})")).unwrap_or_default();
-        Some(format!(
-            "La box n'a pas confirmé la redirection du port {port}{pourquoi}. Le code ne \
-             fonctionnera de l'extérieur que si la box redirige le port {port} (TCP) vers \
-             cette machine. Sinon, utilisez l'onglet Tunnel."
-        ))
+        Some(avertir(port, refus.as_ref(), partagee_par_l_operateur(ip)))
     };
 
     Ok(AdressePublique {
@@ -96,16 +99,56 @@ pub async fn par_defaut(
     })
 }
 
+/// La ligne à afficher quand le port n'est pas confirmé ouvert.
+fn avertir(
+    port: u16,
+    refus: Option<&port_forward::ForwardError>,
+    operateur: bool,
+) -> Avertissement {
+    let redirection = format!(
+        "Le code ne fonctionne de l'extérieur que si la box redirige le port {port} (TCP) \
+         vers cette machine."
+    );
+    if operateur {
+        return Avertissement {
+            cause: "operateur",
+            ligne: "Adresse partagée par l'opérateur : port impossible à ouvrir".into(),
+            detail: "L'opérateur partage cette adresse publique entre plusieurs abonnés \
+                     (NAT d'opérateur) : aucun port ne peut être ouvert vers cette machine."
+                .into(),
+        };
+    }
+    match refus {
+        Some(port_forward::ForwardError::ClientCertificatesRequired) => Avertissement {
+            cause: "certificat",
+            ligne: format!("Port {port} fermé : certificat client exigé pour l'ouvrir"),
+            detail: format!(
+                "Locaryn n'ouvre pas de port vers Internet tant que le certificat client \
+                 n'est pas exigé (require_client_cert) : sinon le serveur ne serait protégé \
+                 que par un mot de passe. {redirection}"
+            ),
+        },
+        Some(e) => Avertissement {
+            cause: "box",
+            ligne: format!("Port {port} fermé sur la box"),
+            detail: format!("{e} {redirection}"),
+        },
+        None => Avertissement {
+            cause: "port",
+            ligne: format!("Port {port} : redirection non vérifiée"),
+            detail: format!("Locaryn ne redirige que le port du service. {redirection}"),
+        },
+    }
+}
+
 /// Ouvrir le port du service sur la box, une fois pour toute la durée du service.
-async fn ouvrir(port: u16, certificats_exiges: bool) -> Result<IpAddr, String> {
+async fn ouvrir(port: u16, certificats_exiges: bool) -> Result<IpAddr, port_forward::ForwardError> {
     let verrou = OUVERTURE.get_or_init(|| Mutex::new(None));
     let mut deja = verrou.lock().await;
     if let Some(ip) = *deja {
         return Ok(ip);
     }
-    let m = port_forward::open(port, certificats_exiges)
-        .await
-        .map_err(|e| e.to_string())?;
+    let m = port_forward::open(port, certificats_exiges).await?;
     // Renouvelé tant que le service tourne ; à son arrêt, le bail expire de
     // lui-même dans l'heure.
     std::mem::drop(port_forward::spawn_renewal(port));
@@ -191,6 +234,29 @@ mod tests {
         assert_eq!(port_saisi("8443"), Some(Ok(8443)));
         assert!(matches!(port_saisi("99999"), Some(Err(_))));
         assert_eq!(port_saisi("maison.exemple:8443"), None);
+    }
+
+    #[test]
+    fn l_avertissement_tient_en_une_ligne_et_garde_sa_cause() {
+        let a = avertir(
+            7474,
+            Some(&port_forward::ForwardError::ClientCertificatesRequired),
+            false,
+        );
+        assert_eq!(a.cause, "certificat");
+        assert!(a.ligne.len() < 80 && !a.ligne.contains('\n'));
+        assert!(a.detail.contains("require_client_cert"));
+        assert_eq!(avertir(7474, None, true).cause, "operateur");
+        assert_eq!(avertir(8443, None, false).cause, "port");
+        let b = avertir(
+            7474,
+            Some(&port_forward::ForwardError::NoRouter("délai".into())),
+            false,
+        );
+        assert_eq!(
+            (b.cause, b.ligne.as_str()),
+            ("box", "Port 7474 fermé sur la box")
+        );
     }
 
     #[test]

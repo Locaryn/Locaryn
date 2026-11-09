@@ -52,6 +52,8 @@ export function PairingCodes() {
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [enlarged, setEnlarged] = useState(false);
+  /** Le QR qu'un panneau d'extension a demandé d'afficher en grand. */
+  const [qrApporte, setQrApporte] = useState<string | null>(null);
   // Échap referme le plein écran, comme toute fenêtre posée par-dessus.
   useEffect(() => {
     if (!enlarged) return;
@@ -101,6 +103,8 @@ export function PairingCodes() {
   );
   const choisi = segments.find((m) => m.id === mode) ?? SEGMENT_LOCAL;
   const natif = choisi.apport === undefined;
+  /** Le QR montré en plein écran : celui du réseau local, ou celui d'un panneau. */
+  const qrGrand = natif ? code?.qr_svg : qrApporte;
 
   const steps = LOCAL_STEPS;
   const step = useStepProgress(steps, passage);
@@ -245,11 +249,31 @@ export function PairingCodes() {
         await ouvrirLien(url);
       },
       connecterRelais: (relais: string, jeton?: string) => core.travelRelaySignIn(relais, jeton),
+      // Le même plein écran que le QR du réseau local, pour le code qu'un
+      // panneau a reçu du service.
+      agrandirCode: (svg: string) => {
+        setQrApporte(svg);
+        setEnlarged(true);
+      },
+      // Passer à un autre segment apporté par une extension, désigné par
+      // l'identifiant qu'elle lui a donné dans son manifeste.
+      choisirSegment: (id: string) => choisirRef.current(id),
     }),
     [server?.running],
   );
 
   const serverStopped = server !== null && !server.running;
+
+  // Le contexte prêté aux panneaux est mémorisé : il passe par une référence
+  // pour toujours voir les segments du moment.
+  const choisirRef = useRef<(id: string) => void>(() => {});
+  choisirRef.current = (id: string) => {
+    const meme = choisi.apport?.extensionId;
+    const cible =
+      segments.find((m) => m.apport?.id === id && m.apport.extensionId === meme) ??
+      segments.find((m) => m.apport?.id === id);
+    if (cible) choisir(cible.id);
+  };
 
   function choisir(next: string) {
     const from = segments.findIndex((x) => x.id === precedent.current);
@@ -259,6 +283,8 @@ export function PairingCodes() {
     setMode(next);
     setError(null);
     setCode(null);
+    setEnlarged(false);
+    setQrApporte(null);
   }
 
   return (
@@ -458,7 +484,7 @@ export function PairingCodes() {
           parent crée son propre repère (transform, filtre), le « plein écran »
           restait prisonnier de la zone qui défile. */}
       {enlarged &&
-        code?.qr_svg &&
+        qrGrand &&
         createPortal(
           <dialog open className="locaryn-qr-overlay" aria-label="Code QR d'appairage">
             <button
@@ -485,7 +511,7 @@ export function PairingCodes() {
               <div
                 className="locaryn-qr-overlay-code"
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG local
-                dangerouslySetInnerHTML={{ __html: code.qr_svg }}
+                dangerouslySetInnerHTML={{ __html: qrGrand }}
               />
               <p className="locaryn-field-hint">
                 Sur le téléphone, ouvrez Locaryn et touchez « Scanner un QR code ». L'appareil photo
