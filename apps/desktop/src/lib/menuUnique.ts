@@ -5,8 +5,9 @@ import { type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useSt
  *
  * Chaque composant garde son propre contenu de menu, mais l'ouverture passe par
  * ce module : ouvrir un menu ferme celui qui était ouvert ailleurs, et un clic
- * dehors, Échap, un défilement, un clic droit ailleurs ou la perte du focus de
- * la fenêtre les ferment tous.
+ * dehors, Échap, un défilement fait par l'utilisateur, un clic droit ailleurs
+ * ou la perte du focus de la fenêtre les ferment tous — jamais le flux du
+ * modèle.
  */
 
 const DANS_UN_MENU = '[role="menu"], [data-menu-trigger]';
@@ -38,13 +39,16 @@ function poserEcouteurs(): void {
     true,
   );
   window.addEventListener("contextmenu", () => fermerTousLesMenus(), true);
-  window.addEventListener(
-    "scroll",
-    (e) => {
-      if (!estDansUnMenu(e.target)) fermerTousLesMenus();
-    },
-    true,
-  );
+  // Défilement : seul le geste de l'utilisateur ferme le menu. L'événement
+  // `scroll` partait aussi du fil du chat, que chaque jeton du modèle fait
+  // redescendre : le menu disparaissait pendant toute la génération. La barre
+  // de défilement saisie passe par `mousedown`, les touches par le menu, qui
+  // a le focus.
+  const surGesteDeDefilement = (e: Event): void => {
+    if (!estDansUnMenu(e.target)) fermerTousLesMenus();
+  };
+  window.addEventListener("wheel", surGesteDeDefilement, { capture: true, passive: true });
+  window.addEventListener("touchmove", surGesteDeDefilement, { capture: true, passive: true });
   window.addEventListener(
     "keydown",
     (e) => {
