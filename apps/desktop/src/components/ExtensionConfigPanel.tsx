@@ -155,7 +155,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
     return [...map.entries()];
   }, [config]);
 
-  async function save() {
+  async function save(): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
@@ -164,8 +164,10 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
       setDraft({ ...next.values });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+      return true;
     } catch (e) {
       setError(String(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -176,6 +178,16 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
     if (!field.tool) return;
     setActionBusy(key);
     try {
+      // L'action lit les réglages enregistrés : un choix fait juste avant
+      // (« Votre navigateur », par exemple) était ignoré tant qu'on n'avait
+      // pas cliqué « Enregistrer ».
+      if (dirty && !(await save())) {
+        setActionResult((prev) => ({
+          ...prev,
+          [key]: { ok: false, text: "Réglages non enregistrés : action annulée." },
+        }));
+        return;
+      }
       const text = messageDeResultat(await core.invokeExtensionTool(field.tool, {}));
       setActionResult((prev) => ({ ...prev, [key]: { ok: true, text } }));
     } catch (e) {
