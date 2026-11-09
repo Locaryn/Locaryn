@@ -61,6 +61,13 @@ pub struct Provisioning {
     /// d'appairage ordinaire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub login_code: Option<String>,
+    /// Code Internet : l'adresse du réseau local, en plus de `server_url`.
+    ///
+    /// Le port Internet exige un certificat client que le téléphone n'a pas
+    /// encore à son premier scan : il l'obtient par cette adresse (appairage
+    /// ou code de connexion), puis passe par `server_url`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_url: Option<String>,
 }
 
 /// Standard file name. Recognisable next to an installer.
@@ -358,6 +365,7 @@ mod tests {
             authority_pem: None,
             access_mode: Some("local".into()),
             login_code: None,
+            local_url: None,
         };
         let path = write(&dir, &p).expect("écriture");
         let back: Provisioning =

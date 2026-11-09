@@ -9,6 +9,10 @@
 //! Quand rien ne garantit que le port est joignable de dehors, on le dit, et on
 //! oriente vers le tunnel : un QR qui mène à une porte fermée est pire qu'un
 //! message.
+//!
+//! Le port ouvert n'est pas celui du service : c'est le port Internet
+//! (`port_strict`), où le certificat client est exigé. Le port du service
+//! reste au réseau local et au tunnel.
 
 use crate::port_forward;
 use igd_next::{aio::tokio as igd_tokio, SearchOptions};
@@ -44,7 +48,8 @@ pub struct Avertissement {
 
 /// La redirection UPnP ouverte à la demande, gardée pour la durée du service
 /// (avec son renouvellement), pour ne pas la redemander à chaque QR.
-static OUVERTURE: OnceLock<Mutex<Option<IpAddr>>> = OnceLock::new();
+/// `Some(None)` : redirection acceptée, IP extérieure tue par la box.
+static OUVERTURE: OnceLock<Mutex<Option<Option<IpAddr>>>> = OnceLock::new();
 
 /// Lire « 8443 », « :8443 » ou rien : le port voulu, s'il y en a un.
 pub fn port_saisi(brut: &str) -> Option<Result<u16, String>> {
@@ -61,21 +66,21 @@ pub fn port_saisi(brut: &str) -> Option<Result<u16, String>> {
     })
 }
 
-/// L'adresse publique par défaut : IP publique de cette machine, port du
-/// service ou celui que la personne a choisi.
+/// L'adresse publique par défaut : IP publique de cette machine, port
+/// Internet ou celui que la personne a choisi sur sa box.
 pub async fn par_defaut(
     http: &reqwest::Client,
-    port_service: u16,
     port_voulu: Option<u16>,
-    certificats_exiges: bool,
 ) -> Result<AdressePublique, String> {
-    let port = port_voulu.unwrap_or(port_service);
+    let interne = crate::port_strict::assurer().await?;
+    let port = port_voulu.unwrap_or(interne);
 
-    // La box ne redirige que le port du service vers lui-même : un autre port
-    // choisi à la main suppose une redirection posée par la personne.
-    let (ip, refus) = if port == port_service {
-        match ouvrir(port_service, certificats_exiges).await {
-            Ok(ip) => (Some(ip), None),
+    // La box ne redirige d'elle-même que le port Internet vers lui-même : un
+    // autre port choisi à la main suppose une redirection posée par la
+    // personne, vers le port Internet de cette machine.
+    let (ip, refus) = if port == interne {
+        match ouvrir(interne).await {
+            Ok(ip) => (ip, None),
             Err(e) => (None, Some(e)),
         }
     } else {
@@ -87,10 +92,15 @@ pub async fn par_defaut(
         None => ip_exterieure(http).await?,
     };
 
-    let avertissement = if refus.is_none() && port == port_service {
+    let avertissement = if refus.is_none() && port == interne {
         None
     } else {
-        Some(avertir(port, refus.as_ref(), partagee_par_l_operateur(ip)))
+        Some(avertir(
+            port,
+            interne,
+            refus.as_ref(),
+            partagee_par_l_operateur(ip),
+        ))
     };
 
     Ok(AdressePublique {
@@ -102,6 +112,7 @@ pub async fn par_defaut(
 /// La ligne à afficher quand le port n'est pas confirmé ouvert.
 fn avertir(
     port: u16,
+    interne: u16,
     refus: Option<&port_forward::ForwardError>,
     operateur: bool,
 ) -> Avertissement {
@@ -109,8 +120,8 @@ fn avertir(
     // elle change avec le réseau (une redirection posée vers l'ancienne ne
     // mène plus ici).
     let cible = port_forward::local_ipv4()
-        .map(|ip| format!("cette machine ({ip})"))
-        .unwrap_or_else(|| "cette machine".into());
+        .map(|ip| format!("{ip}:{interne}"))
+        .unwrap_or_else(|| format!("cette machine, port {interne}"));
     let redirection = format!(
         "Le code ne fonctionne de l'extérieur que si la box redirige le port {port} (TCP) \
          vers {cible}. Une redirection posée vers une ancienne adresse locale ne mène plus ici."
@@ -142,19 +153,23 @@ fn avertir(
         None => Avertissement {
             cause: "port",
             ligne: format!("Port {port} : redirection non vérifiée"),
-            detail: format!("Locaryn ne redirige que le port du service. {redirection}"),
+            detail: format!("Locaryn ne redirige que son port Internet. {redirection}"),
         },
     }
 }
 
-/// Ouvrir le port du service sur la box, une fois pour toute la durée du service.
-async fn ouvrir(port: u16, certificats_exiges: bool) -> Result<IpAddr, port_forward::ForwardError> {
+/// Ouvrir le port Internet sur la box, une fois pour toute la durée du service.
+/// Rend l'IP extérieure quand la box la donne.
+///
+/// Le certificat client y est exigé par construction : c'est ce qui autorise
+/// la redirection.
+async fn ouvrir(port: u16) -> Result<Option<IpAddr>, port_forward::ForwardError> {
     let verrou = OUVERTURE.get_or_init(|| Mutex::new(None));
     let mut deja = verrou.lock().await;
     if let Some(ip) = *deja {
         return Ok(ip);
     }
-    let m = port_forward::open(port, certificats_exiges).await?;
+    let m = port_forward::open(port, true).await?;
     // Renouvelé tant que le service tourne ; à son arrêt, le bail expire de
     // lui-même dans l'heure.
     std::mem::drop(port_forward::spawn_renewal(port));
@@ -245,23 +260,27 @@ mod tests {
     #[test]
     fn l_avertissement_tient_en_une_ligne_et_garde_sa_cause() {
         let a = avertir(
-            7474,
+            7475,
+            7475,
             Some(&port_forward::ForwardError::ClientCertificatesRequired),
             false,
         );
         assert_eq!(a.cause, "certificat");
         assert!(a.ligne.len() < 80 && !a.ligne.contains('\n'));
         assert!(a.detail.contains("require_client_cert"));
-        assert_eq!(avertir(7474, None, true).cause, "operateur");
-        assert_eq!(avertir(8443, None, false).cause, "port");
+        assert_eq!(avertir(7475, 7475, None, true).cause, "operateur");
+        let p = avertir(8443, 7475, None, false);
+        assert_eq!(p.cause, "port");
+        assert!(p.detail.contains(":7475") || p.detail.contains("port 7475"));
         let b = avertir(
-            7474,
+            7475,
+            7475,
             Some(&port_forward::ForwardError::NoRouter("délai".into())),
             false,
         );
         assert_eq!(
             (b.cause, b.ligne.as_str()),
-            ("box", "Port 7474 fermé sur la box")
+            ("box", "Port 7475 fermé sur la box")
         );
     }
 

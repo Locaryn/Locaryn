@@ -140,6 +140,9 @@ pub fn issue_client(data_dir: &Path, name: &str, days: u32) -> anyhow::Result<Cl
     let bundle = format!("{}{}", cert.pem(), key.serialize_pem());
     let path = client_cert_path(data_dir, name);
     std::fs::create_dir_all(path.parent().unwrap()).context("création du dossier clients")?;
+    // Sous Windows, `restrict` laisse le précédent en lecture seule : le
+    // réémettre (un appareil qui redemande le sien) échouait à l'écriture.
+    rendre_inscriptible(&path);
     std::fs::write(&path, &bundle).context("écriture du certificat client")?;
     restrict(&path);
 
@@ -148,6 +151,23 @@ pub fn issue_client(data_dir: &Path, name: &str, days: u32) -> anyhow::Result<Cl
         bundle_pem: bundle,
         ca_pem: ca.cert_pem,
     })
+}
+
+/// Lever la lecture seule d'un fichier existant, avant de le remplacer.
+fn rendre_inscriptible(path: &Path) {
+    #[cfg(windows)]
+    if let Ok(md) = std::fs::metadata(path) {
+        let mut p = md.permissions();
+        if p.readonly() {
+            #[allow(clippy::permissions_set_readonly_false)]
+            p.set_readonly(false);
+            if let Err(e) = std::fs::set_permissions(path, p) {
+                tracing::warn!(erreur = %e, ?path, "certificat client verrouillé");
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = path;
 }
 
 fn restrict(path: &Path) {
@@ -194,6 +214,26 @@ mod tests {
             a.cert_pem, b.cert_pem,
             "l'autorité ne doit pas être régénérée"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_client_certificate_can_be_issued_again_under_the_same_name() {
+        // Un appareil qui redemande le sien : le fichier précédent, protégé,
+        // ne doit pas bloquer la réémission.
+        let dir = scratch("again");
+        let a = issue_client(&dir, "marie", 30).expect("première émission");
+        let b = issue_client(&dir, "marie", 30).expect("réémission");
+        assert_ne!(
+            a.bundle_pem, b.bundle_pem,
+            "une nouvelle clé à chaque émission"
+        );
+        let _ = std::fs::metadata(&b.path).map(|m| {
+            let mut p = m.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            p.set_readonly(false);
+            std::fs::set_permissions(&b.path, p)
+        });
         std::fs::remove_dir_all(&dir).ok();
     }
 

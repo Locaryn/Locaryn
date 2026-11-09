@@ -46,6 +46,9 @@ pub(crate) struct Session {
 /// retirer le fait disparaître.
 #[tauri::command]
 async fn server_capabilities() -> Vec<String> {
+    // Au lancement : un appareil appairé avant le port Internet va chercher
+    // son certificat, sans rien bloquer.
+    tauri::async_runtime::spawn(pairing::assurer_identite());
     let store = servers::load();
     let Some(server) = store.active_server() else {
         return Vec::new();
@@ -146,11 +149,18 @@ fn register_server(provisioning_json: String) -> Result<MobileStatus, String> {
         } else {
             p.organisation.clone()
         },
-        home_url: p.server_url.clone(),
+        // Un code Internet porte aussi l'adresse locale : c'est par elle que
+        // le téléphone obtient le certificat qu'exige le port Internet.
+        home_url: p
+            .local_url
+            .clone()
+            .filter(|u| !u.trim().is_empty())
+            .unwrap_or_else(|| p.server_url.clone()),
         current_url: p.server_url,
         authority_pem: authority,
         travelling: false,
         access_mode: p.access_mode.clone().unwrap_or_default(),
+        client_pem: String::new(),
     });
     servers::save(&store)?;
     Ok(status())
@@ -269,6 +279,7 @@ async fn register_address(address: String) -> Result<MobileStatus, String> {
         authority_pem: String::new(),
         travelling: false,
         access_mode: String::new(),
+        client_pem: String::new(),
     });
     servers::save(&store)?;
     Ok(status())
@@ -578,7 +589,7 @@ pub(crate) fn client_for(server: &servers::KnownServer) -> Result<reqwest::Clien
 /// Sans autorité connue — un serveur enregistré avant que l'appairage ne la
 /// transmette — on retombe sur l'ancien comportement, faute de quoi ces
 /// installations cesseraient de joindre leur serveur du jour au lendemain.
-fn client_for_with(
+pub(crate) fn client_for_with(
     server: &servers::KnownServer,
     timeout: std::time::Duration,
 ) -> Result<reqwest::Client, String> {
@@ -604,6 +615,15 @@ fn client_for_with(
             builder = builder
                 .danger_accept_invalid_certs(true)
                 .danger_accept_invalid_hostnames(true);
+        }
+    }
+
+    // L'identité de cet appareil : présentée seulement si le serveur la
+    // demande (son port Internet), ignorée ailleurs.
+    if !server.client_pem.trim().is_empty() {
+        match reqwest::Identity::from_pem(server.client_pem.as_bytes()) {
+            Ok(id) => builder = builder.identity(id),
+            Err(e) => tracing::warn!(erreur = %e, "certificat client illisible, ignoré"),
         }
     }
 

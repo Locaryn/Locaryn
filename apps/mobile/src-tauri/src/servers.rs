@@ -33,6 +33,13 @@ pub struct KnownServer {
     /// `tunnel`. Vide pour un code produit avant que le champ existe.
     #[serde(default)]
     pub access_mode: String,
+    /// Le certificat client remis par ce serveur (certificat + clé, PEM).
+    ///
+    /// Son port Internet l'exige dès la poignée de main TLS. Vide tant que le
+    /// serveur ne l'a pas remis : le réseau local et le tunnel n'en ont pas
+    /// besoin.
+    #[serde(default)]
+    pub client_pem: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -85,6 +92,10 @@ impl Store {
                 existing.name = server.name;
                 existing.home_url = server.home_url;
                 existing.authority_pem = server.authority_pem;
+                // Un nouveau scan ne fait pas oublier le certificat reçu.
+                if !server.client_pem.is_empty() {
+                    existing.client_pem = server.client_pem;
+                }
                 if !existing.travelling {
                     existing.current_url = existing.home_url.clone();
                 }
@@ -114,6 +125,7 @@ mod tests {
             authority_pem: "-----BEGIN CERTIFICATE-----\nAA\n-----END CERTIFICATE-----".into(),
             travelling: false,
             access_mode: "local".into(),
+            client_pem: String::new(),
         }
     }
 
@@ -141,6 +153,15 @@ mod tests {
         let after = s.get("k1").unwrap();
         assert!(after.travelling);
         assert_eq!(after.current_url, "https://abc.trycloudflare.com");
+    }
+
+    #[test]
+    fn re_scanning_keeps_the_client_certificate() {
+        let mut s = Store::default();
+        s.upsert(server("k1"));
+        s.get_mut("k1").unwrap().client_pem = "PEM".into();
+        s.upsert(server("k1"));
+        assert_eq!(s.get("k1").unwrap().client_pem, "PEM");
     }
 
     #[test]

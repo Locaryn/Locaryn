@@ -211,10 +211,7 @@ async fn construire_charge(
                 Some(Err(m)) => return Err(erreur(StatusCode::BAD_REQUEST, m)),
                 port if saisie.trim().is_empty() || port.is_some() => {
                     let port = port.and_then(Result::ok);
-                    let certs = locaryn_config::load(None)
-                        .map(|c| c.daemon.require_client_cert)
-                        .unwrap_or(false);
-                    let a = crate::acces_public::par_defaut(&s.http, s.port, port, certs)
+                    let a = crate::acces_public::par_defaut(&s.http, port)
                         .await
                         .map_err(|m| erreur(StatusCode::BAD_GATEWAY, m))?;
                     avertissement = a.avertissement;
@@ -259,6 +256,7 @@ async fn construire_charge(
         access_mode: Some(mode.to_string()),
         note: String::new(),
         login_code,
+        local_url: (mode == "public" && s.auth_required).then(|| s.local_url.clone()),
     };
     let charge = match serde_json::to_string(&provisioning) {
         Ok(c) => c,
@@ -464,6 +462,7 @@ pub async fn redeem_login_code(
             Json(serde_json::json!({
                 "token": tok.plaintext,
                 "expires_at": tok.expires_at,
+                "client_pem": certificat_appareil(&s, &format!("{} — {etiquette}", trouve.username)),
                 "device_label": etiquette,
                 "username": trouve.username,
             }))
@@ -664,10 +663,15 @@ pub async fn confirm(
     {
         Ok(tok) => {
             tracing::info!("appairage confirmé, token de session appareil émis");
+            let etiquette = label_appareil(&body.device_label);
             Json(serde_json::json!({
                 "token": tok.plaintext,
                 "expires_at": tok.expires_at,
-                "device_label": label_appareil(&body.device_label),
+                "device_label": etiquette,
+                // Le certificat du port Internet : sans lui, la poignée de
+                // main y échoue. Absent si l'émission rate — l'appairage
+                // reste valable en local et par le tunnel.
+                "client_pem": certificat_appareil(&s, &etiquette),
             }))
             .into_response()
         }
@@ -678,6 +682,40 @@ pub async fn confirm(
                 format!("token d'appairage impossible ({e})"),
             )
         }
+    }
+}
+
+/// Le certificat client remis à un appareil, ou `None` (journalisé) si
+/// l'autorité refuse de l'émettre.
+fn certificat_appareil(s: &DaemonState, nom: &str) -> Option<String> {
+    match crate::port_strict::identite(&s.data_dir, nom) {
+        Ok(pem) => Some(pem),
+        Err(e) => {
+            tracing::error!(erreur = %e, "certificat client non remis");
+            None
+        }
+    }
+}
+
+/// GET /v1/auth/my-cert — le certificat client de l'appareil qui appelle.
+///
+/// Pour les appareils appairés avant le port Internet : leur jeton, présenté
+/// en local ou par le tunnel, suffit à obtenir le certificat qui ouvre ce
+/// port. Le jeton est vérifié par la couche d'authentification ; une clé
+/// d'API n'y a pas accès.
+pub async fn my_cert(
+    State(s): State<Arc<DaemonState>>,
+    appelant: Option<axum::extract::Extension<locaryn_storage::users::User>>,
+) -> Response {
+    let Some(axum::extract::Extension(u)) = appelant else {
+        return erreur(
+            StatusCode::UNAUTHORIZED,
+            "Un appareil connecté est requis pour recevoir son certificat.".into(),
+        );
+    };
+    match crate::port_strict::identite(&s.data_dir, &u.username) {
+        Ok(pem) => Json(serde_json::json!({ "client_pem": pem })).into_response(),
+        Err(e) => erreur(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 

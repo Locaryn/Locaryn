@@ -107,19 +107,15 @@ pub async fn announce_pairing(device_label: Option<String>) -> Result<bool, Stri
         return Err("Aucun serveur enregistré sur cet appareil.".into());
     };
 
-    let client = crate::client_for(&server)?;
-    let endpoint = format!(
-        "{}/v1/auth/pair/announce",
-        server.current_url.trim_end_matches('/')
-    );
-    let resp = client
-        .post(&endpoint)
-        .json(&serde_json::json!({
+    let resp = poster(
+        &server,
+        "/v1/auth/pair/announce",
+        &serde_json::json!({
             "device_label": device_label.unwrap_or_else(|| "téléphone".into()),
-        }))
-        .send()
-        .await
-        .map_err(|_| "Serveur injoignable. Vérifiez que l'hôte est allumé.".to_string())?;
+        }),
+        "Serveur injoignable. Vérifiez que l'hôte est allumé.",
+    )
+    .await?;
 
     if resp.status() == reqwest::StatusCode::GONE {
         return Err("Ce QR a expiré. Affichez-en un nouveau sur l'hôte.".into());
@@ -162,20 +158,16 @@ pub async fn confirm_pairing(
         return Err("Aucun serveur enregistré sur cet appareil.".into());
     };
 
-    let client = crate::client_for(&server)?;
-    let endpoint = format!(
-        "{}/v1/auth/pair/confirm",
-        server.current_url.trim_end_matches('/')
-    );
-    let resp = client
-        .post(&endpoint)
-        .json(&serde_json::json!({
+    let resp = poster(
+        &server,
+        "/v1/auth/pair/confirm",
+        &serde_json::json!({
             "pairing_code": pairing_code.trim(),
             "device_label": device_label.unwrap_or_else(|| "téléphone".into()),
-        }))
-        .send()
-        .await
-        .map_err(|_| "Serveur injoignable. Vérifiez que l'hôte est allumé.".to_string())?;
+        }),
+        "Serveur injoignable. Vérifiez que l'hôte est allumé.",
+    )
+    .await?;
 
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err("Code incorrect ou expiré. Affichez un nouveau QR sur l'hôte.".into());
@@ -215,6 +207,10 @@ pub async fn confirm_pairing(
         serde_json::to_string_pretty(&session).map_err(|e| e.to_string())?,
     )
     .map_err(|e| format!("écriture : {e}"))?;
+    garder_certificat(
+        &server.key_id,
+        body.get("client_pem").and_then(|c| c.as_str()),
+    )?;
 
     tracing::info!("appairage par code confirmé, session appareil enregistrée");
     Ok(PairingResult {
@@ -240,19 +236,16 @@ pub async fn redeem_login_code(
     let Some(server) = store.get(&active).cloned() else {
         return Err("Aucun serveur enregistré sur cet appareil.".into());
     };
-    let client = crate::client_for(&server)?;
-    let resp = client
-        .post(format!(
-            "{}/v1/auth/login-code",
-            server.current_url.trim_end_matches('/')
-        ))
-        .json(&serde_json::json!({
+    let resp = poster(
+        &server,
+        "/v1/auth/login-code",
+        &serde_json::json!({
             "code": code.trim(),
             "device_label": device_label.unwrap_or_else(|| "téléphone".into()),
-        }))
-        .send()
-        .await
-        .map_err(|_| "Serveur injoignable. Vérifiez que l'ordinateur est allumé.".to_string())?;
+        }),
+        "Serveur injoignable. Vérifiez que l'ordinateur est allumé.",
+    )
+    .await?;
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err(
             "Code expiré ou déjà utilisé. Scannez le QR affiché maintenant sur l'ordinateur."
@@ -290,6 +283,10 @@ pub async fn redeem_login_code(
         serde_json::to_string_pretty(&session).map_err(|e| e.to_string())?,
     )
     .map_err(|e| format!("écriture : {e}"))?;
+    garder_certificat(
+        &server.key_id,
+        body.get("client_pem").and_then(|c| c.as_str()),
+    )?;
     tracing::info!("connexion par code temporaire, session enregistrée");
     Ok(PairingResult {
         server_name: server.name.clone(),
@@ -298,9 +295,132 @@ pub async fn redeem_login_code(
     })
 }
 
+/// Les adresses où appairer : celle en cours, puis — tant que l'appareil n'a
+/// pas son certificat — l'adresse locale. Un code Internet mène au port qui
+/// exige ce certificat : sans lui, seule l'adresse locale peut le remettre.
+fn adresses_d_appairage(server: &servers::KnownServer) -> Vec<String> {
+    let mut out = vec![server.current_url.trim_end_matches('/').to_string()];
+    let maison = server.home_url.trim_end_matches('/').to_string();
+    if server.client_pem.trim().is_empty() && !maison.is_empty() && !out.contains(&maison) {
+        out.push(maison);
+    }
+    out
+}
+
+/// Envoyer une étape d'appairage, en se rabattant sur l'adresse locale si la
+/// première ne répond pas.
+async fn poster(
+    server: &servers::KnownServer,
+    chemin: &str,
+    corps: &serde_json::Value,
+    injoignable: &str,
+) -> Result<reqwest::Response, String> {
+    let client = crate::client_for(server)?;
+    for base in adresses_d_appairage(server) {
+        match client
+            .post(format!("{base}{chemin}"))
+            .json(corps)
+            .send()
+            .await
+        {
+            Ok(r) => return Ok(r),
+            Err(e) => tracing::info!(erreur = %e, %base, "appairage : adresse injoignable"),
+        }
+    }
+    Err(
+        if server.access_mode == "public" && server.client_pem.trim().is_empty() {
+            "Le code Internet exige un téléphone déjà appairé. Appairez-le une fois sur le \
+         réseau local (même Wi‑Fi) ou par le tunnel, puis il passera par Internet."
+                .to_string()
+        } else {
+            injoignable.to_string()
+        },
+    )
+}
+
+/// Retenir le certificat client remis par le serveur.
+fn garder_certificat(key_id: &str, pem: Option<&str>) -> Result<(), String> {
+    let Some(pem) = pem.filter(|p| p.contains("PRIVATE KEY")) else {
+        return Ok(());
+    };
+    let mut store = servers::load();
+    if let Some(s) = store.get_mut(key_id) {
+        s.client_pem = pem.to_string();
+        servers::save(&store)?;
+        tracing::info!("certificat client enregistré pour ce serveur");
+    }
+    Ok(())
+}
+
+/// Un appareil appairé sans certificat (avant le port Internet) va chercher
+/// le sien avec son jeton, en local ou par le tunnel. Sans effet s'il l'a, s'il
+/// n'est pas connecté, ou si le serveur ne connaît pas la route.
+pub async fn assurer_identite() {
+    let store = servers::load();
+    let Some(server) = store.active_server().cloned() else {
+        return;
+    };
+    if !server.client_pem.trim().is_empty() {
+        return;
+    }
+    let Ok(raw) = std::fs::read_to_string(crate::session_path()) else {
+        return;
+    };
+    let Ok(session) = serde_json::from_str::<crate::Session>(&raw) else {
+        return;
+    };
+    if session.key_id != server.key_id {
+        return;
+    }
+    let Ok(client) = crate::client_for_with(&server, std::time::Duration::from_secs(15)) else {
+        return;
+    };
+    for base in adresses_d_appairage(&server) {
+        let Ok(r) = client
+            .get(format!("{base}/v1/auth/my-cert"))
+            .bearer_auth(&session.token)
+            .send()
+            .await
+        else {
+            continue;
+        };
+        if !r.status().is_success() {
+            tracing::info!(statut = %r.status(), "certificat client non remis");
+            return;
+        }
+        let Ok(body) = r.json::<serde_json::Value>().await else {
+            return;
+        };
+        if let Err(e) = garder_certificat(&server.key_id, body["client_pem"].as_str()) {
+            tracing::warn!(erreur = %e, "certificat client non enregistré");
+        }
+        return;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sans_certificat_l_adresse_locale_sert_de_repli() {
+        let mut s = servers::KnownServer {
+            key_id: "k".into(),
+            name: "Atelier".into(),
+            home_url: "https://192.168.1.10:7474".into(),
+            current_url: "https://82.64.1.2:7475/".into(),
+            authority_pem: String::new(),
+            travelling: false,
+            access_mode: "public".into(),
+            client_pem: String::new(),
+        };
+        assert_eq!(
+            adresses_d_appairage(&s),
+            vec!["https://82.64.1.2:7475", "https://192.168.1.10:7474"]
+        );
+        s.client_pem = "PEM".into();
+        assert_eq!(adresses_d_appairage(&s), vec!["https://82.64.1.2:7475"]);
+    }
 
     struct Fixture {
         dir: std::path::PathBuf,
@@ -338,6 +458,7 @@ mod tests {
             authority_pem: f.cert.clone(),
             travelling: false,
             access_mode: "local".into(),
+            client_pem: String::new(),
         });
         s
     }

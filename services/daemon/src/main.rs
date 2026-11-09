@@ -35,6 +35,7 @@ mod live;
 mod media;
 mod mtls;
 mod port_forward;
+mod port_strict;
 mod tls;
 mod travel;
 
@@ -504,6 +505,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/pairing/cert", get(routes::pairing::get_client_cert))
         .route("/v1/auth/pair/announce", post(routes::pairing::announce))
         .route("/v1/auth/pair/confirm", post(routes::pairing::confirm))
+        // Le certificat du port Internet, pour un appareil déjà appairé.
+        .route("/v1/auth/my-cert", get(routes::pairing::my_cert))
         // Le QR de connexion d'un compte (code temporaire), et son échange
         // contre une session — sans identifiant ni mot de passe.
         .route("/v1/users/:id/login-qr", get(routes::pairing::login_qr))
@@ -671,6 +674,15 @@ async fn main() -> anyhow::Result<()> {
             "127.0.0.1".to_string(),
             local_ip_string(),
         ];
+        // Le port Internet sert la même application ; il ne s'ouvre qu'au
+        // premier code Internet demandé.
+        port_strict::preparer(
+            app.clone(),
+            data_dir_for_tls.clone(),
+            addr.ip(),
+            names.clone(),
+            port,
+        );
         let config = if cfg.daemon.require_client_cert {
             // Every client must present a certificate this server issued. The
             // handshake fails without one, so an unauthorised caller never
@@ -758,7 +770,9 @@ async fn main() -> anyhow::Result<()> {
                 Ok(m) => {
                     tracing::info!(
                         "joignable depuis Internet sur https://{}:{}",
-                        m.external_ip,
+                        m.external_ip
+                            .map(|ip| ip.to_string())
+                            .unwrap_or_else(|| "<adresse publique>".into()),
                         m.external_port
                     );
                     renewal = Some(port_forward::spawn_renewal(port));

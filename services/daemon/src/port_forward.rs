@@ -27,8 +27,10 @@ const LEASE_SECONDS: u32 = 3600;
 
 #[derive(Debug, Clone)]
 pub struct Mapping {
-    /// Address the outside world uses.
-    pub external_ip: IpAddr,
+    /// Address the outside world uses, when the router says it. Some boxes
+    /// accept the forwarding but answer an empty address (double NAT, or a
+    /// box that never learnt it): the caller then asks elsewhere.
+    pub external_ip: Option<IpAddr>,
     pub external_port: u16,
 }
 
@@ -91,10 +93,15 @@ pub async fn open(port: u16, client_certs_required: bool) -> Result<Mapping, For
         .await
         .map_err(|e| ForwardError::NoRouter(e.to_string()))?;
 
-    let external_ip = gateway
-        .get_external_ip()
-        .await
-        .map_err(|e| ForwardError::Rejected(e.to_string()))?;
+    // Not fatal: an empty answer here says nothing about the forwarding.
+    let external_ip = match gateway.get_external_ip().await {
+        Ok(ip) if !ip.is_unspecified() => Some(ip),
+        Ok(_) => None,
+        Err(e) => {
+            tracing::debug!(erreur = %e, "la box ne donne pas son adresse extérieure");
+            None
+        }
+    };
 
     gateway
         .add_port(
@@ -108,7 +115,7 @@ pub async fn open(port: u16, client_certs_required: bool) -> Result<Mapping, For
         .map_err(|e| ForwardError::Rejected(e.to_string()))?;
 
     tracing::warn!(
-        "port {port} ouvert vers Internet sur {external_ip} — bail de {} minutes, \
+        "port {port} ouvert vers Internet — bail de {} minutes, \
          renouvelé tant que le serveur tourne. Certificat client exigé.",
         LEASE_SECONDS / 60
     );
