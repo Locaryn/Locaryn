@@ -7439,6 +7439,9 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         let core = handle.state::<Core>();
+        // Avant le chargement : une copie restée sous un ancien nom ne doit
+        // pas démarrer à côté de sa remplaçante (#145).
+        extensions::retirer_les_copies_renommees(&core).await;
         if let Err(e) = extensions::reload(&core).await {
             tracing::warn!(error = %e, "chargement des extensions échoué");
         }

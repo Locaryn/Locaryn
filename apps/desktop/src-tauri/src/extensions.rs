@@ -1160,7 +1160,15 @@ async fn installer_ici(
         .await
         .map_err(|e| e.to_string())?;
 
-    if remplacer_les_anciens_noms(core, &record, &outcome, workspace_root).await {
+    if remplacer_les_anciens_noms(
+        core,
+        &record,
+        &outcome.manifest,
+        &outcome.root,
+        workspace_root,
+    )
+    .await
+    {
         reload(core).await?;
     }
 
@@ -1368,7 +1376,7 @@ async fn reinstall_from_source(
 
     // Une mise à jour peut changer le nom : la nouvelle ligne reprend alors
     // l'état de l'ancienne, qui disparaît.
-    if remplacer_les_anciens_noms(core, &updated, &outcome, None).await {
+    if remplacer_les_anciens_noms(core, &updated, &outcome.manifest, &outcome.root, None).await {
         if let Ok(Some(relue)) = core.storage.extensions.get(updated.id).await {
             updated = relue;
         }
@@ -1415,12 +1423,13 @@ async fn reinstall_from_source(
 async fn remplacer_les_anciens_noms(
     core: &Core,
     nouvelle: &locaryn_storage::ExtensionRecord,
-    outcome: &locaryn_extensions::InstallOutcome,
+    manifeste: &PluginManifest,
+    racine: &Path,
     workspace_root: Option<&Path>,
 ) -> bool {
     let mut retiree = false;
-    for ancien in &outcome.manifest.replaces {
-        if *ancien == outcome.manifest.name {
+    for ancien in &manifeste.replaces {
+        if *ancien == manifeste.name {
             continue;
         }
         let vieille = match core
@@ -1436,7 +1445,7 @@ async fn remplacer_les_anciens_noms(
                 continue;
             }
         };
-        reprendre_l_ancienne(core, nouvelle, &vieille, &outcome.root).await;
+        reprendre_l_ancienne(core, nouvelle, &vieille, racine).await;
         stop_plugin_mcp(core, &vieille.name).await;
         let dossier = plugin_root(&vieille.manifest_path);
         if let Some(d) = &dossier {
@@ -1451,10 +1460,38 @@ async fn remplacer_les_anciens_noms(
                 tracing::warn!(path = %d.display(), "fichiers de l'ancienne extension non supprimés");
             }
         }
-        tracing::info!(ancien, nouveau = %outcome.manifest.name, "extension renommée : ancienne copie remplacée");
+        tracing::info!(ancien, nouveau = %manifeste.name, "extension renommée : ancienne copie remplacée");
         retiree = true;
     }
     retiree
+}
+
+/// Au démarrage : les copies restées sous un ancien nom, à côté de leur
+/// remplaçante. Une application sans `replaces` (0.4.64 et avant) mettait à
+/// jour l'ancienne ligne d'un morph renommé en créant une seconde ligne,
+/// désactivée, sous le nouveau nom — l'extension semblait se désactiver
+/// seule, et l'ancienne copie continuait de tourner (#145). Rien ne la
+/// retirait tant qu'aucune installation ne repassait par là.
+pub async fn retirer_les_copies_renommees(core: &Core) {
+    let lignes = match core.storage.extensions.list().await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::warn!(erreur = %e, "extensions illisibles : copies renommées non vérifiées");
+            return;
+        }
+    };
+    for ligne in lignes {
+        let Some(racine) = plugin_root(&ligne.manifest_path) else {
+            continue;
+        };
+        let Ok(manifeste) = locaryn_extensions::manifest::load(&racine) else {
+            continue;
+        };
+        if manifeste.replaces.is_empty() {
+            continue;
+        }
+        remplacer_les_anciens_noms(core, &ligne, &manifeste, &racine, None).await;
+    }
 }
 
 /// Ce que la nouvelle copie reprend de l'ancienne : réglages, permissions
