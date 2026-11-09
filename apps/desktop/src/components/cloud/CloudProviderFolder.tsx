@@ -734,20 +734,23 @@ function CloudProviderDashboard({
   const [busy, setBusy] = useState<null | "models" | "key" | "select">(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /* Les modèles refusés par le compte ou vus en échec restent consultables :
+     une sonde peut se tromper, et la personne doit pouvoir le constater. */
+  const [showHidden, setShowHidden] = useState(false);
 
   const loadModels = useCallback(
     async (refresh: boolean) => {
       setBusy("models");
       setError(null);
       try {
-        setModels(await core.cloudProviderModels(provider.id, refresh));
+        setModels(await core.cloudProviderModels(provider.id, refresh, showHidden));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(null);
       }
     },
-    [provider.id],
+    [provider.id, showHidden],
   );
 
   useEffect(() => {
@@ -899,6 +902,15 @@ function CloudProviderDashboard({
         >
           <Icon name="refresh" size={14} /> {busy === "models" ? "…" : "Actualiser"}
         </button>
+        <button
+          type="button"
+          className={showHidden ? "locaryn-chip locaryn-chip-on" : "locaryn-chip"}
+          onClick={() => setShowHidden((v) => !v)}
+          aria-pressed={showHidden}
+          title="Les modèles que le compte refuse ou qui n'ont pas répondu à la vérification"
+        >
+          {showHidden ? "Masquer les modèles en échec" : "Afficher les modèles masqués"}
+        </button>
       </div>
 
       <div className="locaryn-cloud-models">
@@ -924,6 +936,11 @@ function CloudProviderDashboard({
                 </span>
                 {model.supports_tools && <span>outils</span>}
                 {model.modality.includes("image") && <span>vision</span>}
+                {(model.unavailable_reason || model.available === false) && (
+                  <span title={model.unavailable_reason}>
+                    {model.unavailable_reason ? "ne répond pas" : "non servi par le compte"}
+                  </span>
+                )}
               </div>
             </div>
             <button

@@ -45,6 +45,11 @@ pub struct CloudModel {
     /// `speech`, `transcription`, `realtime`, `embedding`, `rerank`…
     #[serde(default = "genre_conversation")]
     pub kind: String,
+    /// Pourquoi le modèle ne répond pas, quand une sonde ou un usage l'a vu
+    /// échouer (voir [`crate::sonde`]). Posé à la lecture, jamais gardé dans
+    /// le catalogue : le verdict a sa propre durée de vie.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
 }
 
 fn genre_conversation() -> String {
@@ -63,7 +68,12 @@ impl CloudModel {
     /// Un modèle que le chat peut proposer : il converse, et le compte peut
     /// l'appeler.
     pub fn pour_le_chat(&self) -> bool {
-        self.available != Some(false) && capacite_du_genre(&self.kind).is_none()
+        self.utilisable() && capacite_du_genre(&self.kind).is_none()
+    }
+
+    /// Ni refusé par le compte, ni vu en échec.
+    pub fn utilisable(&self) -> bool {
+        self.available != Some(false) && self.unavailable_reason.is_none()
     }
 }
 
@@ -148,10 +158,34 @@ pub async fn models(
             .as_ref()
             .filter(|c| c.is_fresh(p.manifest.refresh_hours))
         {
-            return Ok(c.models.clone());
+            return Ok(avec_sondes(host, p, c.models.clone(), false));
         }
     }
 
+    let lus = lire_et_garder(host, p, cache).await?;
+    Ok(avec_sondes(host, p, lus, refresh))
+}
+
+/// Les verdicts des sondes posés sur la liste, et la sonde relancée en
+/// tâche de fond pour les modèles qui n'en ont pas de frais.
+fn avec_sondes(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+    mut models: Vec<CloudModel>,
+    tout: bool,
+) -> Vec<CloudModel> {
+    crate::sonde::lancer(host, p, &models, tout);
+    crate::sonde::appliquer(host, &p.id, &mut models);
+    models
+}
+
+/// Lire chez le fournisseur et garder sur disque ; le catalogue gardé quand
+/// la lecture échoue.
+async fn lire_et_garder(
+    host: &Host<'_>,
+    p: &DeclaredProvider,
+    cache: Option<CachedCatalog>,
+) -> Result<Vec<CloudModel>, String> {
     match fetch(host, p).await {
         Ok(models) => {
             let models = marquer_disponibles(host, p, models, cache.as_ref()).await;
@@ -269,6 +303,9 @@ pub fn parse_models(body: &serde_json::Value) -> Vec<CloudModel> {
         return Vec::new();
     };
 
+    // Un même identifiant publié deux fois n'apparaît qu'une fois : le
+    // premier gagne, l'ordre du fournisseur reste.
+    let mut vus = std::collections::HashSet::new();
     list.iter()
         .filter_map(|m| {
             let id = m.get("id").and_then(|v| v.as_str())?.trim().to_string();
@@ -333,9 +370,11 @@ pub fn parse_models(body: &serde_json::Value) -> Vec<CloudModel> {
                         .unwrap_or(false),
                 available: None,
                 kind: genre(m, &id),
+                unavailable_reason: None,
                 id,
             })
         })
+        .filter(|m| vus.insert(m.id.to_ascii_lowercase()))
         .collect()
 }
 
@@ -412,17 +451,42 @@ fn genre_des_sorties(sorties: &[String]) -> Option<&'static str> {
     })
 }
 
+/// Les mots d'un identifiant qui trahissent un modèle qui ne converse pas,
+/// avec son genre. Le catalogue de NIM n'a ni `type` ni modalités : sans
+/// cette liste, embeddings, notes de récompense et garde-fous passaient
+/// pour des modèles de conversation (Locaryn/Locaryn#138).
+const GENRES_PAR_NOM: [(&str, &str); 22] = [
+    ("realtime", "realtime"),
+    ("embed", "embedding"),
+    ("rerank", "rerank"),
+    ("retriever", "embedding"),
+    ("nvclip", "embedding"),
+    ("bge-", "embedding"),
+    ("arctic-embed", "embedding"),
+    ("reward", "reward"),
+    ("guard", "guard"),
+    ("content-safety", "guard"),
+    ("topic-control", "guard"),
+    ("safety-guard", "guard"),
+    ("deplot", "vision"),
+    ("kosmos", "vision"),
+    ("grounding-dino", "vision"),
+    ("ocdrnet", "vision"),
+    ("paddleocr", "vision"),
+    ("-parse", "vision"),
+    ("whisper", "transcription"),
+    ("parakeet", "transcription"),
+    ("stable-diffusion", "image"),
+    ("flux.1", "image"),
+];
+
 fn genre_du_nom(id: &str) -> &'static str {
     let id = id.to_ascii_lowercase();
-    if id.contains("realtime") {
-        "realtime"
-    } else if id.contains("embed") {
-        "embedding"
-    } else if id.contains("rerank") {
-        "rerank"
-    } else {
-        GENRE_CONVERSATION
-    }
+    GENRES_PAR_NOM
+        .iter()
+        .find(|(mot, _)| id.contains(mot))
+        .map(|(_, g)| *g)
+        .unwrap_or(GENRE_CONVERSATION)
 }
 
 /// La capacité d'extension qui se sert d'un genre de modèle ; `None` pour la
@@ -448,10 +512,17 @@ pub fn capacite_du_genre(genre: &str) -> Option<&str> {
 
 /// Les modèles à proposer : ceux que le compte peut appeler, de la
 /// conversation ou d'un genre qu'une extension active sait utiliser.
-pub fn proposables(models: Vec<CloudModel>, capacites: &[String]) -> Vec<CloudModel> {
+///
+/// `avec_masques` garde ceux que le compte refuse ou qu'une sonde a vus
+/// échouer : c'est « Afficher les modèles masqués ».
+pub fn proposables(
+    models: Vec<CloudModel>,
+    capacites: &[String],
+    avec_masques: bool,
+) -> Vec<CloudModel> {
     models
         .into_iter()
-        .filter(|m| m.available != Some(false))
+        .filter(|m| avec_masques || m.utilisable())
         .filter(|m| match capacite_du_genre(&m.kind) {
             None => true,
             Some(c) => capacites.iter().any(|x| x == c),
@@ -635,16 +706,61 @@ mod tests {
         ];
         let ids = |l: Vec<CloudModel>| l.into_iter().map(|m| m.id).collect::<Vec<_>>();
         assert_eq!(
-            ids(proposables(catalogue.clone(), &[])),
+            ids(proposables(catalogue.clone(), &[], false)),
             ["texte", "inconnu"]
         );
         assert_eq!(
-            ids(proposables(catalogue.clone(), &["image-gen".into()])),
+            ids(proposables(catalogue.clone(), &["image-gen".into()], false)),
             ["texte", "image", "inconnu"]
+        );
+        assert_eq!(
+            ids(proposables(catalogue.clone(), &[], true)),
+            ["texte", "refuse", "inconnu"],
+            "les masqués se montrent sur demande, jamais les genres inutiles"
         );
         assert!(catalogue[0].pour_le_chat());
         assert!(!catalogue[1].pour_le_chat());
         assert!(!catalogue[2].pour_le_chat());
+    }
+
+    /// Le catalogue de NIM n'a pas de genre : les modèles qui ne conversent
+    /// pas se reconnaissent à leur nom, et ne sont pas proposés.
+    #[test]
+    fn les_modeles_de_nim_qui_ne_conversent_pas_sont_ecartes() {
+        let body = serde_json::json!({ "data": [
+            { "id": "meta/llama-3.3-70b-instruct" },
+            { "id": "nvidia/nv-embedqa-e5-v5" },
+            { "id": "nvidia/llama-3.2-nv-rerankqa-1b-v2" },
+            { "id": "nvidia/nemotron-4-340b-reward" },
+            { "id": "meta/llama-guard-4-12b" },
+            { "id": "nvidia/llama-3.1-nemoguard-8b-content-safety" },
+            { "id": "google/deplot" },
+            { "id": "microsoft/kosmos-2" },
+            { "id": "baai/bge-m3" },
+            { "id": "nvidia/nemoretriever-parse" },
+            { "id": "deepseek-ai/deepseek-r1" },
+        ]});
+        let chat: Vec<String> = proposables(parse_models(&body), &[], false)
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(
+            chat,
+            ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1"]
+        );
+    }
+
+    /// Un identifiant publié deux fois n'apparaît qu'une fois.
+    #[test]
+    fn les_doublons_sont_ecartes() {
+        let body = serde_json::json!({ "data": [
+            { "id": "a/b", "name": "premier" },
+            { "id": "A/B", "name": "second" },
+            { "id": "c/d" },
+        ]});
+        let l = parse_models(&body);
+        assert_eq!(l.len(), 2);
+        assert_eq!(l[0].name, "premier");
     }
 
     /// Le nom de fichier du cache vient d'un manifeste : un identifiant tordu

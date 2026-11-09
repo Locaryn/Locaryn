@@ -2718,6 +2718,7 @@ async fn envoyer_message(
                         // une panne, sa raison suffit.
                         Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
                             tracing::warn!(%raison, "requête refusée par le moteur");
+                            cloud_providers::signaler_echec_du_modele(&core, p, &raison);
                             refus_du_moteur(raison)
                         }
                         Err(e) => {

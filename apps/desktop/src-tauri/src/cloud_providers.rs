@@ -31,6 +31,22 @@ pub fn key_for_active_provider(
     cloud::key_for_active_provider(&host(core), provider)
 }
 
+/// Le modèle distant actif vient d'échouer : s'il est introuvable chez son
+/// fournisseur, il sort de la liste jusqu'à sa prochaine sonde.
+pub fn signaler_echec_du_modele(
+    core: &Core,
+    provider: &locaryn_shared_types::Provider,
+    raison: &str,
+) {
+    let Some(id) = locaryn_storage::repos::ProviderRepo::cloud_provider_of(provider) else {
+        return;
+    };
+    let Some(modele) = provider.model.as_deref() else {
+        return;
+    };
+    cloud::sonde::signaler_echec(&host(core), &id, modele, raison);
+}
+
 /// Le client HTTP pour converser avec le fournisseur actif quand c'est un
 /// autre PC Locaryn (son certificat vient de sa propre autorité).
 pub async fn http_for_active_provider(
@@ -174,14 +190,19 @@ pub async fn cloud_provider_models(
     core: State<'_, Core>,
     provider: String,
     refresh: Option<bool>,
+    include_hidden: Option<bool>,
 ) -> Result<Vec<CloudModel>, String> {
     let h = host(&core);
     let p = cloud::find(&h, &provider).await?;
     let tous = cloud::catalog::models(&h, &p, refresh.unwrap_or(false)).await?;
-    // Ni modèle refusé par le compte, ni genre qu'aucune extension active ne
-    // sait utiliser (image, voix, musique…).
+    // Ni modèle refusé par le compte ou vu en échec — sauf sur demande —, ni
+    // genre qu'aucune extension active ne sait utiliser (image, voix…).
     let capacites = crate::extensions::active_capabilities(&core).await;
-    Ok(cloud::catalog::proposables(tous, &capacites))
+    Ok(cloud::catalog::proposables(
+        tous,
+        &capacites,
+        include_hidden.unwrap_or(false),
+    ))
 }
 
 /// La passerelle répond-elle, et est-elle seulement installée ?

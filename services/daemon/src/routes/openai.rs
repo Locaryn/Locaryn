@@ -159,9 +159,11 @@ pub async fn list_models(State(state): State<Arc<DaemonState>>) -> Response {
         let Some(cache) = cloud::CachedCatalog::load(&state.data_dir, &p.id) else {
             continue;
         };
-        // Seulement ce qui converse et que le compte sert : un client qui
-        // choisirait un modèle d'image ou un modèle refusé échouerait.
-        for m in cache.models.into_iter().filter(|m| m.pour_le_chat()) {
+        // Seulement ce qui converse, que le compte sert et qui a répondu : un
+        // client qui choisirait un modèle d'image, refusé ou mort échouerait.
+        let mut modeles = cache.models;
+        cloud::sonde::appliquer(&h, &p.id, &mut modeles);
+        for m in modeles.into_iter().filter(|m| m.pour_le_chat()) {
             data.push(json!({
                 "id": format!("{}/{}", p.id, m.id),
                 "object": "model",
@@ -259,7 +261,7 @@ pub async fn chat_completions(
     }
 
     let h = host(&state);
-    let (url, cle, modele_cible) = match cloud::provider_of_model(&h, &modele).await {
+    let (url, cle, modele_cible, fournisseur) = match cloud::provider_of_model(&h, &modele).await {
         // Un modèle de passerelle : on parle à la passerelle, avec sa clé.
         Some(p) => {
             let cle = cloud::stored_key(&h, &p.id);
@@ -284,6 +286,7 @@ pub async fn chat_completions(
                 ),
                 cle,
                 cloud::strip_provider_prefix(&p.id, &modele),
+                Some(p.id),
             )
         }
         // Sinon le moteur local : celui que l'application a rendu actif.
@@ -292,13 +295,14 @@ pub async fn chat_completions(
                 format!("{}/v1/chat/completions", p.endpoint.trim_end_matches('/')),
                 cloud::key_for_active_provider(&h, &p),
                 modele.clone(),
+                None,
             ),
             Err(raison) => return erreur(StatusCode::SERVICE_UNAVAILABLE, &raison, "server_error"),
         },
     };
 
     // Le nom que le serveur d'en face attend, pas celui que le client a écrit.
-    corps["model"] = Value::String(modele_cible);
+    corps["model"] = Value::String(modele_cible.clone());
 
     let mut req = state.http.post(&url).json(&corps);
     if let Some(k) = cle {
@@ -326,6 +330,11 @@ pub async fn chat_completions(
 
     let statut = StatusCode::from_u16(reponse.status().as_u16())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    // Un modèle introuvable chez son fournisseur sort de la liste : le corps
+    // est relayé tel quel, seul le statut sert ici.
+    if let (Some(id), StatusCode::NOT_FOUND) = (&fournisseur, statut) {
+        cloud::sonde::signaler_echec(&h, id, &modele_cible, "HTTP 404");
+    }
     let type_contenu = reponse
         .headers()
         .get("content-type")

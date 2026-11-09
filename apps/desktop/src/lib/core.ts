@@ -187,6 +187,9 @@ export interface CloudModel {
   /** Ce que le modèle produit : `chat`, `image`, `video`, `speech`… Seuls les
    *  modèles `chat` se choisissent pour la conversation. */
   kind?: string;
+  /** Pourquoi le modèle ne répond pas (sonde ou échec en cours d'usage).
+   *  Présent seulement quand les modèles masqués sont demandés. */
+  unavailable_reason?: string;
 }
 
 export interface Health {
@@ -2514,7 +2517,13 @@ export interface CoreApi {
   /** Oublier la clé d'un fournisseur. */
   cloudProviderClearKey(provider: string): Promise<void>;
   /** La liste des modèles du fournisseur, relue chez lui quand elle a vieilli. */
-  cloudProviderModels(provider: string, refresh?: boolean): Promise<CloudModel[]>;
+  /** `includeHidden` : aussi les modèles refusés par le compte ou vus en
+   *  échec, pour « Afficher les modèles masqués ». */
+  cloudProviderModels(
+    provider: string,
+    refresh?: boolean,
+    includeHidden?: boolean,
+  ): Promise<CloudModel[]>;
   /** Choisir un modèle distant : il devient le modèle actif de la conversation. */
   cloudProviderSelect(provider: string, model: string): Promise<void>;
   /** Le compte d'un fournisseur local : état, connexion, déconnexion. */
@@ -3120,8 +3129,8 @@ const tauriCore: CoreApi = {
   serveurModelesRetirer: (id) => invoke<void>("serveur_modeles_retirer", { id }),
   cloudProviderSetKey: (provider, key) => invoke<void>("cloud_provider_set_key", { provider, key }),
   cloudProviderClearKey: (provider) => invoke<void>("cloud_provider_clear_key", { provider }),
-  cloudProviderModels: (provider, refresh) =>
-    invoke<CloudModel[]>("cloud_provider_models", { provider, refresh }),
+  cloudProviderModels: (provider, refresh, includeHidden) =>
+    invoke<CloudModel[]>("cloud_provider_models", { provider, refresh, includeHidden }),
   cloudProviderSelect: (provider, model) =>
     invoke<void>("cloud_provider_select", { provider, model }),
   cloudProviderStatus: (provider) =>

@@ -43,6 +43,7 @@ use std::path::{Path, PathBuf};
 pub mod catalog;
 pub mod gateway;
 pub mod serveurs;
+pub mod sonde;
 
 pub use catalog::{models, parse_models, CachedCatalog, CloudModel};
 pub use gateway::{
