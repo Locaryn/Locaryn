@@ -258,16 +258,41 @@ fn on_path(bin: &str) -> bool {
     if p.is_absolute() || bin.contains('/') || bin.contains('\\') {
         return p.exists();
     }
+    // L'état d'une passerelle est sondé toutes les quelques secondes par
+    // plusieurs écrans : lancer `where` à chaque fois ouvrait un processus par
+    // sonde. Une réponse positive vaut dix secondes ; une négative est
+    // toujours revérifiée, pour voir une installation dès qu'elle aboutit.
+    if let Ok(vus) = PRESENTS.lock() {
+        if vus
+            .get(bin)
+            .is_some_and(|quand| quand.elapsed() < Duration::from_secs(10))
+        {
+            return true;
+        }
+    }
     let mut command = Command::new(if cfg!(windows) { "where" } else { "which" });
     command.arg(bin);
     quiet(&mut command);
-    command
+    let present = command
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
-        .unwrap_or(false)
+        .unwrap_or(false);
+    if let Ok(mut vus) = PRESENTS.lock() {
+        if present {
+            vus.insert(bin.to_string(), std::time::Instant::now());
+        } else {
+            vus.remove(bin);
+        }
+    }
+    present
 }
+
+/// Les programmes trouvés sur le chemin, et quand.
+static PRESENTS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+> = std::sync::LazyLock::new(Default::default);
 
 /// La passerelle est-elle installée ?
 ///
