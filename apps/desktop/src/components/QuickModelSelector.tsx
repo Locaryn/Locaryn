@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
-import { type CloudModel, type CloudProvider, core as coreApi } from "../lib/core";
+import { type CloudModel, core as coreApi } from "../lib/core";
 import {
   type ModelFamily,
   SEED_CATALOG,
@@ -8,7 +8,13 @@ import {
   fetchFullRegistry,
   isChatModel,
 } from "../lib/modelRegistry";
-import { formatContext, formatPrice, useCloudProviders } from "./cloud/CloudProviderFolder";
+import {
+  BadgeEnLigne,
+  formatContext,
+  formatPrice,
+  useCloudProviders,
+  useModelesEnLigne,
+} from "./cloud/CloudProviderFolder";
 
 type Props = {
   isOpen: boolean;
@@ -185,38 +191,7 @@ export function QuickModelSelector({
 
   const openedProvider = cloudProviders.find((p) => p.id === openFolder) ?? null;
 
-  // Les fournisseurs « sans dossier » : leurs modèles se lisent à l'ouverture
-  // et se rangent dans la liste, à côté des modèles installés.
-  const [enLigne, setEnLigne] = useState<{ provider: CloudProvider; model: CloudModel }[]>([]);
-  useEffect(() => {
-    if (!isOpen) return;
-    const directs = cloudProviders.filter((p) => p.inline_models);
-    if (directs.length === 0) {
-      setEnLigne([]);
-      return;
-    }
-    let actif = true;
-    void Promise.all(
-      directs.map((provider) =>
-        coreApi
-          .cloudProviderModels(provider.id)
-          .then((liste) =>
-            liste
-              .filter((m) => (m.kind ?? "chat") === "chat" && m.available !== false)
-              .map((model) => ({ provider, model })),
-          )
-          .catch((e: unknown) => {
-            console.warn(`[modèles] ${provider.label} :`, e);
-            return [] as { provider: CloudProvider; model: CloudModel }[];
-          }),
-      ),
-    ).then((listes) => {
-      if (actif) setEnLigne(listes.flat());
-    });
-    return () => {
-      actif = false;
-    };
-  }, [isOpen, cloudProviders]);
+  const enLigne = useModelesEnLigne(cloudProviders, isOpen);
   const enLigneFiltres = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return enLigne;
@@ -475,9 +450,12 @@ export function QuickModelSelector({
                 >
                   <span style={{ minWidth: 0, textAlign: "left" }}>
                     <span className="locaryn-cloud-model-name">{model.name}</span>
-                    <span className="locaryn-cloud-model-id">{provider.label}</span>
+                    <span className="locaryn-cloud-model-id">{model.id}</span>
                   </span>
-                  {isActive && <span className="locaryn-tag locaryn-tag-installed">Actif</span>}
+                  <span className="locaryn-cloud-model-facts">
+                    <BadgeEnLigne label={provider.label} />
+                    {isActive && <span className="locaryn-tag locaryn-tag-installed">Actif</span>}
+                  </span>
                 </button>
               );
             })}

@@ -65,6 +65,78 @@ export function useCloudProviders(): {
   return { providers, reload };
 }
 
+/** Un modèle servi par un fournisseur « sans dossier ». */
+export type ModeleEnLigne = { provider: CloudProvider; model: CloudModel };
+
+/**
+ * Les modèles des fournisseurs « sans dossier » (`inline_models`) : un moteur
+ * de la machine dont les modèles se montrent dans les listes, repérés par un
+ * badge au nom du fournisseur plutôt que rangés dans un dossier.
+ */
+export function useModelesEnLigne(providers: CloudProvider[], actif = true): ModeleEnLigne[] {
+  const [modeles, setModeles] = useState<ModeleEnLigne[]>([]);
+  useEffect(() => {
+    if (!actif) return;
+    const directs = providers.filter((p) => p.inline_models);
+    if (directs.length === 0) {
+      setModeles([]);
+      return;
+    }
+    let vivant = true;
+    void Promise.all(
+      directs.map((provider) =>
+        core
+          .cloudProviderModels(provider.id)
+          .then((liste) =>
+            liste
+              .filter((m) => (m.kind ?? "chat") === "chat" && m.available !== false)
+              .map((model) => ({ provider, model })),
+          )
+          .catch((e: unknown) => {
+            console.warn(`[modèles] ${provider.label} :`, e);
+            return [] as ModeleEnLigne[];
+          }),
+      ),
+    ).then((listes) => {
+      if (vivant) setModeles(listes.flat());
+    });
+    return () => {
+      vivant = false;
+    };
+  }, [providers, actif]);
+  return modeles;
+}
+
+/** Lettres et chiffres seuls : « Qwen2.5-1.5B » et « qwen2.5 1.5b » se valent. */
+function cleDeNom(texte: string): string {
+  return texte.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Les fournisseurs « sans dossier » qui savent servir ce modèle : leur nom
+ * devient un badge sur sa carte. `textes` : ce qui nomme le modèle (nom de
+ * fichier, adresse de téléchargement, famille + taille).
+ */
+export function badgesEnLigne(modeles: ModeleEnLigne[], textes: string[]): string[] {
+  const cles = textes.map(cleDeNom).filter(Boolean);
+  const badges = new Set<string>();
+  for (const { provider, model } of modeles) {
+    const nom = cleDeNom(model.name);
+    // Un nom trop court (« phi ») reconnaîtrait n'importe quoi.
+    if (nom.length >= 5 && cles.some((c) => c.includes(nom))) badges.add(provider.label);
+  }
+  return [...badges];
+}
+
+/** Le badge d'un fournisseur « sans dossier » sur une carte de modèle. */
+export function BadgeEnLigne({ label }: { label: string }) {
+  return (
+    <span className="locaryn-tag locaryn-tag-moteur" title={`Peut tourner sur ${label}`}>
+      {label}
+    </span>
+  );
+}
+
 /** Une taille lisible pour une fenêtre de contexte. */
 export function formatContext(tokens: number): string {
   if (tokens <= 0) return "—";

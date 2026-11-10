@@ -3,9 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { SpeedBadge, findMetric } from "../components/SpeedBadge";
 import {
+  BadgeEnLigne,
   CloudProviderScreen,
   CloudProviderTile,
+  badgesEnLigne,
   useCloudProviders,
+  useModelesEnLigne,
 } from "../components/cloud/CloudProviderFolder";
 import { type InstalledExtension, type ModelMetric, type StoredWeight, core } from "../lib/core";
 import { claimantOf, loadExtensionMarketplaces } from "../lib/extensionMarketplace";
@@ -119,6 +122,7 @@ export function InstalledModelsView({
      place d'une carte de modèle. Ouvert, il remplace cet écran — c'est bien
      une page, pas un panneau qui se glisse à côté. */
   const { providers: cloudProviders, reload: reloadCloudProviders } = useCloudProviders();
+  const enLigne = useModelesEnLigne(cloudProviders);
   const [openFolder, setOpenFolder] = useState<string | null>(null);
   // Recliquer « Modèles » dans la barre latérale referme le dossier ouvert.
   useEffect(() => {
@@ -527,13 +531,15 @@ export function InstalledModelsView({
       >
         {/* Les dossiers d'abord : ce qui n'a rien à télécharger se trouve avant
             ce qui occupe le disque. */}
-        {cloudProviders.map((provider) => (
-          <CloudProviderTile
-            key={`cloud:${provider.id}`}
-            provider={provider}
-            onOpen={() => setOpenFolder(provider.id)}
-          />
-        ))}
+        {cloudProviders
+          .filter((p) => !p.inline_models)
+          .map((provider) => (
+            <CloudProviderTile
+              key={`cloud:${provider.id}`}
+              provider={provider}
+              onOpen={() => setOpenFolder(provider.id)}
+            />
+          ))}
         {filtered.map((entry) => {
           const classification = classifyModel(entry.tag);
           const isDebrided = checkIsModelDebrided(entry, debridedModels);
@@ -562,6 +568,11 @@ export function InstalledModelsView({
                   {entry.kind === "chat" && (
                     <SpeedBadge metric={findMetric(metrics, entry.tag, "chat")} />
                   )}
+                  {badgesEnLigne(enLigne, [entry.tag, entry.title]).map((label) => (
+                    <span key={label} style={{ marginLeft: 6 }}>
+                      <BadgeEnLigne label={label} />
+                    </span>
+                  ))}
                   {isDebrided && (
                     <span
                       className="locaryn-tag"

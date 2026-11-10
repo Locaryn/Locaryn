@@ -39,6 +39,12 @@ import { HardwareBenchmarkModal } from "./HardwareBenchmarkModal";
 import { ModelObliterator } from "./ModelObliterator";
 import { ResponsibilityGate } from "./ResponsibilityGate";
 import { SpeedBadge, findMetric } from "./SpeedBadge";
+import {
+  BadgeEnLigne,
+  badgesEnLigne,
+  useCloudProviders,
+  useModelesEnLigne,
+} from "./cloud/CloudProviderFolder";
 
 import { confirmer } from "../lib/dialog";
 type Props = {
@@ -595,6 +601,8 @@ export function ModelBrowser({
   activeCapabilities = [],
   activeExtensions = [],
 }: Props) {
+  const { providers: fournisseurs } = useCloudProviders();
+  const enLigne = useModelesEnLigne(fournisseurs);
   const [query, setQuery] = useState("");
   /**
    * Vitesses relevées sur cette machine. Un modèle jamais lancé ici n'en a
@@ -2544,6 +2552,12 @@ export function ModelBrowser({
                     </h3>
                   </div>
                   <div className="locaryn-box-badges">
+                    {badgesEnLigne(
+                      enLigne,
+                      f.variants.flatMap((v) => [v.tag, `${f.name} ${v.size}`]),
+                    ).map((label) => (
+                      <BadgeEnLigne key={label} label={label} />
+                    ))}
                     <span
                       className="locaryn-tag"
                       style={{

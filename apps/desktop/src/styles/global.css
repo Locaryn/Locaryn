@@ -16398,3 +16398,15 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .locaryn-app-dialog-actions button {
   min-height: 44px;
 }
+
+/* Le moteur qui sait servir un modèle (NPU…) : un badge discret, pas un dossier. */
+.locaryn-tag-moteur {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
