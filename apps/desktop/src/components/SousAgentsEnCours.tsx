@@ -1,5 +1,5 @@
 import { Icon, LoProgress } from "@locaryn/ui-core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type AppTask, useTasks } from "../lib/taskCenter";
 
 /** Ce que fait le sous-agent en ce moment : son dernier outil, sinon la
@@ -41,6 +41,44 @@ function avancement(t: AppTask, maintenant: number): number | null {
   return Math.min(100, Math.round((maintenant - t.createdAt) / 10 / t.limiteS));
 }
 
+/** Le fil du sous-agent, déroulé sous sa tuile : ce qu'il écrit et les
+ *  outils qu'il appelle, au fur et à mesure. Collé en bas tant que la personne
+ *  ne remonte pas le lire. */
+function Fil({ t }: { t: AppTask }) {
+  const ref = useRef<HTMLPreElement>(null);
+  const collé = useRef(true);
+  const texte = (t.transcript ?? "").trim();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: suivre chaque ajout au fil
+  useEffect(() => {
+    const el = ref.current;
+    if (el && collé.current) el.scrollTop = el.scrollHeight;
+  }, [texte]);
+  return (
+    <div className="locaryn-sous-agent-fil">
+      {(t.tools?.length ?? 0) > 0 && (
+        <div className="locaryn-sous-agent-outils">
+          {t.tools?.map((o, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: un même outil revient plusieurs fois, l'ordre est stable
+            <span key={`${o}-${i}`} className="locaryn-sous-agent-outil">
+              {o}
+            </span>
+          ))}
+        </div>
+      )}
+      <pre
+        ref={ref}
+        className="locaryn-sous-agent-texte"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          collé.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        }}
+      >
+        {texte || "Rien d'écrit pour l'instant."}
+      </pre>
+    </div>
+  );
+}
+
 /**
  * Les sous-agents que cette conversation a lancés et qui travaillent encore.
  *
@@ -53,6 +91,14 @@ export function SousAgentsEnCours({ sessionId }: { sessionId: string }) {
     (t) => t.type === "subagent" && t.parent === sessionId && t.status === "running",
   );
   const [maintenant, setMaintenant] = useState(() => Date.now());
+  const [ouverts, setOuverts] = useState<Set<string>>(() => new Set());
+  const basculer = (id: string) =>
+    setOuverts((avant) => {
+      const apres = new Set(avant);
+      if (apres.has(id)) apres.delete(id);
+      else apres.add(id);
+      return apres;
+    });
   const enCours = actifs.length > 0;
   useEffect(() => {
     if (!enCours) return;
@@ -64,21 +110,33 @@ export function SousAgentsEnCours({ sessionId }: { sessionId: string }) {
   return (
     <div className="locaryn-sous-agents" aria-live="polite">
       {actifs.map((t) => (
-        <div
-          key={t.id}
-          className="locaryn-sous-agent"
-          title="Le fil complet est dans l'onglet Tâches"
-        >
-          <div className="locaryn-sous-agent-tete">
+        <div key={t.id} className="locaryn-sous-agent">
+          <button
+            type="button"
+            className="locaryn-sous-agent-tete"
+            aria-expanded={ouverts.has(t.id)}
+            title={ouverts.has(t.id) ? "Masquer son fil" : "Voir ce qu'il fait"}
+            onClick={() => basculer(t.id)}
+          >
+            <span
+              className="locaryn-sous-agent-caret"
+              style={{ transform: ouverts.has(t.id) ? "none" : "rotate(-90deg)" }}
+            >
+              <Icon name="caret-down" size={12} />
+            </span>
             <Icon name="robot" size={14} />
             <span className="locaryn-sous-agent-nom">{t.label}</span>
             {t.model && <span className="locaryn-sous-agent-modele">{t.model}</span>}
             <span className="locaryn-sous-agent-duree">
               {tours(t)} · {temps(t, maintenant)}
             </span>
-          </div>
+          </button>
           <LoProgress value={avancement(t, maintenant)} />
-          <div className="locaryn-sous-agent-activite">{activite(t)}</div>
+          {ouverts.has(t.id) ? (
+            <Fil t={t} />
+          ) : (
+            <div className="locaryn-sous-agent-activite">{activite(t)}</div>
+          )}
         </div>
       ))}
     </div>
