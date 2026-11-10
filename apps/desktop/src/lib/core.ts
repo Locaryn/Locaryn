@@ -2209,6 +2209,8 @@ export interface CoreApi {
   /** Poids stockés que le moteur de conversation ne charge pas. L'hôte ne sait
    *  pas à quoi ils servent ; une extension les revendique par son catalogue. */
   listNonChatModels(): Promise<StoredWeight[]>;
+  /** Octets occupés par chaque modèle de conversation, par nom. */
+  modelSizes(): Promise<Record<string, number>>;
   appInfo(): Promise<AppInfo>;
   getLocalProfile(): Promise<LocalProfile>;
   setLocalProfile(displayName: string): Promise<LocalProfile>;
@@ -2889,6 +2891,7 @@ const tauriCore: CoreApi = {
   listModels: (endpoint) => invoke<string[]>("list_models", { endpoint }),
   listIncompatibleModels: () => invoke<string[]>("list_incompatible_models"),
   listNonChatModels: () => invoke<StoredWeight[]>("list_non_chat_models"),
+  modelSizes: () => invoke<Record<string, number>>("model_sizes", { endpoint: "" }),
   appInfo: () => invoke<AppInfo>("app_info"),
   getLocalProfile: () => invoke<LocalProfile>("get_local_profile"),
   setLocalProfile: (displayName) => invoke<LocalProfile>("set_local_profile", { displayName }),
@@ -4877,6 +4880,7 @@ Contenu de démonstration, avec **du gras** et une liste :
   },
   listIncompatibleModels: async () => [],
   listNonChatModels: async () => [],
+  modelSizes: async () => ({}),
   airllmStatus: async () => ({
     python: true,
     pythonPath: "demo-python",

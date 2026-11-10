@@ -61,13 +61,19 @@ pub(crate) fn is_chat_weight(path: &std::path::Path) -> bool {
             "musicgen",
             "audio",
             "embed",
-            "mtp-",
             "/mtp/",
             "-draft-",
             "_draft_",
         ]
         .iter()
         .any(|part| name.contains(part))
+        // Une tête MTP est un fichier « mtp-… » ; le sigle dans le nom d'un
+        // dépôt ou d'un modèle ne l'écarte pas.
+        && !path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .map(str::to_ascii_lowercase)
+            .is_some_and(|f| f.starts_with("mtp-") || f.starts_with("mtp_"))
 }
 
 fn is_model_weight_path(path: &std::path::Path) -> bool {

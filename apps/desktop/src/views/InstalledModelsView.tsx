@@ -175,6 +175,7 @@ export function InstalledModelsView({
   // Les poids que la conversation ne charge pas. Ils étaient simplement
   // absents de cet écran : installés, occupant des gigaoctets, invisibles.
   const [otherWeights, setOtherWeights] = useState<StoredWeight[]>([]);
+  const [tailles, setTailles] = useState<Record<string, number>>({});
   const [weightOwners, setWeightOwners] = useState<Record<string, string>>({});
   // The backend already groups shards, but deliberately keeps separate
   // quantisations/variants. Do not collapse by directory here or Q4 and Q8
@@ -212,6 +213,13 @@ export function InstalledModelsView({
       .listNonChatModels()
       .then(setOtherWeights)
       .catch(() => setOtherWeights([]));
+    void core
+      .modelSizes()
+      .then(setTailles)
+      .catch((e) => {
+        console.warn("[modèles] tailles illisibles :", e);
+        setTailles({});
+      });
     void core
       .listDebridedModels()
       .then(setDebridedModels)
@@ -256,7 +264,11 @@ export function InstalledModelsView({
         title: identity.model,
         brand: "TEXTE · llama-server",
         group: "Conversation",
-        tags: [identity.quantization, identity.format].filter((tag): tag is string => !!tag),
+        tags: [
+          identity.quantization,
+          identity.format,
+          tailles[rawTag] ? humanSize(tailles[rawTag]) : null,
+        ].filter((tag): tag is string => !!tag),
         path: `${modelsDir}\\${cleanName}`,
       };
     });
@@ -294,15 +306,18 @@ export function InstalledModelsView({
     return [...chat, ...owned, ...broken].sort((a, b) =>
       a.title.localeCompare(b.title, "fr", { sensitivity: "base" }),
     );
-  }, [dedupedModels, otherWeights, weightOwners, incompatibleModels, modelsDir]);
+  }, [dedupedModels, otherWeights, weightOwners, incompatibleModels, modelsDir, tailles]);
 
   // Ce que la ligne de chiffres annonce. La taille ne couvre que les poids
   // dont on connaît le compte d'octets : mieux vaut ne rien dire qu'annoncer
   // un total qui oublie la moitié du dossier.
   const diskTotal = useMemo(() => {
-    const total = otherWeights.reduce((sum, w) => sum + (w.size_bytes || 0), 0);
-    return humanSize(total);
-  }, [otherWeights]);
+    const autres = otherWeights.reduce((sum, w) => sum + (w.size_bytes || 0), 0);
+    // Les modèles de conversation aussi : ce sont eux qui pèsent le plus, et
+    // le total les oubliait (deux modèles de 27B annoncés à 500 Mo).
+    const chat = dedupedModels.reduce((sum, tag) => sum + (tailles[tag] ?? 0), 0);
+    return humanSize(autres + chat);
+  }, [otherWeights, dedupedModels, tailles]);
 
   const unclaimed = useMemo(
     () => entries.filter((e) => e.group === "Non revendiqué").length,
@@ -706,20 +721,6 @@ export function InstalledModelsView({
                 </p>
               )}
 
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-faint)",
-                  background: "var(--bg)",
-                  padding: "6px 8px",
-                  borderRadius: "var(--radius-xs)",
-                  wordBreak: "break-all",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                <Icon name="project" size={14} /> {entry.path}
-              </div>
-
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: "auto" }}>
                 {entry.kind === "chat" && (
                   <button
@@ -742,14 +743,6 @@ export function InstalledModelsView({
                     <Icon name="marketplace" size={15} /> Chercher un GGUF
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="locaryn-btn-ghost"
-                  style={{ fontSize: 12 }}
-                  onClick={() => void handleOpenFolder(entry.path)}
-                >
-                  <Icon name="project" size={15} /> Emplacement
-                </button>
                 {onDeleteModel && (
                   <button
                     type="button"

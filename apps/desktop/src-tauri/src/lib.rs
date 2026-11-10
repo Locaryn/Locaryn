@@ -3510,12 +3510,15 @@ pub(crate) fn is_non_chat_asset(file_name: &str) -> bool {
 
     // Compagnons multimodaux et de décodage spéculatif : ils se chargent à
     // côté d'un modèle principal et ne répondent pas seuls.
-    if n.contains("mmproj")
+    // Jugé sur le nom du fichier, pas sur celui du dépôt : un dépôt nommé
+    // « …-MAX-MTP-GGUF » contient un vrai modèle, et disparaissait de la liste.
+    let fichier = n.rsplit(['/', '\\']).next().unwrap_or(&n);
+    if fichier.contains("mmproj")
         || n.contains("/mtp/")
         || n.contains(r"\mtp\")
-        || n.contains("mtp-")
-        || n.contains("-draft-")
-        || n.contains("_draft_")
+        || tete_mtp(&n)
+        || fichier.contains("-draft-")
+        || fichier.contains("_draft_")
     {
         return true;
     }
@@ -3738,6 +3741,56 @@ async fn list_models(core: State<'_, Core>, _endpoint: String) -> Result<Vec<Str
     names.sort();
     names.dedup();
     Ok(names)
+}
+
+/// La place que chaque modèle de conversation occupe sur le disque, par nom
+/// tel que `list_models` le rend. Un modèle en plusieurs fichiers compte tous
+/// ses morceaux ; un dépôt servi comme dossier, tous ses poids.
+#[tauri::command]
+async fn model_sizes(
+    core: State<'_, Core>,
+    endpoint: String,
+) -> Result<HashMap<String, u64>, String> {
+    if core.remote_client().is_some() {
+        return Ok(HashMap::new());
+    }
+    let models_dir = locaryn_config::models_dir();
+    let noms = list_models(core, endpoint).await?;
+    let taille = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+    let mut tailles = HashMap::new();
+    for nom in noms {
+        let chemin = models_dir.join(&nom);
+        let octets = if chemin.is_dir() {
+            walkdir_recursive(&chemin, 5)
+                .iter()
+                .filter(|f| is_weight_file(f) && !is_partial(f))
+                .map(|f| taille(f))
+                .sum()
+        } else {
+            // Les morceaux d'un même modèle (`-00001-of-00003`) vivent côte à
+            // côte : le représentant seul sous-estimait un gros modèle.
+            let groupe = hf_shard_group(&chemin.file_name().unwrap_or_default().to_string_lossy());
+            let freres: u64 = chemin
+                .parent()
+                .and_then(|d| std::fs::read_dir(d).ok())
+                .map(|entrees| {
+                    entrees
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|f| f.is_file() && is_weight_file(f) && !is_partial(f))
+                        .filter(|f| {
+                            hf_shard_group(&f.file_name().unwrap_or_default().to_string_lossy())
+                                == groupe
+                        })
+                        .map(|f| taille(&f))
+                        .sum()
+                })
+                .unwrap_or(0);
+            freres.max(taille(&chemin))
+        };
+        tailles.insert(nom, octets);
+    }
+    Ok(tailles)
 }
 
 /// Full Transformers language-model repositories stored in `models_dir` are
@@ -4255,7 +4308,6 @@ fn is_hf_weight_path(path: &str) -> bool {
         "projection",
         "adapter",
         "lora",
-        "mtp-",
         "/mtp/",
         "-draft-",
         "_draft_",
@@ -4273,6 +4325,16 @@ fn is_hf_weight_path(path: &str) -> bool {
     // Aucun poids propre ne passait, tous les dépôts paraissaient vides de
     // checkpoints, et l'interface n'avait plus qu'à proposer le dépôt entier.
     .any(|part| lower.contains(part))
+        // Une tête MTP est un fichier « mtp-… » : le sigle dans le nom d'un
+        // modèle (« …-MAX-MTP-Q4_K_M.gguf ») ne l'écarte pas.
+        && !tete_mtp(&lower)
+}
+
+/// Le fichier (pas son dossier) est-il une tête de décodage spéculatif ?
+fn tete_mtp(chemin_minuscule: &str) -> bool {
+    let mut segments = chemin_minuscule.rsplit(['/', '\\']);
+    let fichier = segments.next().unwrap_or(chemin_minuscule);
+    fichier.starts_with("mtp-") || fichier.starts_with("mtp_") || segments.any(|d| d == "mtp")
 }
 
 fn hf_shard_group(path: &str) -> String {
@@ -7684,6 +7746,7 @@ pub fn run() {
             list_models,
             list_incompatible_models,
             list_non_chat_models,
+            model_sizes,
             inspect_huggingface_repo,
             app_info,
             client_cert::client_certificate_status,
@@ -8017,6 +8080,17 @@ mod suppression_modele_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn le_sigle_mtp_dans_un_nom_de_depot_n_ecarte_pas_le_modele() {
+        let depot =
+            "DavidAU__Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-NEO-CODER-MAX-MTP-Q4_K_M.gguf";
+        assert!(super::is_text_chat_model(depot));
+        assert!(super::is_hf_weight_path("Qwen3.8-27B-MAX-MTP-Q4_K_M.gguf"));
+        // Une vraie tête MTP reste un compagnon.
+        assert!(super::is_non_chat_asset("depot/mtp-qwen3-head.gguf"));
+        assert!(!super::is_hf_weight_path("mtp/head.gguf"));
+        assert!(!super::is_hf_weight_path("mtp-head-q8.gguf"));
+    }
     /// Le cas du rapport : l'étiquette `q4_K_M` recopiée dans l'URL d'un
     /// dépôt unsloth, dont le fichier s'appelle `Q4_K_M`.
     #[test]
