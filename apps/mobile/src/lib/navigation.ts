@@ -137,3 +137,22 @@ export function useCoucheRetour(actif: boolean, fermer: () => void) {
     };
   }, [actif]);
 }
+
+/**
+ * Revenir d'une entrée d'historique et attendre que ce soit fait. `back()` ne
+ * fait que demander le retour : ce qui s'ouvre avant son `popstate` le reçoit
+ * comme s'il lui était destiné.
+ */
+export function retourEffectue(): Promise<void> {
+  return new Promise((resolve) => {
+    const fini = () => {
+      window.removeEventListener("popstate", fini);
+      window.clearTimeout(garde);
+      resolve();
+    };
+    // Un navigateur qui n'envoie pas l'évènement ne bloque pas la suite.
+    const garde = window.setTimeout(fini, 500);
+    window.addEventListener("popstate", fini);
+    window.history.back();
+  });
+}

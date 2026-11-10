@@ -22,7 +22,7 @@ import {
   api,
   coreMode,
 } from "./lib/core";
-import { useCoucheRetour, useNavigation } from "./lib/navigation";
+import { retourEffectue, useCoucheRetour, useNavigation } from "./lib/navigation";
 import { initNotifications } from "./lib/notifications";
 import { surEchecReseau } from "./lib/reachability";
 import { annulerScan, isScannerAvailable, scan } from "./lib/scanner";
@@ -331,7 +331,10 @@ export function App() {
       const text = await scan(setScanning);
       // L'entrée d'historique pour le retour n'a plus de raison d'être une
       // fois la caméra refermée — par annulation ou par une lecture réussie.
-      if (window.history.state?.scan) window.history.back();
+      // Le retour est asynchrone : l'écran de confirmation ouvert avant qu'il
+      // n'arrive recevait ce retour et se refermait aussitôt — le scan
+      // semblait ne rien faire.
+      if (window.history.state?.scan) await retourEffectue();
       if (text) await applyLink(text);
     } catch (e) {
       setScanError(e instanceof Error ? e.message : String(e));

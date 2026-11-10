@@ -92,7 +92,13 @@ pub async fn par_defaut(
         None => ip_exterieure(http).await?,
     };
 
+    // Une redirection posée à la main sur la box ne passe pas par UPnP : on
+    // essaie le port public depuis ici (la plupart des box renvoient vers le
+    // réseau local). Si ça répond, le port est ouvert, quoi qu'ait dit UPnP.
     let avertissement = if refus.is_none() && port == interne {
+        None
+    } else if joignable(ip, port).await {
+        tracing::info!(port, "port public joignable : redirection posée à la main");
         None
     } else {
         Some(avertir(
@@ -147,7 +153,7 @@ fn avertir(
         },
         Some(e) => Avertissement {
             cause: "box",
-            ligne: format!("Port {port} fermé sur la box"),
+            ligne: format!("Port {port} non confirmé ouvert"),
             detail: format!("{e} {redirection}"),
         },
         None => Avertissement {
@@ -175,6 +181,23 @@ async fn ouvrir(port: u16) -> Result<Option<IpAddr>, port_forward::ForwardError>
     std::mem::drop(port_forward::spawn_renewal(port));
     *deja = Some(m.external_ip);
     Ok(m.external_ip)
+}
+
+/// Le port public répond-il ? Une connexion TCP depuis cette machine, via
+/// l'adresse publique : elle ne passe que si la box redirige le port.
+async fn joignable(ip: IpAddr, port: u16) -> bool {
+    let essai = tokio::net::TcpStream::connect((ip, port));
+    match tokio::time::timeout(std::time::Duration::from_secs(3), essai).await {
+        Ok(Ok(_)) => true,
+        Ok(Err(e)) => {
+            tracing::debug!(erreur = %e, port, "port public injoignable depuis ici");
+            false
+        }
+        Err(_) => {
+            tracing::debug!(port, "port public : délai dépassé");
+            false
+        }
+    }
 }
 
 /// L'IP extérieure sans rien ouvrir : la box d'abord, un service public ensuite.
@@ -280,7 +303,7 @@ mod tests {
         );
         assert_eq!(
             (b.cause, b.ligne.as_str()),
-            ("box", "Port 7475 fermé sur la box")
+            ("box", "Port 7475 non confirmé ouvert")
         );
     }
 
