@@ -41,6 +41,10 @@ pub struct CloudModel {
     /// échouera (`cloud_provider.local.available_models`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available: Option<bool>,
+    /// Pour un moteur de la machine : ses poids sont-ils déjà sur le disque ?
+    /// `None` : la passerelle ne le dit pas (un service distant).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed: Option<bool>,
     /// Ce que le modèle produit : `chat`, `image`, `video`, `music`, `3d`,
     /// `speech`, `transcription`, `realtime`, `embedding`, `rerank`…
     #[serde(default = "genre_conversation")]
@@ -369,6 +373,7 @@ pub fn parse_models(body: &serde_json::Value) -> Vec<CloudModel> {
                         .and_then(serde_json::Value::as_bool)
                         .unwrap_or(false),
                 available: None,
+                installed: m.get("installed").and_then(serde_json::Value::as_bool),
                 kind: genre(m, &id),
                 unavailable_reason: None,
                 id,

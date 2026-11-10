@@ -186,6 +186,8 @@ export interface CloudModel {
   /** `false` : publié par la passerelle, mais son fournisseur n'est pas
    *  connecté. Absent : la passerelle ne le dit pas. */
   available?: boolean;
+  /** Moteur de la machine : ses poids sont déjà sur le disque. */
+  installed?: boolean;
   /** Ce que le modèle produit : `chat`, `image`, `video`, `speech`… Seuls les
    *  modèles `chat` se choisissent pour la conversation. */
   kind?: string;
@@ -2559,6 +2561,8 @@ export interface CoreApi {
     refresh?: boolean,
     includeHidden?: boolean,
   ): Promise<CloudModel[]>;
+  /** Retirer du disque un modèle d'un moteur de la machine. */
+  cloudProviderDeleteModel(provider: string, model: string): Promise<void>;
   /** Choisir un modèle distant : il devient le modèle actif de la conversation. */
   cloudProviderSelect(provider: string, model: string): Promise<void>;
   /** Le compte d'un fournisseur local : état, connexion, déconnexion. */
@@ -3172,6 +3176,8 @@ const tauriCore: CoreApi = {
   serveurModelesRetirer: (id) => invoke<void>("serveur_modeles_retirer", { id }),
   cloudProviderSetKey: (provider, key) => invoke<void>("cloud_provider_set_key", { provider, key }),
   cloudProviderClearKey: (provider) => invoke<void>("cloud_provider_clear_key", { provider }),
+  cloudProviderDeleteModel: (provider, model) =>
+    invoke<void>("cloud_provider_delete_model", { provider, model }),
   cloudProviderModels: (provider, refresh, includeHidden) =>
     invoke<CloudModel[]>("cloud_provider_models", { provider, refresh, includeHidden }),
   cloudProviderSelect: (provider, model) =>
@@ -5841,6 +5847,7 @@ Contenu de démonstration, avec **du gras** et une liste :
     demoCloudState.key = "";
     demoCloudState.model = null;
   },
+  async cloudProviderDeleteModel() {},
   async cloudProviderModels() {
     // Un catalogue distant met un instant à répondre : sans ce délai, l'état
     // de chargement de l'écran ne se voit jamais.

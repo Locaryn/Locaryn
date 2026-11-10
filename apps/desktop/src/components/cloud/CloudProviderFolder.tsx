@@ -73,8 +73,14 @@ export type ModeleEnLigne = { provider: CloudProvider; model: CloudModel };
  * de la machine dont les modèles se montrent dans les listes, repérés par un
  * badge au nom du fournisseur plutôt que rangés dans un dossier.
  */
-export function useModelesEnLigne(providers: CloudProvider[], actif = true): ModeleEnLigne[] {
+export function useModelesEnLigne(
+  providers: CloudProvider[],
+  actif = true,
+  /** Changer cette valeur relit les listes (après une suppression). */
+  relecture = 0,
+): ModeleEnLigne[] {
   const [modeles, setModeles] = useState<ModeleEnLigne[]>([]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `relecture` ne sert qu'à relancer la lecture
   useEffect(() => {
     if (!actif) return;
     const directs = providers.filter((p) => p.inline_models);
@@ -86,7 +92,8 @@ export function useModelesEnLigne(providers: CloudProvider[], actif = true): Mod
     void Promise.all(
       directs.map((provider) =>
         core
-          .cloudProviderModels(provider.id)
+          // Relue chez le moteur : ce qui est téléchargé change d'une minute à l'autre.
+          .cloudProviderModels(provider.id, true)
           .then((liste) =>
             liste
               .filter((m) => (m.kind ?? "chat") === "chat" && m.available !== false)
@@ -103,7 +110,7 @@ export function useModelesEnLigne(providers: CloudProvider[], actif = true): Mod
     return () => {
       vivant = false;
     };
-  }, [providers, actif]);
+  }, [providers, actif, relecture]);
   return modeles;
 }
 

@@ -205,6 +205,48 @@ pub async fn cloud_provider_models(
     ))
 }
 
+/// Retirer du disque un modèle d'un moteur de la machine.
+///
+/// `DELETE {api_url}/v1/models/<id>`, et seulement vers une passerelle locale :
+/// un service distant n'a rien à supprimer ici.
+#[tauri::command]
+pub async fn cloud_provider_delete_model(
+    core: State<'_, Core>,
+    provider: String,
+    model: String,
+) -> Result<(), String> {
+    let h = host(&core);
+    let p = cloud::find(&h, &provider).await?;
+    if p.manifest.local.is_none() {
+        return Err(format!(
+            "{} ne garde aucun modèle sur cette machine.",
+            p.label()
+        ));
+    }
+    let base = p.manifest.api_url.trim_end_matches('/');
+    let reponse = core
+        .http
+        .delete(format!("{base}/v1/models/{model}"))
+        .timeout(std::time::Duration::from_secs(120))
+        .send()
+        .await
+        .map_err(|e| format!("{} ne répond pas : {e}", p.label()))?;
+    if !reponse.status().is_success() {
+        let code = reponse.status();
+        let corps: serde_json::Value = reponse.json().await.unwrap_or_default();
+        let raison = corps["error"]["message"]
+            .as_str()
+            .map_or_else(|| code.to_string(), str::to_string);
+        return Err(format!("Suppression refusée : {raison}"));
+    }
+    tracing::info!(fournisseur = %p.id, modele = %model, "modèle supprimé de la passerelle locale");
+    // La liste gardée ne doit pas continuer à le montrer installé.
+    if let Err(e) = cloud::catalog::models(&h, &p, true).await {
+        tracing::warn!(erreur = %e, "catalogue non relu après la suppression");
+    }
+    Ok(())
+}
+
 /// La passerelle répond-elle, et est-elle seulement installée ?
 ///
 /// Sondée à la demande, jamais en boucle : un dossier qu'on n'ouvre pas n'a

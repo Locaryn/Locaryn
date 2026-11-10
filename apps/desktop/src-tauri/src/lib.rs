@@ -7776,6 +7776,7 @@ pub fn run() {
             cloud_providers::cloud_provider_set_key,
             cloud_providers::cloud_provider_clear_key,
             cloud_providers::cloud_provider_models,
+            cloud_providers::cloud_provider_delete_model,
             cloud_providers::cloud_provider_select,
             cloud_providers::serveurs_modeles,
             presse_papiers::lire_presse_papiers,

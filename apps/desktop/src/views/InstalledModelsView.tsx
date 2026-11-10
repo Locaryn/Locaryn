@@ -6,6 +6,7 @@ import {
   BadgeEnLigne,
   CloudProviderScreen,
   CloudProviderTile,
+  type ModeleEnLigne,
   badgesEnLigne,
   useCloudProviders,
   useModelesEnLigne,
@@ -16,7 +17,7 @@ import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuU
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { VUE_RECHOISIE } from "../lib/vues";
 
-import { confirmer } from "../lib/dialog";
+import { confirmer, informer } from "../lib/dialog";
 type Props = {
   installedModels: string[];
   onSelectModelForChat: (modelTag: string) => void;
@@ -122,7 +123,41 @@ export function InstalledModelsView({
      place d'une carte de modèle. Ouvert, il remplace cet écran — c'est bien
      une page, pas un panneau qui se glisse à côté. */
   const { providers: cloudProviders, reload: reloadCloudProviders } = useCloudProviders();
-  const enLigne = useModelesEnLigne(cloudProviders);
+  const [relecture, setRelecture] = useState(0);
+  const enLigne = useModelesEnLigne(cloudProviders, true, relecture);
+  // Ceux qu'un moteur de la machine a déjà téléchargés : ils occupent le
+  // disque comme les autres, et se suppriment d'ici.
+  const telecharges = enLigne.filter((m) => m.model.installed === true);
+  const [occupe, setOccupe] = useState<string | null>(null);
+
+  async function utiliserEnLigne(m: ModeleEnLigne) {
+    setOccupe(m.model.id);
+    try {
+      await core.cloudProviderSelect(m.provider.id, m.model.id);
+      reloadCloudProviders();
+    } catch (e) {
+      void informer(String(e).replace(/^Error:\s*/, ""), "Sélection impossible");
+    } finally {
+      setOccupe(null);
+    }
+  }
+
+  async function supprimerEnLigne(m: ModeleEnLigne) {
+    const oui = await confirmer(
+      `${m.model.name} sera retiré du disque. Vous pourrez le télécharger à nouveau.`,
+      "Supprimer ce modèle ?",
+    );
+    if (!oui) return;
+    setOccupe(m.model.id);
+    try {
+      await core.cloudProviderDeleteModel(m.provider.id, m.model.id);
+      setRelecture((n) => n + 1);
+    } catch (e) {
+      void informer(String(e).replace(/^Error:\s*/, ""), "Suppression impossible");
+    } finally {
+      setOccupe(null);
+    }
+  }
   const [openFolder, setOpenFolder] = useState<string | null>(null);
   // Recliquer « Modèles » dans la barre latérale referme le dossier ouvert.
   useEffect(() => {
@@ -540,6 +575,51 @@ export function InstalledModelsView({
               onOpen={() => setOpenFolder(provider.id)}
             />
           ))}
+        {telecharges.map((m) => (
+          <div
+            key={`direct:${m.provider.id}:${m.model.id}`}
+            className="locaryn-box-card"
+            style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <BadgeEnLigne label={m.provider.label} />
+                <h3
+                  className="locaryn-box-name"
+                  style={{ fontSize: 14, margin: "4px 0 0" }}
+                  title={m.model.id}
+                >
+                  {m.model.name}
+                </h3>
+              </div>
+              <span className="locaryn-tag locaryn-tag-installed" style={{ fontSize: 10 }}>
+                Stocké
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: "auto" }}>
+              <button
+                type="button"
+                className="locaryn-btn-primary"
+                style={{ flex: 1, fontSize: 12 }}
+                disabled={occupe === m.model.id}
+                onClick={() => void utiliserEnLigne(m)}
+              >
+                {m.provider.active_model === m.model.id
+                  ? "Actif dans le chat"
+                  : "Utiliser dans le chat"}
+              </button>
+              <button
+                type="button"
+                className="locaryn-btn-ghost"
+                style={{ color: "var(--danger)", fontSize: 12 }}
+                disabled={occupe === m.model.id}
+                onClick={() => void supprimerEnLigne(m)}
+              >
+                <Icon name="trash" size={15} /> Supprimer
+              </button>
+            </div>
+          </div>
+        ))}
         {filtered.map((entry) => {
           const classification = classifyModel(entry.tag);
           const isDebrided = checkIsModelDebrided(entry, debridedModels);
