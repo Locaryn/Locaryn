@@ -142,6 +142,14 @@ fn interpoler(texte: &str, dir: &Path) -> String {
     let mut t = texte
         .replace("{{gateway_dir}}", &dir.display().to_string())
         .replace("{{data_dir}}", &dir.join("data").display().to_string());
+    // La bibliothèque de modèles de la personne : une passerelle locale y
+    // range les siens au lieu d'ouvrir un dossier à part.
+    if t.contains("{{models_dir}}") {
+        t = t.replace(
+            "{{models_dir}}",
+            &locaryn_config::models_dir().display().to_string(),
+        );
+    }
     if t.contains("{{morph_dir}}") {
         let morph = DOSSIERS_DES_MORPHS
             .lock()

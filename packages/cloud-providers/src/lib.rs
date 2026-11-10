@@ -120,6 +120,8 @@ pub struct CloudProviderInfo {
     pub active_model: Option<String>,
     /// Vrai quand la passerelle tourne sur la machine.
     pub is_local: bool,
+    /// Ses modèles se montrent dans la liste, sans dossier.
+    pub inline_models: bool,
     pub dashboard_url: Option<String>,
     /// Comment l'installer, dit en une phrase.
     pub install_hint: Option<String>,
@@ -471,6 +473,7 @@ pub async fn list_infos(host: &Host<'_>) -> Vec<CloudProviderInfo> {
                 docs_url: p.manifest.docs_url.clone(),
                 key_hint: p.manifest.key_hint.clone(),
                 is_local: local.is_some(),
+                inline_models: p.manifest.inline_models,
                 dashboard_url: local.as_ref().and_then(|l| l.dashboard_url.clone()),
                 install_hint: local.as_ref().and_then(|l| l.install_hint.clone()),
                 can_start: local.as_ref().is_some_and(|l| !l.start.is_empty()),

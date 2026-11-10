@@ -218,6 +218,11 @@ pub struct CloudProviderManifest {
     /// avant de choisir un modèle bloquait un chemin qui fonctionnait déjà.
     #[serde(default, rename = "key_required", alias = "keyRequired")]
     pub key_required: Option<bool>,
+    /// Montrer ses modèles directement dans la liste des modèles, sans
+    /// dossier à ouvrir : pour un moteur qui tourne sur la machine et dont
+    /// les modèles se choisissent comme ceux déjà installés.
+    #[serde(default, rename = "inline_models", alias = "inlineModels")]
+    pub inline_models: bool,
     /// Où lire les limites d'utilisation du compte (quotas sur 5 h, à la
     /// semaine, crédits). URL complète ; la réponse suit le format décrit dans
     /// `docs/writing-an-extension.md` (« Jauge de limites »). Absent : pas de

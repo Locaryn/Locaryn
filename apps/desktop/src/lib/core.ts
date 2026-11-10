@@ -110,6 +110,8 @@ export interface CloudProvider {
   active_model: string | null;
   /** Vrai quand la passerelle tourne sur la machine. */
   is_local: boolean;
+  /** Ses modèles se montrent dans la liste, sans dossier à ouvrir. */
+  inline_models?: boolean;
   /** Le tableau de bord de la passerelle, quand elle en a un. */
   dashboard_url: string | null;
   /** Comment l'installer, dit en une phrase quand elle ne répond pas. */

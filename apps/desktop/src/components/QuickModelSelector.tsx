@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
-import { type CloudModel, core as coreApi } from "../lib/core";
+import { type CloudModel, type CloudProvider, core as coreApi } from "../lib/core";
 import {
   type ModelFamily,
   SEED_CATALOG,
@@ -184,6 +184,46 @@ export function QuickModelSelector({
   }, [isOpen]);
 
   const openedProvider = cloudProviders.find((p) => p.id === openFolder) ?? null;
+
+  // Les fournisseurs « sans dossier » : leurs modèles se lisent à l'ouverture
+  // et se rangent dans la liste, à côté des modèles installés.
+  const [enLigne, setEnLigne] = useState<{ provider: CloudProvider; model: CloudModel }[]>([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const directs = cloudProviders.filter((p) => p.inline_models);
+    if (directs.length === 0) {
+      setEnLigne([]);
+      return;
+    }
+    let actif = true;
+    void Promise.all(
+      directs.map((provider) =>
+        coreApi
+          .cloudProviderModels(provider.id)
+          .then((liste) =>
+            liste
+              .filter((m) => (m.kind ?? "chat") === "chat" && m.available !== false)
+              .map((model) => ({ provider, model })),
+          )
+          .catch((e: unknown) => {
+            console.warn(`[modèles] ${provider.label} :`, e);
+            return [] as { provider: CloudProvider; model: CloudModel }[];
+          }),
+      ),
+    ).then((listes) => {
+      if (actif) setEnLigne(listes.flat());
+    });
+    return () => {
+      actif = false;
+    };
+  }, [isOpen, cloudProviders]);
+  const enLigneFiltres = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return enLigne;
+    return enLigne.filter(({ provider, model }) =>
+      `${model.id} ${model.name} ${provider.label}`.toLowerCase().includes(q),
+    );
+  }, [enLigne, query]);
 
   /* L'hôte ne renvoie que les modèles que le compte sert (Locaryn/Locaryn#122).
      La conversation ne prend que ceux qui conversent : un modèle d'image,
@@ -424,29 +464,49 @@ export function QuickModelSelector({
 
           {/* Hors dossier : les dossiers d'abord, puis les modèles installés. */}
           {!openedProvider &&
-            cloudProviders.map((provider) => (
-              <button
-                key={`cloud:${provider.id}`}
-                type="button"
-                className="locaryn-cloud-row locaryn-cloud-row-folder"
-                onClick={() => setOpenFolder(provider.id)}
-                title={`Voir les modèles ${provider.label}`}
-              >
-                <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <Icon name="cloud" size={16} />
+            enLigneFiltres.map(({ provider, model }) => {
+              const isActive = provider.active_model === model.id;
+              return (
+                <button
+                  key={`direct:${provider.id}:${model.id}`}
+                  type="button"
+                  className={`locaryn-cloud-row${isActive ? " locaryn-active" : ""}`}
+                  onClick={() => void selectCloudModel(provider.id, model.id)}
+                >
                   <span style={{ minWidth: 0, textAlign: "left" }}>
-                    <span className="locaryn-cloud-model-name">{provider.label}</span>
-                    <span className="locaryn-cloud-model-id">
-                      {provider.active_model ??
-                        (typeof provider.usable_count === "number"
-                          ? `${provider.usable_count} modèles utilisables`
-                          : `${provider.model_count} modèles distants`)}
+                    <span className="locaryn-cloud-model-name">{model.name}</span>
+                    <span className="locaryn-cloud-model-id">{provider.label}</span>
+                  </span>
+                  {isActive && <span className="locaryn-tag locaryn-tag-installed">Actif</span>}
+                </button>
+              );
+            })}
+          {!openedProvider &&
+            cloudProviders
+              .filter((p) => !p.inline_models)
+              .map((provider) => (
+                <button
+                  key={`cloud:${provider.id}`}
+                  type="button"
+                  className="locaryn-cloud-row locaryn-cloud-row-folder"
+                  onClick={() => setOpenFolder(provider.id)}
+                  title={`Voir les modèles ${provider.label}`}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <Icon name="cloud" size={16} />
+                    <span style={{ minWidth: 0, textAlign: "left" }}>
+                      <span className="locaryn-cloud-model-name">{provider.label}</span>
+                      <span className="locaryn-cloud-model-id">
+                        {provider.active_model ??
+                          (typeof provider.usable_count === "number"
+                            ? `${provider.usable_count} modèles utilisables`
+                            : `${provider.model_count} modèles distants`)}
+                      </span>
                     </span>
                   </span>
-                </span>
-                <Icon name="forward" size={15} />
-              </button>
-            ))}
+                  <Icon name="forward" size={15} />
+                </button>
+              ))}
 
           {!openedProvider && filtered.length === 0 ? (
             <div style={{ textAlign: "center", color: "var(--text-faint)", padding: "24px" }}>
