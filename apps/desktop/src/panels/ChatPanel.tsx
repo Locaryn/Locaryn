@@ -53,7 +53,7 @@ import {
   isTauri,
   reasoningPayload,
 } from "../lib/core";
-import { confirmer, pickSaveFile } from "../lib/dialog";
+import { confirmer, informer, pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
@@ -83,6 +83,7 @@ import {
   slashAuCurseur,
 } from "../lib/slashCommands";
 import { SOUS_AGENT_ACCORD, SOUS_AGENT_FINI, type SousAgentFini } from "../lib/sousAgents";
+import { ecrireDansLeTerminal } from "../lib/terminaux";
 import { useCloudContext } from "../lib/useCloudContext";
 import { useWelcome } from "../lib/welcome";
 import { estConsigneInterne, runWorkflow } from "../lib/workflow";
@@ -2626,6 +2627,19 @@ ${preview}`,
       ))
     )
       return;
+
+    // Dans le terminal de l'espace de travail, celui que la personne regarde :
+    // la sortie s'y voit en direct, avec ses couleurs, et un programme qui
+    // pose une question y reçoit la réponse. L'ancien panneau à part
+    // n'affichait rien de tout cela — « Exécuter » semblait ne rien faire.
+    if (isTauri) {
+      try {
+        ecrireDansLeTerminal(await core.runSnippetCommand(lang, code, wsl));
+      } catch (e) {
+        void informer(String(e).replace(/^Error:\s*/, ""), "Exécution impossible");
+      }
+      return;
+    }
 
     const cwd = await resolveRunCwd();
     // Le code part dans un fichier lu par l'interprète de son langage, côté

@@ -16478,3 +16478,32 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
+
+/* Le vrai terminal (xterm.js) : il remplit son onglet. */
+.locaryn-pty {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+.locaryn-pty-zone {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+}
+.locaryn-pty-zone .xterm {
+  height: 100%;
+}
+.locaryn-pty-etat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}

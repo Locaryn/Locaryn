@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { PtyTerminal } from "../components/workspace/PtyTerminal";
 import { TerminalConsole } from "../components/workspace/TerminalConsole";
 import { useSessionWorkspace } from "../hooks/useSessionWorkspace";
+import { isTauri } from "../lib/core";
 
 type Props = { cwd: string | null; sessionId?: string | null };
 
@@ -34,7 +36,11 @@ export function BottomPanel({ cwd, sessionId }: Props) {
       <div className="locaryn-bottom-content">
         {/* Gardé monté quand on passe aux journaux : la sortie reste. */}
         <div hidden={tab !== "terminal"} className="locaryn-bottom-term">
-          <TerminalConsole cwd={resolvedCwd} />
+          {isTauri ? (
+            <PtyTerminal cwd={resolvedCwd} visible={tab === "terminal"} />
+          ) : (
+            <TerminalConsole cwd={resolvedCwd} />
+          )}
         </div>
         {tab === "logs" && (
           <div className="locaryn-logs-empty">

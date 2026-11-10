@@ -78,11 +78,72 @@ pub fn pour_langage(lang: &str, windows: bool) -> Option<Interprete> {
     })
 }
 
+/// Un argument entre apostrophes pour PowerShell (`'` s'y double).
+fn guillemet_powershell(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// Un argument entre apostrophes pour un shell POSIX.
+fn guillemet_posix(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// La ligne à taper dans le terminal pour lancer `programme` sur `fichier`.
+/// `windows` : le terminal est PowerShell (l'appel d'un programme entre
+/// apostrophes passe par `&`) ; sinon un shell POSIX.
+pub fn ligne_de_terminal(
+    programme: &str,
+    arguments: &[String],
+    fichier: &str,
+    windows: bool,
+) -> String {
+    let guillemet = if windows {
+        guillemet_powershell
+    } else {
+        guillemet_posix
+    };
+    let mut ligne = String::new();
+    if windows {
+        ligne.push_str("& ");
+    }
+    ligne.push_str(&guillemet(programme));
+    for a in arguments {
+        ligne.push(' ');
+        ligne.push_str(&guillemet(a));
+    }
+    ligne.push(' ');
+    ligne.push_str(&guillemet(fichier));
+    ligne
+}
+
+/// Supprimer les extraits d'il y a plus d'un jour : le terminal les lit et ne
+/// les rend pas, ils s'accumulaient dans le dossier temporaire.
+fn nettoyer_anciens(dossier: &std::path::Path) {
+    let limite = std::time::Duration::from_secs(24 * 3600);
+    let Ok(entrees) = std::fs::read_dir(dossier) else {
+        return;
+    };
+    for e in entrees.flatten() {
+        let vieux = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > limite);
+        if vieux {
+            if let Err(err) = std::fs::remove_file(e.path()) {
+                tracing::debug!(erreur = %err, "ancien extrait non supprimé");
+            }
+        }
+    }
+}
+
 /// Un fichier temporaire pour ce bloc, dans le dossier temporaire de
 /// l'application (sur le volume des données, pas sur le disque système).
 pub fn fichier_temporaire(extension: &str, code: &str) -> std::io::Result<PathBuf> {
     let dossier = locaryn_config::ensure_temp_dir().join("extraits");
     std::fs::create_dir_all(&dossier)?;
+    nettoyer_anciens(&dossier);
     let chemin = dossier.join(format!(
         "extrait_{}.{extension}",
         uuid::Uuid::new_v4().simple()
@@ -101,6 +162,22 @@ pub fn fichier_temporaire(extension: &str, code: &str) -> std::io::Result<PathBu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn la_ligne_de_terminal_protege_les_apostrophes() {
+        let ps = ligne_de_terminal(
+            r"C:\Program Files\Git\bin\bash.exe",
+            &[],
+            r"C:\Users\l'ami\x.sh",
+            true,
+        );
+        assert_eq!(
+            ps,
+            r"& 'C:\Program Files\Git\bin\bash.exe' 'C:\Users\l''ami\x.sh'"
+        );
+        let posix = ligne_de_terminal("python3", &["-u".into()], "/tmp/l'ami.py", false);
+        assert_eq!(posix, r"'python3' '-u' '/tmp/l'\''ami.py'");
+    }
 
     #[test]
     fn chaque_langage_a_son_interprete() {

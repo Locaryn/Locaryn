@@ -1487,6 +1487,9 @@ export type TerminalEvent =
   | { type: "line"; stream: "stdout" | "stderr"; text: string }
   | { type: "exit"; code: number | null };
 
+/** Ce qu'un vrai terminal (shell dans un pseudo-terminal) envoie. */
+export type PtyEvent = { type: "data"; text: string } | { type: "exit"; code: number | null };
+
 export interface HardwareSpec {
   total_ram_gb: number;
   total_vram_gb: number;
@@ -2204,6 +2207,19 @@ export interface CoreApi {
   ): Promise<void>;
   /** Arrêter une commande lancée avec un `id` ; faux si elle était finie. */
   runTerminalStop(id: string): Promise<boolean>;
+  /** La ligne à taper dans le terminal pour exécuter un bloc de code (le
+   *  bloc est écrit dans un fichier, lu par l'interprète de son langage). */
+  runSnippetCommand(lang: string, code: string, wsl?: string | null): Promise<string>;
+  /** Ouvrir un terminal : un shell persistant. Rend son identifiant. */
+  ptyOpen(
+    cwd: string | null,
+    rows: number,
+    cols: number,
+    onEvent: (ev: PtyEvent) => void,
+  ): Promise<string>;
+  ptyWrite(id: string, data: string): Promise<void>;
+  ptyResize(id: string, rows: number, cols: number): Promise<void>;
+  ptyClose(id: string): Promise<void>;
   /** Exécute un bloc de code d'une réponse avec l'interprète de son langage.
    *  `wsl` : la distribution WSL où l'exécuter (`""` : celle par défaut). */
   runSnippet(
@@ -2857,6 +2873,16 @@ const tauriCore: CoreApi = {
     return invoke("run_terminal", { command, cwd, id: id ?? null, onOutput: chan });
   },
   runTerminalStop: (id) => invoke<boolean>("run_terminal_stop", { id }),
+  runSnippetCommand: (lang, code, wsl) =>
+    invoke<string>("run_snippet_command", { lang, code, wsl: wsl ?? null }),
+  ptyOpen(cwd, rows, cols, onEvent) {
+    const chan = new Channel<PtyEvent>();
+    chan.onmessage = onEvent;
+    return invoke<string>("pty_open", { cwd, rows, cols, onEvent: chan });
+  },
+  ptyWrite: (id, data) => invoke<void>("pty_write", { id, data }),
+  ptyResize: (id, rows, cols) => invoke<void>("pty_resize", { id, rows, cols }),
+  ptyClose: (id) => invoke<void>("pty_close", { id }),
   runSnippet(lang, code, cwd, onOutput, wsl) {
     const chan = new Channel<TerminalEvent>();
     chan.onmessage = onOutput;
@@ -4871,6 +4897,15 @@ Contenu de démonstration, avec **du gras** et une liste :
   async runTerminalStop() {
     return false;
   },
+  async runSnippetCommand() {
+    throw new Error("Pas de terminal dans l'aperçu navigateur.");
+  },
+  async ptyOpen() {
+    throw new Error("Pas de terminal dans l'aperçu navigateur.");
+  },
+  async ptyWrite() {},
+  async ptyResize() {},
+  async ptyClose() {},
 
   listProviders: async () => demoProviders,
   setActiveProvider: async (id) => {

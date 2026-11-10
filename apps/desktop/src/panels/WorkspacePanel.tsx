@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 import { BrowserTab } from "../components/workspace/BrowserTab";
 import { ChangesTab } from "../components/workspace/ChangesTab";
 import { FilesTab } from "../components/workspace/FilesTab";
+import { PtyTerminal } from "../components/workspace/PtyTerminal";
 import { TasksTab } from "../components/workspace/TasksTab";
 import { TerminalConsole } from "../components/workspace/TerminalConsole";
 import { useSessionWorkspace } from "../hooks/useSessionWorkspace";
+import { isTauri } from "../lib/core";
 import {
   KINDS,
   LAUNCHER_ORDER,
@@ -91,7 +93,11 @@ function OngletsConversation({ sessionId, projectPath, espace, affichee }: Ongle
       case "files":
         return <FilesTab sessionId={sessionId} visible={visible} />;
       case "terminal":
-        return <TerminalConsole cwd={dossier} greeting={dossier ? `Dans ${dossier}` : undefined} />;
+        return isTauri ? (
+          <PtyTerminal cwd={dossier} ongletId={tab.id} visible={visible} />
+        ) : (
+          <TerminalConsole cwd={dossier} greeting={dossier ? `Dans ${dossier}` : undefined} />
+        );
       case "changes":
         return <ChangesTab sessionId={sessionId} visible={visible} />;
       case "preview":

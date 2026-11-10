@@ -38,6 +38,7 @@ mod notifications;
 mod permissions_web;
 mod presse_papiers;
 mod project_context;
+mod pty;
 mod rapports;
 mod reponses_vives;
 mod reveler;
@@ -3181,6 +3182,47 @@ async fn run_snippet(
         tracing::debug!(error = %e, "extrait temporaire non supprimé");
     }
     resultat
+}
+
+/// La ligne à taper dans le terminal pour exécuter un bloc de code : le bloc est
+/// écrit dans un fichier, lu par l'interprète de son langage (les mêmes que
+/// `run_snippet`), et sa sortie se voit dans le terminal que la personne
+/// regarde — avec ses couleurs, et son entrée si le programme en demande une.
+#[tauri::command]
+async fn run_snippet_command(
+    lang: String,
+    code: String,
+    wsl: Option<String>,
+) -> Result<String, String> {
+    if let (Some(distribution), Some(linux)) = (wsl, wsl_cmd::interprete_linux(&lang)) {
+        let extension = match linux {
+            "python3" => "py",
+            "node" => "js",
+            _ => "sh",
+        };
+        let fichier = snippets::fichier_temporaire(extension, &code.replace("\r\n", "\n"))
+            .map_err(|e| format!("Fichier temporaire impossible : {e}"))?;
+        let arguments = wsl_cmd::arguments(&distribution, linux, &fichier.to_string_lossy());
+        // `arguments` finit par le fichier : il est rendu à part.
+        let (fichier_arg, debut) = arguments.split_last().ok_or("ligne WSL vide")?;
+        return Ok(snippets::ligne_de_terminal(
+            "wsl.exe",
+            debut,
+            fichier_arg,
+            cfg!(windows),
+        ));
+    }
+    let interprete = snippets::pour_langage(&lang, cfg!(windows)).ok_or_else(|| {
+        format!("Les blocs « {lang} » ne s'exécutent pas ici : copiez-le dans l'outil adapté.")
+    })?;
+    let fichier = snippets::fichier_temporaire(interprete.extension, &code)
+        .map_err(|e| format!("Fichier temporaire impossible : {e}"))?;
+    Ok(snippets::ligne_de_terminal(
+        &interprete.programme,
+        &interprete.arguments,
+        &fichier.to_string_lossy(),
+        cfg!(windows),
+    ))
 }
 
 /// Lancer un processus et en relayer la sortie ligne à ligne, puis son code.
@@ -7949,6 +7991,11 @@ pub fn run() {
             taches_fond::taches_distantes_ecrire,
             travel_mode::micro_model,
             travel_mode::consigne_systeme,
+            run_snippet_command,
+            pty::pty_open,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_close,
             session_model::remember_session_model,
             session_model::apply_session_model,
             model_residency::delai_ejection,
