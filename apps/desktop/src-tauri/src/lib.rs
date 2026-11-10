@@ -8108,6 +8108,16 @@ pub fn run() {
                 tauri::async_runtime::block_on(async move {
                     sup.kill_all_engines().await;
                 });
+                // Extinction ou fermeture de session : Windows arrête lui-même
+                // tous les processus, et la commande d'arrêt d'une passerelle
+                // (un `node` de plus) n'aurait fait qu'ouvrir une fenêtre
+                // d'erreur par passerelle, qui retenait l'extinction.
+                if locaryn_config::session_se_ferme() {
+                    tracing::info!(
+                        "session en cours de fermeture : aucun programme lancé à la sortie"
+                    );
+                    return;
+                }
                 // Les passerelles locales des extensions aussi : elles
                 // survivaient à l'application, en arrière-plan, sans servir
                 // personne. Dix secondes au plus, pour ne pas retenir la sortie.

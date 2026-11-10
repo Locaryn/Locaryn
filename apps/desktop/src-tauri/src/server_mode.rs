@@ -22,6 +22,10 @@ pub fn stop_daemon() {
             let _ = child.wait();
         }
     }
+    // La session Windows se ferme : ne rien lancer (voir `session_se_ferme`).
+    if locaryn_config::session_se_ferme() {
+        return;
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt as _;

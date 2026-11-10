@@ -89,6 +89,32 @@ pub struct AssistanceConfig {
     pub idle_unload_secs: Option<u64>,
 }
 
+/// Windows est-il en train de fermer la session (extinction, redémarrage,
+/// déconnexion) ?
+///
+/// Pendant ce moment, tout programme qu'on lance échoue à s'initialiser et
+/// Windows affiche une fenêtre d'erreur par tentative — qui retient
+/// l'extinction tant qu'on ne l'a pas fermée. Qui nettoie en sortant doit donc
+/// s'abstenir de lancer quoi que ce soit (`taskkill`, commande d'arrêt d'une
+/// passerelle) : le système arrête de toute façon tous les processus.
+pub fn session_se_ferme() -> bool {
+    #[cfg(windows)]
+    {
+        #[link(name = "user32")]
+        extern "system" {
+            fn GetSystemMetrics(index: i32) -> i32;
+        }
+        /// `SM_SHUTTINGDOWN` : non nul quand la session se ferme.
+        const SM_SHUTTINGDOWN: i32 = 0x2000;
+        // SAFETY: appel sans pointeur ni état, documenté sans condition préalable.
+        unsafe { GetSystemMetrics(SM_SHUTTINGDOWN) != 0 }
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 /// Le délai d'éjection réglé par la personne, s'il y en a un.
 pub fn idle_unload_secs() -> Option<u64> {
     load(None).ok().and_then(|c| c.assistance.idle_unload_secs)
@@ -1250,5 +1276,15 @@ mod program_tests {
 
         // Nettoyage
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    /// Hors extinction, la session n'est pas « en train de se fermer » : sinon
+    /// plus aucune sonde ni arrêt propre ne se ferait en temps normal.
+    #[test]
+    fn hors_extinction_la_session_ne_se_ferme_pas() {
+        assert!(!super::session_se_ferme());
     }
 }

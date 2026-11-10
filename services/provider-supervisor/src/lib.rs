@@ -1804,6 +1804,11 @@ fn port_error_message(port: u16, e: &std::io::Error) -> String {
 /// précédente, orphelin, n'appartient à aucun superviseur vivant et garde
 /// pourtant le port et la VRAM.
 pub async fn kill_stray_llama_servers() {
+    // La session Windows se ferme : `taskkill` ne démarrerait pas, et Windows
+    // afficherait une fenêtre d'erreur à sa place.
+    if locaryn_config::session_se_ferme() {
+        return;
+    }
     #[cfg(windows)]
     {
         // CREATE_NO_WINDOW : sans ce drapeau, chaque redémarrage faisait

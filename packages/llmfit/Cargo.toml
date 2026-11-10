@@ -8,5 +8,6 @@ authors.workspace = true
 description = "Estimation native : ce modèle tourne-t-il sur cette machine, et à quelle vitesse."
 
 [dependencies]
+locaryn-config = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }

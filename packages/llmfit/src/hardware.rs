@@ -342,6 +342,11 @@ fn quiet(command: &mut Command) {
 }
 
 fn run(program: &str, args: &[&str]) -> Option<String> {
+    // Les sondes tournent en continu (mémoire vidéo libre) : pendant que
+    // Windows ferme la session, chacune aurait ouvert une fenêtre d'erreur.
+    if locaryn_config::session_se_ferme() {
+        return None;
+    }
     let mut command = Command::new(program);
     command.args(args);
     quiet(&mut command);

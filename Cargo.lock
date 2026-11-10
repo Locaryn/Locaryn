@@ -3861,6 +3861,7 @@ dependencies = [
 name = "locaryn-llmfit"
 version = "0.4.69"
 dependencies = [
+ "locaryn-config",
  "serde",
  "tracing",
 ]
