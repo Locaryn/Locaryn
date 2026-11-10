@@ -3293,6 +3293,7 @@ ${preview}`,
                       text={it.text}
                       images={it.images}
                       imagePaths={it.imagePaths}
+                      enCours={it.role === "assistant" && streaming && i === blocs.length - 1}
                       speed={it.speed}
                       attachments={it.attachments}
                       forge={it.forge}

@@ -46,6 +46,20 @@ const RELANCE_REFLEXION_SEULE: &str = "Ta réponse ne contenait que ta réflexio
 n'a été appelé et aucune réponse n'a été donnée. Un appel écrit dans la réflexion n'est pas \
 exécuté. Appelle l'outil maintenant si tu voulais le faire, sinon donne ta réponse.";
 
+/// Rappel quand le fournisseur a coupé la réponse à sa limite de longueur :
+/// un gros fichier écrit d'un seul appel n'arrive jamais entier.
+const RELANCE_COUPEE: &str = "Ta réponse a été coupée par la limite de longueur avant la fin : \
+l'appel d'outil n'est pas arrivé entier et rien n'a été fait. Refais-le en plus petit : un \
+fichier à la fois, et un gros fichier en plusieurs écritures successives.";
+
+/// Rappel quand le fournisseur n'a rien renvoyé du tout.
+const RELANCE_VIDE: &str = "Ta réponse est arrivée vide : ni texte, ni appel d'outil. \
+Reprends où tu en étais : appelle l'outil suivant, ou donne ta réponse.";
+
+/// Tours sans effet (vide, réflexion seule, coupé) relancés d'affilée avant
+/// d'abandonner. Un fournisseur distant en rend parfois deux de suite.
+const RELANCES_SANS_EFFET_MAX: u8 = 3;
+
 /// Relance d'une réponse qui annonce une action sans la faire.
 const RELANCE_ANNONCE: &str = "Tu as annoncé ce que tu allais faire, sans appeler d'outil : rien n'a été fait. Fais-le maintenant en appelant l'outil qu'il faut (image_search pour des images, web_search pour une recherche, browser_open pour voir une page). Si tout est déjà fait, dis-le.";
 
@@ -121,6 +135,10 @@ struct RoundResult {
     content: String,
     /// Le modèle a réfléchi pendant ce tour (`reasoning_content`).
     reasoned: bool,
+    /// Pourquoi le fournisseur a arrêté d'écrire (`finish_reason`) : `stop`,
+    /// `tool_calls`, `length` (coupé à la limite)… Absent si le flux s'est
+    /// interrompu sans le dire.
+    fin: Option<String>,
     calls: Vec<AssembledCall>,
     tokens_in: u64,
     tokens_out: u64,
@@ -810,6 +828,10 @@ pub async fn run_openai_tool_loop(
             let mut pending_resp = Some(first_resp);
             let mut got_final = false;
             let mut relance_faite = false;
+            // Tours sans effet relancés d'affilée, et le dernier motif vu :
+            // il sert à dire pourquoi la tâche s'arrête, si elle s'arrête.
+            let mut relances_sans_effet: u8 = 0;
+            let mut motif_sans_effet: Option<&'static str> = None;
             let mut limite_atteinte = false;
             let mut derniere_signature: Option<String> = None;
             let mut repetitions_identiques: u32 = 0;
@@ -1045,18 +1067,48 @@ pub async fn run_openai_tool_loop(
                     // pose des balises `<parameter>`), où le serveur ne le lit pas.
                     // La tâche s'arrêtait là, muette. Une relance, jamais deux de
                     // suite : un modèle qui recommence n'est pas relancé en boucle.
-                    if !relance_faite
-                        && round_result.reasoned
-                        && round_result.content.trim().is_empty()
-                        && round + 1 < MAX_TOOL_ROUNDS
-                    {
-                        relance_faite = true;
-                        messages.as_array_mut().unwrap().push(serde_json::json!({
-                            "role": "user",
-                            "content": RELANCE_REFLEXION_SEULE,
-                        }));
-                        continue;
+                    let coupe = round_result.fin.as_deref() == Some("length");
+                    let sans_texte = round_result.content.trim().is_empty();
+                    // Rien d'utilisable : coupé à la limite, réflexion seule, ou
+                    // réponse vide. Un fournisseur distant en rend parfois
+                    // plusieurs de suite ; s'arrêter au premier laissait la
+                    // tâche en plan, et la personne tapait « continue ».
+                    let sans_effet = if coupe && sans_texte {
+                        Some(("coupe", RELANCE_COUPEE))
+                    } else if sans_texte && round_result.reasoned {
+                        Some(("reflexion", RELANCE_REFLEXION_SEULE))
+                    } else if sans_texte && !tools_for_dispatch.is_empty() {
+                        Some(("vide", RELANCE_VIDE))
+                    } else {
+                        None
+                    };
+                    if let Some((motif, rappel)) = sans_effet {
+                        motif_sans_effet = Some(motif);
+                        if relances_sans_effet < RELANCES_SANS_EFFET_MAX
+                            && round + 1 < MAX_TOOL_ROUNDS
+                        {
+                            relances_sans_effet += 1;
+                            tracing::info!(
+                                motif,
+                                essai = relances_sans_effet,
+                                fin = ?round_result.fin,
+                                "tour sans effet : relance"
+                            );
+                            let liste = messages.as_array_mut().unwrap();
+                            if !sans_texte {
+                                liste.push(serde_json::json!({
+                                    "role": "assistant",
+                                    "content": round_result.content,
+                                }));
+                            }
+                            liste.push(serde_json::json!({ "role": "user", "content": rappel }));
+                            continue;
+                        }
+                        // Relances épuisées : la tâche s'arrête, et le motif est
+                        // dit — pas une fin muette.
+                        break;
                     }
+                    motif_sans_effet = None;
                     // L'appel écrit en texte au lieu d'être fait : on le dit au
                     // modèle tout de suite, qui le refait pour de vrai.
                     if !relance_faite
@@ -1157,6 +1209,8 @@ pub async fn run_openai_tool_loop(
                 }
 
                 relance_faite = false;
+                relances_sans_effet = 0;
+                motif_sans_effet = None;
 
                 // Echo the assistant tool-call message back into the transcript.
                 let tc_json: Vec<serde_json::Value> = round_result
@@ -1301,7 +1355,21 @@ pub async fn run_openai_tool_loop(
                          s'arrête ici, sans réponse finale. Écrivez « continue » pour reprendre."
                     )
                 } else {
-                    "Le modèle s'est arrêté sans réponse finale.".to_string()
+                    match motif_sans_effet {
+                        Some("coupe") => "Le fournisseur coupe les réponses du modèle à sa limite de \
+                             longueur : l'appel d'outil n'arrive jamais entier. Demandez des fichiers \
+                             plus petits, ou choisissez un modèle à sortie plus longue."
+                            .to_string(),
+                        Some("reflexion") => "Le modèle a réfléchi plusieurs fois de suite sans agir ni \
+                             répondre : la tâche s'arrête ici. Écrivez « continue » pour reprendre, ou \
+                             choisissez un autre modèle."
+                            .to_string(),
+                        Some("vide") => "Le fournisseur a renvoyé plusieurs réponses vides de suite \
+                             (quota atteint ou modèle indisponible ?) : la tâche s'arrête ici. Écrivez \
+                             « continue » pour reprendre."
+                            .to_string(),
+                        _ => "Le modèle s'est arrêté sans réponse finale.".to_string(),
+                    }
                 };
                 let _ = tx
                     .send(StreamEvent::Log {
@@ -1766,7 +1834,25 @@ async fn stream_one_round(
     let mut buffer = String::new();
 
     while let Some(chunk_res) = byte_stream.next().await {
-        let chunk = chunk_res.map_err(|e| e.to_string())?;
+        let chunk = match chunk_res {
+            Ok(c) => c,
+            Err(e) => {
+                // Le flux casse en pleine réflexion : sans fermeture, le bloc
+                // restait « en cours » à l'écran pour toujours.
+                if reflexion_ouverte {
+                    let _ = send_token(
+                        tx,
+                        format!(
+                            "{REFLEXION_FIN}
+
+"
+                        ),
+                    )
+                    .await;
+                }
+                return Err(e.to_string());
+            }
+        };
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
         while let Some(pos) = buffer.find('\n') {
@@ -1793,6 +1879,17 @@ async fn stream_one_round(
                     .and_then(|c| c.as_u64())
                     .and_then(|c| u16::try_from(c).ok())
                     .unwrap_or(500);
+                if reflexion_ouverte {
+                    let _ = send_token(
+                        tx,
+                        format!(
+                            "{REFLEXION_FIN}
+
+"
+                        ),
+                    )
+                    .await;
+                }
                 return Err(server_error_message(code, json_str));
             }
 
@@ -1821,6 +1918,12 @@ async fn stream_one_round(
                 .and_then(|c| c.as_array())
                 .and_then(|a| a.first())
                 .and_then(|c| c.get("delta"));
+            if let Some(fin) = val
+                .pointer("/choices/0/finish_reason")
+                .and_then(|f| f.as_str())
+            {
+                out.fin = Some(fin.to_string());
+            }
             let Some(delta) = delta else { continue };
 
             if let Some(pensee) = reasoning_delta(delta) {

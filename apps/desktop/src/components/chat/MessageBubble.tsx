@@ -59,6 +59,11 @@ type Props = {
   images?: string[];
   /** Native source paths for generated images, when available. */
   imagePaths?: Array<string | undefined>;
+  /** Le message est encore en cours d'écriture. Faux (ou absent) : la
+   *  réflexion qu'un modèle n'a pas refermée est terminée, pas « en cours »
+   *  — il s'est arrêté, coupé ou interrompu, et la barre ne doit plus
+   *  paraître active. */
+  enCours?: boolean;
   /** Show the Edit action (last user message, not streaming). */
   canEdit?: boolean;
   onEdit?: () => void;
@@ -149,6 +154,7 @@ export function MessageBubble({
   text,
   images,
   imagePaths,
+  enCours = false,
   canEdit,
   onEdit,
   onRunCode,
@@ -177,10 +183,12 @@ export function MessageBubble({
   // out so the answer is what the reader sees; the deliberation stays folded.
   // Le texte en cours d'écriture se dévoile régulièrement, réflexion comprise.
   const fluide = useTexteFluide(text);
-  const { reasoning, answer, reasoningInProgress } =
+  const separe =
     role === "assistant"
       ? splitReasoning(fluide)
       : { reasoning: "", answer: text, reasoningInProgress: false };
+  const { reasoning, answer } = separe;
+  const reasoningInProgress = separe.reasoningInProgress && enCours;
 
   useEffect(() => {
     if (!lightbox) return;

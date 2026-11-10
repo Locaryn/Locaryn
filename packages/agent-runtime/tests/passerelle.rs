@@ -632,3 +632,87 @@ async fn la_page_ouverte_et_ses_outils_partent_avec_le_message() {
         "l'état suit le message, jamais l'invite système"
     );
 }
+
+/// Un faux fournisseur qui ne rend que de la réflexion pendant `vides` tours,
+/// puis une vraie réponse. Rend son adresse et le compteur d'appels.
+async fn serveur_qui_reflechit(vides: u32) -> (String, Arc<Mutex<u32>>) {
+    let compte: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+    let app = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(move |State(compte): State<Arc<Mutex<u32>>>| async move {
+                let n = {
+                    let mut c = compte.lock().expect("verrou");
+                    *c += 1;
+                    *c
+                };
+                let corps = if n <= vides {
+                    "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Now let me create the server.\"},\"finish_reason\":null}]}\n\n\
+                     data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                     data: [DONE]\n\n"
+                } else {
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"fini\"},\"finish_reason\":null}]}\n\n\
+                     data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                     data: [DONE]\n\n"
+                };
+                axum::response::Response::builder()
+                    .header("content-type", "text/event-stream")
+                    .body(axum::body::Body::from(corps))
+                    .expect("réponse")
+            }),
+        )
+        .with_state(compte.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("port libre");
+    let addr = listener.local_addr().expect("adresse");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    (format!("http://{addr}"), compte)
+}
+
+/// Un modèle distant qui réfléchit deux fois de suite sans agir (vu avec un
+/// modèle NVIDIA par une passerelle) est relancé jusqu'à ce qu'il réponde :
+/// la tâche ne s'arrête plus au premier tour muet.
+#[tokio::test]
+async fn deux_tours_de_reflexion_seule_ne_finissent_pas_la_tache() {
+    let (base, compte) = serveur_qui_reflechit(2).await;
+    let evs = evenements(&base).await;
+    let texte: String = evs
+        .iter()
+        .filter_map(|e| match e {
+            StreamEvent::Token { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texte.contains("fini"),
+        "réponse finale attendue, reçu : {texte}"
+    );
+    assert_eq!(*compte.lock().expect("verrou"), 3);
+    assert!(
+        !evs.iter()
+            .any(|e| matches!(e, StreamEvent::Log { source, .. } if source == "tour_inacheve")),
+        "aucun avis d'arrêt quand la réponse finit par venir"
+    );
+}
+
+/// S'il ne fait que réfléchir, la tâche s'arrête après trois relances, et le
+/// motif est dit.
+#[tokio::test]
+async fn la_reflexion_seule_sans_fin_s_arrete_en_le_disant() {
+    let (base, compte) = serveur_qui_reflechit(u32::MAX).await;
+    let evs = evenements(&base).await;
+    assert_eq!(
+        *compte.lock().expect("verrou"),
+        4,
+        "un tour et trois relances"
+    );
+    assert!(
+        evs.iter().any(
+            |e| matches!(e, StreamEvent::Log { msg, .. } if msg.contains("réfléchi plusieurs fois"))
+        ),
+        "le motif de l'arrêt doit être dit"
+    );
+}
