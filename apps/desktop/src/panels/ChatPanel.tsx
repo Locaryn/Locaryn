@@ -261,7 +261,7 @@ type MentionItem = {
   name: string;
   label: string;
   hint: string;
-  icon: "plugs-connected" | "extensions" | "sparkle";
+  icon: "plugs-connected" | "extensions" | "sparkle" | "globe";
   /** Une distribution WSL : choisie, elle devient `@wsl:<nom>`. */
   distro?: string;
 };
@@ -2828,31 +2828,55 @@ ${preview}`,
       ]);
       connecteursRef.current = mcp;
       skillsRef.current = sk;
+      // Un morph activé se désigne d'un seul nom : ses connecteurs
+      // (`<morph>__<serveur>`) et ses skills passent avec lui, au lieu de
+      // trois lignes pour la même chose.
+      const morphs = extensions.filter((x) => x.enabled);
+      const duMorph = (nom: string) => morphs.find((x) => nom.startsWith(`${x.name}__`));
+      const libres = sk.filter((s) => !morphs.some((x) => x.name === s.source));
       const liste: MentionItem[] = [
-        ...sk.map((s) => ({
-          name: s.name,
-          label: s.name,
-          hint: `Skill · ${s.source}${s.description ? ` — ${s.description}` : ""}`,
-          icon: "sparkle" as const,
-        })),
-        ...mcp.map((c) => ({
-          name: c.name,
-          label: c.name,
-          hint: !c.running
-            ? "Connecteur MCP · arrêté"
-            : c.companion && !c.companion.running
-              ? `Connecteur MCP · ${c.companion.name} n'est pas ouvert`
-              : `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`,
-          icon: "plugs-connected" as const,
-        })),
-        ...extensions
-          .filter((x) => x.enabled)
-          .map((x) => ({
+        {
+          name: "navigateur",
+          label: "navigateur",
+          hint: "Navigateur intégré de Locaryn, visible dans l'espace de travail",
+          icon: "globe" as const,
+        },
+        ...morphs.map((x) => {
+          const outils = mcp
+            .filter((c) => duMorph(c.name) === x)
+            .reduce((n, c) => n + c.tools.length, 0);
+          const skills = sk.filter((s) => s.source === x.name).length;
+          const detail = [
+            outils ? `${outils} outil${outils > 1 ? "s" : ""}` : "",
+            skills ? `${skills} skill${skills > 1 ? "s" : ""}` : "",
+          ]
+            .filter(Boolean)
+            .join(", ");
+          return {
             name: x.name,
             label: x.display_name || x.name,
-            hint: "Morph · ses connecteurs et skills, imposés au modèle",
+            hint: `Morph${detail ? ` · ${detail}` : ""}${x.description ? ` — ${x.description}` : ""}`,
             icon: "extensions" as const,
+          };
+        }),
+        ...mcp
+          .filter((c) => !duMorph(c.name))
+          .map((c) => ({
+            name: c.name,
+            label: c.name,
+            hint: !c.running
+              ? "Connecteur MCP · arrêté"
+              : c.companion && !c.companion.running
+                ? `Connecteur MCP · ${c.companion.name} n'est pas ouvert`
+                : `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`,
+            icon: "plugs-connected" as const,
           })),
+        ...libres.map((s) => ({
+          name: s.name,
+          label: s.name,
+          hint: `Skill${s.description ? ` — ${s.description}` : ""}`,
+          icon: "sparkle" as const,
+        })),
       ];
       mentionsCacheRef.current = liste;
       mentionsTimestampRef.current = Date.now();

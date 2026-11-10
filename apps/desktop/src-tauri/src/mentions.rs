@@ -150,6 +150,10 @@ fn nomme_en_clair(texte: &str, nom: &str) -> bool {
     })
 }
 
+/// La mention du navigateur intégré de l'application, distincte des morphs
+/// qui pilotent le navigateur de la personne.
+pub const MENTION_NAVIGATEUR: &str = "navigateur";
+
 /// Ce que `texte` désigne : connecteurs MCP, morphs (extensions) et skills.
 pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
     if !texte.contains('@') && !texte.contains('/') {
@@ -260,6 +264,22 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
         ));
     }
 
+    // `@navigateur` : le navigateur intégré, visible dans l'espace de travail.
+    if mentionne(texte, MENTION_NAVIGATEUR) {
+        let integres: Vec<String> = crate::app_tools::specs_app()
+            .into_iter()
+            .map(|t| t.name)
+            .filter(|n| n.starts_with("browser_"))
+            .collect();
+        if !integres.is_empty() {
+            lignes.push(format!(
+                "- le navigateur intégré de Locaryn (pas celui de la personne), outils : {}",
+                integres.join(", ")
+            ));
+            outils_imposes.extend(integres);
+        }
+    }
+
     let tous_les_skills = skills::tous(core.inner()).await;
     for (e, spec) in &morphs {
         // Un morph désigné : ses skills et ses connecteurs, nommés, pour que
@@ -280,7 +300,7 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
             format!("- le morph « {} »", e.display_name)
         } else {
             format!(
-                "- le morph « {} » (skills : {} — mentionne-les avec @ pour les suivre)",
+                "- le morph « {} » (skills : {}, détaillés plus bas)",
                 e.display_name,
                 siens.join(", ")
             )
@@ -288,9 +308,15 @@ pub async fn precisions(core: State<'_, Core>, texte: &str) -> Mentions {
     }
 
     // Les skills désignés : leur contenu complet, pas seulement leur nom.
+    // Ceux d'un morph désigné le sont avec lui : « @morph » apporte tout ce
+    // qu'il installe.
     let imposes: Vec<String> = tous_les_skills
         .iter()
-        .filter(|(_, s)| mentionne(texte, &s.name) || designe(texte, '/', &s.name))
+        .filter(|(source, s)| {
+            mentionne(texte, &s.name)
+                || designe(texte, '/', &s.name)
+                || morphs.iter().any(|(e, _)| &e.name == source)
+        })
         .map(|(source, s)| skills::consigne(source, s))
         .collect();
 
