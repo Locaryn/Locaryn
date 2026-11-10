@@ -1423,7 +1423,6 @@ body.locaryn-resizing .locaryn-resizer::after {
   max-width: 520px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--surface);
 }
@@ -4116,7 +4115,6 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
   padding: 14px 16px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-left: 3px solid var(--info);
   border-radius: var(--radius-sm);
 }
 .locaryn-intent-decided {
@@ -5456,7 +5454,6 @@ pre.md-code {
 .locaryn-account-profile-note {
   margin: var(--space-5) 0;
   padding: var(--space-3);
-  border-left: 2px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 7%, transparent);
   color: var(--text-dim);
   font-size: var(--text-sm);
@@ -5892,7 +5889,7 @@ pre.md-code {
   margin-top: var(--space-3);
   padding: var(--space-3);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--warn);
+  border: 1px solid var(--warn);
   border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--warn) 5%, transparent);
 }
@@ -5970,13 +5967,13 @@ pre.md-code {
   /* Le liseré porte l'urgence, pas le fond : un bloc entièrement orange au-
      dessus du champ de saisie attirerait l'œil en permanence, alors que la
      question peut attendre. */
-  border-left: 2px solid var(--warn);
+  border: 1px solid var(--warn);
   border-radius: var(--radius-sm, 8px);
   background: var(--surface);
   animation: locaryn-attention-entree var(--dur-slow, 240ms) var(--ease) both;
 }
 .locaryn-attention-erreur {
-  border-left-color: var(--danger);
+  border-color: var(--danger);
 }
 
 /* L'apparition glisse depuis le bas plutôt que de surgir : la bande pousse le
@@ -6277,7 +6274,7 @@ pre.md-code {
   gap: var(--space-2);
   padding: var(--space-3);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--warn);
+  border: 1px solid var(--warn);
   border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--warn) 5%, transparent);
   color: var(--text-muted);
@@ -7345,7 +7342,7 @@ pre.md-code {
 .locaryn-res-item.picked {
   background: var(--surface-2, rgb(255 255 255 / 6%));
   color: var(--text);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .locaryn-res-item:disabled {
   opacity: 0.45;
@@ -7364,18 +7361,14 @@ pre.md-code {
   margin-top: var(--space-2);
   padding: var(--space-2);
   border-radius: 4px;
-  border-left: 2px solid var(--text-faint);
   background: rgb(255 255 255 / 3%);
 }
-.locaryn-res-fit.confortable {
-  border-left-color: var(--accent);
-}
 .locaryn-res-fit.juste {
-  border-left-color: var(--warn);
+  border-color: var(--warn);
 }
 .locaryn-res-fit.risque,
 .locaryn-res-fit.refuse {
-  border-left-color: var(--danger);
+  border-color: var(--danger);
 }
 
 .locaryn-res-fit-msg {
@@ -7516,7 +7509,7 @@ pre.md-code {
 }
 .locaryn-caution-choice.locaryn-active {
   border-color: var(--accent);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .locaryn-caution-choice:disabled {
   opacity: 0.55;
@@ -8856,17 +8849,17 @@ pre.md-code {
    remplacer : `box-shadow` est une seule propriété, et le liseré seul effaçait
    l'ombre douce du système. */
 .locaryn-compat-gpu {
-  box-shadow: inset 3px 0 0 var(--accent-300), var(--shadow-1);
+  box-shadow: var(--shadow-1);
 }
 .locaryn-compat-offload {
-  box-shadow: inset 3px 0 0 var(--warn), var(--shadow-1);
+  box-shadow: var(--shadow-1);
 }
 .locaryn-compat-heavy {
-  box-shadow: inset 3px 0 0 var(--danger), var(--shadow-1);
+  box-shadow: var(--shadow-1);
   opacity: 0.82;
 }
 .locaryn-compat-airllm {
-  box-shadow: inset 3px 0 0 var(--info), var(--shadow-1);
+  box-shadow: var(--shadow-1);
 }
 
 /* AirLLM — low-VRAM inference engine toggle */
@@ -11939,7 +11932,6 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font: inherit;
   color: inherit;
   cursor: pointer;
-  border-left: 2px solid var(--accent);
 }
 
 .locaryn-cloud-folder:focus-visible {
@@ -12069,13 +12061,9 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   border-radius: var(--radius-xs);
   font-size: 12px;
   line-height: 1.5;
-  border-left: 2px solid var(--danger);
+  border: 1px solid var(--danger);
   background: rgb(255 255 255 / 3%);
   color: var(--text-dim);
-}
-
-.locaryn-cloud-notice {
-  border-left-color: var(--accent);
 }
 
 .locaryn-cloud-empty {
@@ -12130,9 +12118,6 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 }
 
 /* Le dossier, dans le sélecteur du chat : le liseré dit qu'il mène ailleurs. */
-.locaryn-cloud-row-folder {
-  border-left: 2px solid var(--accent);
-}
 
 .locaryn-cloud-model-name {
   display: block;
@@ -16126,11 +16111,8 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   background: var(--surface-2, transparent);
   border-color: var(--border);
 }
-.locaryn-mcp-card-connecte {
-  border-left: 2px solid var(--accent);
-}
 .locaryn-mcp-card-attente {
-  border-left: 2px solid var(--warn);
+  border: 1px solid var(--warn);
 }
 .locaryn-mcp-card-arrete .locaryn-box-name,
 .locaryn-mcp-card-arrete .locaryn-connector-cmd,
