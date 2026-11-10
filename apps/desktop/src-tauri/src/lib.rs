@@ -2077,7 +2077,7 @@ async fn envoyer_message(
     // actif au premier message, pour que les suivantes ne le changent plus.
     if core.remote_client().is_none() {
         match core.storage.sessions.get(session_id).await {
-            Ok(session) => match session_model::appliquer(&core, &session).await {
+            Ok(session) => match session_model::appliquer(&core, &session, true).await {
                 Ok(true) => {}
                 Ok(false) => {
                     if let Err(e) = session_model::retenir(&core, session_id).await {

@@ -49,7 +49,17 @@ pub(crate) async fn retenir(core: &Core, session_id: Uuid) -> Result<(), String>
 /// `Ok(false)` : elle n'en a pas retenu (ou son fournisseur a disparu) ; rien
 /// ne change. `Err` : il y a un modèle à activer et cela ne se peut pas
 /// maintenant, avec la raison.
-pub(crate) async fn appliquer(core: &Core, session: &Session) -> Result<bool, String> {
+///
+/// Rien n'est arrêté ni chargé ici : parcourir ses conversations ne doit pas
+/// éjecter le modèle en mémoire. C'est à l'envoi que le superviseur compare
+/// le modèle réellement servi à celui attendu, et recharge s'il le faut.
+/// `a_l_envoi` : refuser si ce rechargement couperait la réponse en cours
+/// d'une autre conversation.
+pub(crate) async fn appliquer(
+    core: &Core,
+    session: &Session,
+    a_l_envoi: bool,
+) -> Result<bool, String> {
     let (Some(fournisseur_id), Some(modele)) = (session.provider_id, session.model.clone()) else {
         return Ok(false);
     };
@@ -68,6 +78,25 @@ pub(crate) async fn appliquer(core: &Core, session: &Session) -> Result<bool, St
         .active()
         .await
         .map_err(|e| e.to_string())?;
+    // Un message va partir vers un modèle local qui n'est pas celui en
+    // mémoire : le moteur va recharger, ce qui couperait une réponse en cours
+    // ailleurs.
+    if a_l_envoi
+        && voulu.kind == ProviderKind::Local
+        && matches!(voulu.engine, locaryn_shared_types::ProviderEngine::LlamaCpp)
+        && autre_reponse_en_cours(core, session.id).await
+        && !locaryn_provider_supervisor::is_llama_server_model_match(
+            &core.http,
+            &voulu.endpoint,
+            Some(modele.as_str()),
+        )
+        .await
+    {
+        return Err(
+            "Une autre conversation est en train de répondre avec un autre modèle local :              attendez qu'elle ait fini avant d'envoyer ici."
+                .into(),
+        );
+    }
     if actif
         .as_ref()
         .is_some_and(|a| a.id == voulu.id && a.model.as_deref() == Some(modele.as_str()))
@@ -98,25 +127,11 @@ pub(crate) async fn appliquer(core: &Core, session: &Session) -> Result<bool, St
                 .await;
         }
         ProviderKind::Local => {
-            let change = actif.as_ref().is_none_or(|a| {
-                a.model.as_deref() != Some(modele.as_str()) || a.engine != voulu.engine
-            });
-            if change && autre_reponse_en_cours(core, session.id).await {
-                return Err(
-                    "Une autre conversation est en train de répondre avec le modèle local : \
-                     attendez qu'elle ait fini avant d'en charger un autre ici."
-                        .into(),
-                );
-            }
             core.storage
                 .providers
                 .upsert_local(&voulu.engine, &voulu.endpoint, Some(modele))
                 .await
                 .map_err(|e| e.to_string())?;
-            if change {
-                tracing::info!(session = %session.id, "modèle de la conversation : moteur local relancé");
-                let _ = core.supervisor.shutdown(&voulu.engine).await;
-            }
         }
     }
     crate::refresh_mcp_runtime_env(core).await;
@@ -138,5 +153,5 @@ pub async fn apply_session_model(core: State<'_, Core>, session_id: Uuid) -> Res
         .get(session_id)
         .await
         .map_err(|e| e.to_string())?;
-    appliquer(&core, &session).await
+    appliquer(&core, &session, false).await
 }
