@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { type Project, type RagStatus, core } from "../lib/core";
 import { trustInfo } from "../lib/trust";
 
-import { confirmer } from "../lib/dialog";
+import { confirmer, informer } from "../lib/dialog";
 type Props = {
   projects: Project[];
   /** Called after a project is archived so the caller can refresh its list. */
@@ -53,7 +53,7 @@ export function ProjectSettings({ projects, onArchived }: Props) {
       onArchived?.(selected);
       setSelectedId(projects.find((p) => p.id !== selected.id)?.id ?? null);
     } catch (e) {
-      window.alert(`Archivage impossible : ${String(e).replace(/^Error:\s*/, "")}`);
+      void informer(String(e).replace(/^Error:\s*/, ""), "Archivage impossible");
     } finally {
       setBusy(false);
     }

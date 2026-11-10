@@ -16359,3 +16359,42 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--space-4);
 }
+
+/* Les questions de l'application (confirmation, message, saisie). */
+/* Au-dessus de tout, premier lancement compris : une question attend sa réponse. */
+.locaryn-app-dialog-voile {
+  z-index: 100000;
+}
+.locaryn-modal-overlay > dialog.locaryn-app-dialog {
+  width: min(440px, calc(100vw - 32px));
+  padding: var(--space-5, 20px);
+  box-shadow: var(--shadow-2);
+}
+.locaryn-app-dialog-titre {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+}
+.locaryn-app-dialog-message {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-dim);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.locaryn-app-dialog .locaryn-input {
+  width: 100%;
+  min-height: 44px;
+}
+.locaryn-app-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.locaryn-app-dialog-actions button {
+  min-height: 44px;
+}

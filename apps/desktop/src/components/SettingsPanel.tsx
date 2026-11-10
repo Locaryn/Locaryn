@@ -12,7 +12,7 @@ import { TRUST_LEVELS, trustInfo } from "../lib/trust";
 import { PerformancePanel } from "./PerformancePanel";
 import { SessionTrustControl } from "./SessionTrustControl";
 
-import { confirmer } from "../lib/dialog";
+import { confirmer, informer } from "../lib/dialog";
 type Props = {
   theme: UseThemeReturn;
   /** Called after the active provider/model changes, so the app can refresh. */
@@ -57,7 +57,7 @@ export function SettingsPanel({
       onProjectArchived?.(activeProject);
       setSettingsOpen(false);
     } catch (e) {
-      window.alert(`Archivage impossible : ${String(e).replace(/^Error:\s*/, "")}`);
+      void informer(String(e).replace(/^Error:\s*/, ""), "Archivage impossible");
     } finally {
       setArchiving(false);
     }

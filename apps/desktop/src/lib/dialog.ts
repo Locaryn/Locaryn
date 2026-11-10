@@ -1,25 +1,69 @@
-import { confirm, open, save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
-/** Demander une confirmation, par la boîte native.
- *
- *  Sous Tauri, `window.confirm` ne rend pas un booléen : écrit
- *  `if (!window.confirm(…)) return`, il ne retenait jamais rien, et une
- *  désinstallation ou une suppression partait sans qu'aucune question ne
- *  s'affiche. Hors de Tauri (aperçu web), la boîte du navigateur ; et si elle
- *  rend autre chose qu'un booléen, la réponse est « non » : mieux vaut ne
- *  rien supprimer. */
-export async function confirmer(message: string, titre = "Locaryn"): Promise<boolean> {
-  try {
-    return await confirm(message, {
-      title: titre,
-      kind: "warning",
-      okLabel: "Confirmer",
-      cancelLabel: "Annuler",
-    });
-  } catch (e) {
-    console.warn("[dialog] boîte de confirmation native indisponible :", e);
-    return window.confirm(message) === true;
-  }
+// ── Les questions de l'application, dessinées par elle ──────────────────────
+//
+// `confirmer`, `informer` et `demanderTexte` posent une demande dans une file ;
+// `AppDialogs` (monté à la racine) l'affiche avec les cartes et boutons de
+// l'interface, et la réponse résout la promesse. Aucune boîte du système.
+
+export type DemandeDialogue = {
+  id: number;
+  titre: string;
+  message: string;
+} & (
+  | { genre: "confirmation"; repondre: (v: boolean) => void }
+  | { genre: "message"; repondre: (v: boolean) => void }
+  | { genre: "saisie"; defaut: string; repondre: (v: string | null) => void }
+);
+
+let file: DemandeDialogue[] = [];
+let prochain = 0;
+const abonnes = new Set<() => void>();
+
+function prevenir() {
+  for (const a of abonnes) a();
+}
+
+export function suivreDialogue(rappel: () => void): () => void {
+  abonnes.add(rappel);
+  return () => abonnes.delete(rappel);
+}
+
+/** La question à l'écran : la plus ancienne de la file. */
+export function dialogueCourant(): DemandeDialogue | null {
+  return file[0] ?? null;
+}
+
+export function repondreDialogue(demande: DemandeDialogue, valeur: boolean | string | null) {
+  file = file.filter((d) => d.id !== demande.id);
+  if (demande.genre === "saisie") demande.repondre(typeof valeur === "string" ? valeur : null);
+  else demande.repondre(valeur === true);
+  prevenir();
+}
+
+/** Demander une confirmation. Fermer la boîte (Échap, clic dehors) vaut
+ *  « non » : mieux vaut ne rien supprimer. */
+export function confirmer(message: string, titre = "Confirmer ?"): Promise<boolean> {
+  return new Promise((repondre) => {
+    file = [...file, { id: ++prochain, genre: "confirmation", titre, message, repondre }];
+    prevenir();
+  });
+}
+
+/** Dire quelque chose que la personne doit avoir lu (un échec, le plus souvent). */
+export function informer(message: string, titre = "Locaryn"): Promise<void> {
+  return new Promise((fini) => {
+    file = [...file, { id: ++prochain, genre: "message", titre, message, repondre: () => fini() }];
+    prevenir();
+  });
+}
+
+/** Demander un texte court. `null` : la personne a renoncé. */
+export function demanderTexte(titre: string, defaut = ""): Promise<string | null> {
+  return new Promise((repondre) => {
+    file = [...file, { id: ++prochain, genre: "saisie", titre, message: "", defaut, repondre }];
+    prevenir();
+  });
 }
 
 /** Open the native folder picker. Falls back to a prompt when not running
@@ -28,7 +72,7 @@ export async function pickFolder(): Promise<string | null> {
   try {
     return await open({ directory: true, multiple: false });
   } catch {
-    return window.prompt("Chemin du dossier projet:");
+    return demanderTexte("Chemin du dossier projet");
   }
 }
 
@@ -41,7 +85,7 @@ export async function pickImageFile(): Promise<string | null> {
     });
     return typeof picked === "string" ? picked : null;
   } catch {
-    return window.prompt("Chemin de l'image :");
+    return demanderTexte("Chemin de l'image");
   }
 }
 
@@ -51,7 +95,7 @@ export async function pickAnyFile(label: string, extensions: string[]): Promise<
     const picked = await open({ multiple: false, filters: [{ name: label, extensions }] });
     return typeof picked === "string" ? picked : null;
   } catch {
-    return window.prompt(`Chemin du fichier (${label}) :`);
+    return demanderTexte(`Chemin du fichier (${label})`);
   }
 }
 
@@ -67,6 +111,6 @@ export async function pickSaveFile(
       filters: [{ name: label, extensions }],
     });
   } catch {
-    return window.prompt(`Enregistrer ${label.toLowerCase()} sous :`, defaultPath);
+    return demanderTexte(`Enregistrer ${label.toLowerCase()} sous`, defaultPath ?? "");
   }
 }

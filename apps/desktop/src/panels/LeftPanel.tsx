@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { visibleNavItems } from "../components/NavDrawer";
 import { type EtatSession, SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
-import { confirmer, pickFolder } from "../lib/dialog";
+import { confirmer, demanderTexte, informer, pickFolder } from "../lib/dialog";
 import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { useSimpleUi } from "../lib/profile";
@@ -534,7 +534,7 @@ export function LeftPanel({
       await core.archiveProject(p.id);
       onProjectArchived?.(p);
     } catch (e) {
-      window.alert(`Archivage impossible : ${String(e).replace(/^Error:\s*/, "")}`);
+      void informer(String(e).replace(/^Error:\s*/, ""), "Archivage impossible");
     }
   }
 
@@ -547,7 +547,7 @@ export function LeftPanel({
         .split(/[\\/]/)
         .pop() ?? "projet";
     // Annuler n'ajoute rien : `?? "projet"` créait le projet quand même.
-    const saisi = window.prompt("Nom du projet:", dossier);
+    const saisi = await demanderTexte("Nom du projet", dossier);
     if (saisi === null) return;
     onAddProject(path, saisi.trim() || dossier);
   }

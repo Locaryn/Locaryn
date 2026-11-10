@@ -2,6 +2,7 @@ import { Icon, LoProgress } from "@locaryn/ui-core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppContextMenu } from "./components/AppContextMenu";
+import { AppDialogs } from "./components/AppDialogs";
 import { BatchStudio } from "./components/BatchStudio";
 import { ConnectScreen } from "./components/ConnectScreen";
 import { ConnectorsSettings } from "./components/ConnectorsSettings";
@@ -40,7 +41,7 @@ import {
   partagerJetonHf,
 } from "./lib/core";
 import { parseDeepLink, setPendingInstall } from "./lib/deepLink";
-import { confirmer, pickFolder } from "./lib/dialog";
+import { confirmer, demanderTexte, informer, pickFolder } from "./lib/dialog";
 import {
   type InstallProgressEvent,
   listenInstallProgress,
@@ -1027,8 +1028,9 @@ export function App() {
       const raison = String(e).replace(/^Error:\s*/, "");
       const id = taskCenter.add({ type: "edit", label: "Nouvelle conversation" });
       taskCenter.fail(id, `Impossible de créer la conversation : ${raison}`);
-      window.alert(
-        `La conversation n'a pas pu être créée, votre message n'a donc pas été envoyé.\n\n${raison}`,
+      void informer(
+        `Votre message n'a donc pas été envoyé. ${raison}`,
+        "La conversation n'a pas pu être créée",
       );
       return null;
     }
@@ -1124,7 +1126,7 @@ export function App() {
     } catch (e) {
       const message = String(e).replace(/^Error:\s*/, "");
       console.error("Delete failed", e);
-      window.alert(`Suppression impossible : ${message}`);
+      void informer(message, "Suppression impossible");
       await refreshHealth();
       return;
     }
@@ -1240,6 +1242,7 @@ export function App() {
       onPointerUp={onPointerUp}
       style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}
     >
+      <AppDialogs />
       {profile.onboarded ? (
         <FirstRunPresentation />
       ) : (
@@ -1525,7 +1528,7 @@ export function App() {
                   .split(/[\\/]/)
                   .pop() ?? "projet";
               // Annuler n'ajoute rien : `?? "projet"` créait le projet quand même.
-              const saisi = window.prompt("Nom du projet:", dossier);
+              const saisi = await demanderTexte("Nom du projet", dossier);
               if (saisi === null) return;
               handleAddProject(path, saisi.trim() || dossier);
             }}
