@@ -280,8 +280,9 @@ pub fn is_installed(dir: &Path, local: &CloudLocalRuntime) -> bool {
         .as_ref()
         .and_then(|i| i.probe_bin.clone())
         .or_else(|| local.start.first().cloned());
+    // Les marqueurs d'abord : `{{morph_dir}}/bin/…` n'existe pas tel quel.
     match bin {
-        Some(b) => on_path(&b),
+        Some(b) => on_path(&interpoler(&b, dir)),
         None => true,
     }
 }
