@@ -14,6 +14,7 @@ import {
 import { type InstalledExtension, type ModelMetric, type StoredWeight, core } from "../lib/core";
 import { claimantOf, loadExtensionMarketplaces } from "../lib/extensionMarketplace";
 import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
+import { type NomDeModele, decrireModele } from "../lib/modelName";
 import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { VUE_RECHOISIE } from "../lib/vues";
 
@@ -35,28 +36,16 @@ function humanSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024 ** 2))} Mo`;
 }
 
-type InstalledModelIdentity = {
-  model: string;
-  quantization: string | null;
-  format: string;
-};
+/** Au-delà, les variantes d'un nom se résument en « +N ». */
+const VARIANTES_MAX = 5;
 
-/** Keep the identity visible when a repository contains several choices. */
-function identifyInstalledModel(rawTag: string): InstalledModelIdentity {
-  const normalized = rawTag.replace(/\\/g, "/");
-  const fileName = normalized.split("/").pop() ?? normalized;
-  const formatMatch = fileName.match(/\.([a-z0-9]+)$/i);
-  const format = formatMatch?.[1]?.toUpperCase() ?? "MODEL";
-  const stem = formatMatch ? fileName.slice(0, -formatMatch[0].length) : fileName;
-  const withoutShard = stem.replace(/[-_.]\d{5}-of-\d{5}$/i, "");
-  const quantMatch = withoutShard.match(
-    /(?:^|[-_.])((?:Q[2-8](?:_[K0-9]+)*|F(?:P)?16|BF16|INT8))(?:$|[-_.])/i,
+/** Les étiquettes d'une carte : quantification, variantes du nom, format. */
+function etiquettesDuNom(nom: NomDeModele): string[] {
+  const visibles = nom.variantes.slice(0, VARIANTES_MAX);
+  const reste = nom.variantes.length - visibles.length;
+  return [nom.quantification, ...visibles, reste > 0 ? `+${reste}` : null, nom.format].filter(
+    (t): t is string => !!t,
   );
-  const quantization = quantMatch?.[1]?.toUpperCase() ?? null;
-  const model = (
-    quantMatch ? withoutShard.slice(0, quantMatch.index ?? withoutShard.length) : withoutShard
-  ).replace(/[-_.]+$/, "");
-  return { model: model || withoutShard, quantization, format };
 }
 
 function checkIsModelDebrided(entry: StoredEntry, debridedList: string[]): boolean {
@@ -257,34 +246,30 @@ export function InstalledModelsView({
   const entries = useMemo<StoredEntry[]>(() => {
     const chat: StoredEntry[] = dedupedModels.map((rawTag) => {
       const cleanName = rawTag.replace(/^http.*[/\\]/, "").replace(/:latest$/, "");
-      const identity = identifyInstalledModel(rawTag);
+      const nom = decrireModele(rawTag);
       return {
         tag: rawTag,
         kind: "chat",
-        title: identity.model,
+        title: nom.titre,
         brand: "TEXTE · llama-server",
         group: "Conversation",
-        tags: [
-          identity.quantization,
-          identity.format,
-          tailles[rawTag] ? humanSize(tailles[rawTag]) : null,
-        ].filter((tag): tag is string => !!tag),
+        tags: [...etiquettesDuNom(nom), tailles[rawTag] ? humanSize(tailles[rawTag]) : null].filter(
+          (tag): tag is string => !!tag,
+        ),
         path: `${modelsDir}\\${cleanName}`,
       };
     });
 
     const owned: StoredEntry[] = otherWeights.map((weight) => {
-      const identity = identifyInstalledModel(weight.name);
+      const nom = decrireModele(weight.name);
       const owner = weightOwners[weight.name];
       return {
         tag: weight.name,
         kind: "extension",
-        title: identity.model,
+        title: nom.titre,
         brand: owner ? owner.toUpperCase() : "AUCUNE EXTENSION",
         group: owner ?? "Non revendiqué",
-        tags: [identity.quantization, identity.format, humanSize(weight.size_bytes)].filter(
-          (tag): tag is string => !!tag,
-        ),
+        tags: [...etiquettesDuNom(nom), humanSize(weight.size_bytes)],
         path: `${modelsDir}\\${weight.name}`,
         hint: owner
           ? undefined

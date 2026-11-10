@@ -7009,6 +7009,13 @@ pre.md-code {
   line-height: 1.35;
   color: var(--text);
   margin: 5px 0 0 0;
+  /* Un nom sans espace (« a-b-c-d… ») ne déborde plus de sa carte : il se
+     coupe, sur deux lignes au plus ; le nom entier reste dans l'infobulle. */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .locaryn-box-badges {
