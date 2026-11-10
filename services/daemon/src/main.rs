@@ -126,6 +126,18 @@ fn trousseau() -> std::sync::Arc<dyn locaryn_auth::Keychain> {
 }
 
 /// This machine's address on the local network, for certificate names.
+impl DaemonState {
+    /// L'adresse de cette machine sur le réseau local, relue à chaque
+    /// demande. Figée au démarrage, elle restait celle d'un VPN coupé ou d'un
+    /// ancien Wi-Fi : le QR menait à une adresse morte.
+    pub fn url_locale(&self) -> String {
+        if !self.auth_required {
+            return self.local_url.clone();
+        }
+        format!("https://{}:{}", local_ip_string(), self.port)
+    }
+}
+
 fn local_ip_string() -> String {
     std::net::UdpSocket::bind("0.0.0.0:0")
         .and_then(|s| {
@@ -961,7 +973,7 @@ async fn provider_api_status(State(s): State<Arc<DaemonState>>) -> Json<serde_js
     Json(serde_json::json!({
         "enabled": locaryn_config::api_fournisseur::active(),
         "local_url": locale,
-        "network_url": if s.auth_required { Some(format!("{}/v1", s.local_url)) } else { None },
+        "network_url": if s.auth_required { Some(format!("{}/v1", s.url_locale())) } else { None },
     }))
 }
 

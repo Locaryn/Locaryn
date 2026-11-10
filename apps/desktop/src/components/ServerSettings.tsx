@@ -27,7 +27,7 @@ export function ServerSettings() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const segments = useSegmentsAppairage();
-  const { segment } = useModeAcces();
+  const { segment, transport } = useModeAcces();
 
   // Modal d'ajout d'identifiant / configuration initiale
   const [showAddUser, setShowAddUser] = useState(false);
@@ -155,6 +155,11 @@ export function ServerSettings() {
   const quiPeutSeConnecter = !status?.running
     ? "Personne : le serveur est arrêté, Locaryn reste sur cette machine."
     : choisi.description;
+
+  // Le QR d'un compte reprend l'adresse du code d'appairage : tant que
+  // celui-ci n'existe pas (serveur arrêté, adresse publique ou tunnel encore
+  // en recherche), il n'y a rien de valable à mettre dedans.
+  const qrPret = Boolean(status?.running) && (segment === "local" || transport !== null);
 
   async function choisirMode(id: string) {
     if (id === OFF) {
@@ -407,8 +412,12 @@ export function ServerSettings() {
                     type="button"
                     className="locaryn-btn-ghost"
                     style={{ fontSize: 11, padding: "2px 8px" }}
-                    disabled={u.disabled}
-                    title="Ouvre la session de ce compte sur un téléphone, sans mot de passe"
+                    disabled={u.disabled || !qrPret}
+                    title={
+                      qrPret
+                        ? "Ouvre la session de ce compte sur un téléphone, sans mot de passe"
+                        : "Disponible dès que le code QR du mode choisi est affiché"
+                    }
                     onClick={() => setQrCompte({ id: u.id, username: u.username })}
                   >
                     QR de connexion

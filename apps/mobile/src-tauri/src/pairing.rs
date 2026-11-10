@@ -316,6 +316,9 @@ async fn poster(
     injoignable: &str,
 ) -> Result<reqwest::Response, String> {
     let client = crate::client_for(server)?;
+    // Ce qui a été essayé, et pourquoi chaque adresse n'a pas répondu : sans
+    // cela, « serveur injoignable » ne dit ni où ni pourquoi.
+    let mut essais: Vec<String> = Vec::new();
     for base in adresses_d_appairage(server) {
         match client
             .post(format!("{base}{chemin}"))
@@ -324,18 +327,37 @@ async fn poster(
             .await
         {
             Ok(r) => return Ok(r),
-            Err(e) => tracing::info!(erreur = %e, %base, "appairage : adresse injoignable"),
+            Err(e) => {
+                tracing::info!(erreur = %e, %base, "appairage : adresse injoignable");
+                essais.push(format!("{base} ({})", cause_reseau(&e)));
+            }
         }
     }
+    let detail = if essais.is_empty() {
+        String::new()
+    } else {
+        format!(" Essayé : {}.", essais.join(", "))
+    };
     Err(
         if server.access_mode == "public" && server.client_pem.trim().is_empty() {
             "Le code Internet exige un téléphone déjà appairé. Appairez-le une fois sur le \
          réseau local (même Wi‑Fi) ou par le tunnel, puis il passera par Internet."
                 .to_string()
         } else {
-            injoignable.to_string()
+            format!("{injoignable}{detail}")
         },
     )
+}
+
+/// Pourquoi une adresse n'a pas répondu, en quelques mots.
+fn cause_reseau(e: &reqwest::Error) -> &'static str {
+    if e.is_timeout() {
+        "aucune réponse : pas le même réseau, ou pare-feu"
+    } else if e.is_connect() {
+        "connexion refusée ou adresse inconnue sur ce réseau"
+    } else {
+        "échange refusé : certificat ou version du serveur"
+    }
 }
 
 /// Retenir le certificat client remis par le serveur.

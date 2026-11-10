@@ -1271,7 +1271,7 @@ mod rendu {
                     },
                 ],
                 api: true,
-                api_locale: "http://127.0.0.1:7475/v1".into(),
+                api_locale: "http://127.0.0.1:7476/v1".into(),
                 api_reseau: "https://192.168.0.57:7474/v1".into(),
                 cles: vec![],
                 modeles: vec![s::Modele {

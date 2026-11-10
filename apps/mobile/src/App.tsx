@@ -254,6 +254,13 @@ export function App() {
   }, [scanning]);
 
   const [provisioningSuccess, setProvisioningSuccess] = useState(false);
+  // Ce que le dernier scan attend de l'écran de connexion : le code d'un
+  // QR de compte à valider, ou des identifiants.
+  const [parcours, setParcours] = useState<{
+    mode: "compte" | "identifiants";
+    code?: string;
+    erreur?: string;
+  } | null>(null);
   const [pairCodeNeeded, setPairCodeNeeded] = useState(false);
   const [pairConfirmBusy, setPairConfirmBusy] = useState(false);
   const [pairError, setPairError] = useState<string | null>(null);
@@ -290,9 +297,16 @@ export function App() {
       if (codeConnexion) {
         try {
           setPaired(await api.redeemLoginCode(codeConnexion));
+          setParcours(null);
           await refresh();
         } catch (e) {
-          setScanError(e instanceof Error ? e.message : String(e));
+          // Le code reste à l'écran, seul : ni identifiant ni autre QR à
+          // proposer, la personne a déjà dit quel compte elle veut.
+          setParcours({
+            mode: "compte",
+            code: codeConnexion,
+            erreur: e instanceof Error ? e.message : String(e),
+          });
         }
         return;
       }
@@ -431,10 +445,20 @@ export function App() {
           <SignIn
             status={status}
             onSignedIn={(s) => {
+              setParcours(null);
               setStatus(s);
               remplacer("chat");
             }}
-            onRegistered={setStatus}
+            // Remonté à chaque scan : le code et l'erreur du nouveau QR
+            // remplacent ceux de l'essai précédent.
+            key={`${parcours?.mode ?? "identifiants"}:${parcours?.code ?? ""}`}
+            parcours={parcours?.mode}
+            codeInitial={parcours?.code}
+            erreurInitiale={parcours?.erreur}
+            onRegistered={(s) => {
+              setParcours(null);
+              setStatus(s);
+            }}
             onScan={openScanner}
             onSettings={() => aller("settings")}
           />

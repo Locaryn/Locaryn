@@ -4159,7 +4159,7 @@ let demoUserMemory: MemoryEntry[] = [
 let demoApi: ProviderApiStatus = {
   enabled: false,
   server_running: true,
-  local_url: "http://127.0.0.1:7475/v1",
+  local_url: "http://127.0.0.1:7476/v1",
   network_url: "https://192.168.1.20:7474/v1",
   admin: "admin",
   blocker: null,

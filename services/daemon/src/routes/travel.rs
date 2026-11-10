@@ -114,7 +114,7 @@ pub async fn home(
     if let Some(refus) = hors_de_cette_machine(pair) {
         return refus;
     }
-    match crate::travel::TravelState::home_link(&data_dir(&s), &s.local_url) {
+    match crate::travel::TravelState::home_link(&data_dir(&s), &s.url_locale()) {
         Ok((link, qr_svg)) => {
             Json(serde_json::json!({ "link": link, "qr_svg": qr_svg })).into_response()
         }

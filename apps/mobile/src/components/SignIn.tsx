@@ -14,6 +14,16 @@ type Props = {
   onSettings: () => void;
   /** Circuit B step 2: valider le code à 6 chiffres affiché sous le QR de l'hôte. */
   onPairConfirm?: (code: string) => Promise<void>;
+  /**
+   * D'où l'on vient. `compte` : un QR de connexion vient d'être scanné, seul
+   * son code reste à valider. `identifiants` : un serveur est choisi, il
+   * faut un identifiant et un mot de passe. Jamais les deux à la fois.
+   */
+  parcours?: "compte" | "identifiants";
+  /** Le code du QR de connexion scanné, déjà rempli. */
+  codeInitial?: string;
+  /** Ce qui a empêché la connexion automatique après le scan. */
+  erreurInitiale?: string | null;
 };
 
 export function SignIn({
@@ -23,14 +33,20 @@ export function SignIn({
   onScan,
   onSettings,
   onPairConfirm,
+  parcours = "identifiants",
+  codeInitial = "",
+  erreurInitiale = null,
 }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   /** Code de connexion d'un compte, affiché sous son QR sur l'ordinateur. */
-  const [codeConnexion, setCodeConnexion] = useState("");
+  const [codeConnexion, setCodeConnexion] = useState(codeInitial);
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(erreurInitiale);
+  const parCode = parcours === "compte";
+  /** Revenir au choix du serveur, sans rien garder de cette tentative. */
+  const annuler = () => onRegistered({ ...status, servers: 0 });
 
   // Animation de succès
   const [successInfo, setSuccessInfo] = useState<{ title: string; subtitle?: string } | null>(null);
@@ -483,95 +499,85 @@ export function SignIn({
           {status.travelling ? "Connexion depuis l'extérieur." : "Connexion sur le réseau local."}
         </p>
 
-        <div className="lo-code-connexion">
-          <label className="lo-label" htmlFor="code">
-            Code de connexion
-          </label>
-          <div className="lo-code-connexion-ligne">
-            <input
-              id="code"
-              className="lo-input lo-code-connexion-input"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              inputMode="text"
-              maxLength={7}
-              placeholder="ABC123"
-              value={codeConnexion}
-              disabled={busy}
-              onChange={(e) => setCodeConnexion(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === "Enter" && void connecterParCode()}
-            />
-            <button
-              type="button"
-              className="lo-btn"
-              disabled={busy || codeConnexion.replace(/[^a-z0-9]/gi, "").length !== 6}
-              onClick={() => void connecterParCode()}
-            >
-              Valider
-            </button>
+        {parCode ? (
+          <div className="lo-code-connexion">
+            <label className="lo-label" htmlFor="code">
+              Code de connexion
+            </label>
+            <div className="lo-code-connexion-ligne">
+              <input
+                id="code"
+                className="lo-input lo-code-connexion-input"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                inputMode="text"
+                maxLength={7}
+                placeholder="ABC123"
+                value={codeConnexion}
+                disabled={busy}
+                onChange={(e) => setCodeConnexion(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && void connecterParCode()}
+              />
+              <button
+                type="button"
+                className="lo-btn"
+                disabled={busy || codeConnexion.replace(/[^a-z0-9]/gi, "").length !== 6}
+                onClick={() => void connecterParCode()}
+              >
+                {busy ? "Connexion…" : "Valider"}
+              </button>
+            </div>
+            <p className="lo-hint">
+              Le code est affiché sous le QR de connexion, sur l'ordinateur. Il change à chaque
+              affichage.
+            </p>
           </div>
-          <p className="lo-hint">
-            Sur l'ordinateur : Réglages → Serveur → « QR de connexion » à côté de votre compte.
-            Scannez-le, ou recopiez le code affiché dessous.
-          </p>
-          <button type="button" className="lo-btn-ghost" onClick={onScan} disabled={busy}>
-            Scanner le QR de connexion
-          </button>
-        </div>
+        ) : (
+          <>
+            <div>
+              <label className="lo-label" htmlFor="u">
+                Identifiant
+              </label>
+              <input
+                id="u"
+                className="lo-input"
+                autoCapitalize="none"
+                autoCorrect="off"
+                value={username}
+                disabled={busy}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </div>
 
-        <p className="lo-separateur">ou avec un identifiant</p>
+            <div>
+              <label className="lo-label" htmlFor="p">
+                Mot de passe
+              </label>
+              <input
+                id="p"
+                className="lo-input"
+                type="password"
+                value={password}
+                disabled={busy}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void submit()}
+              />
+            </div>
 
-        <div>
-          <label className="lo-label" htmlFor="u">
-            Identifiant
-          </label>
-          <input
-            id="u"
-            className="lo-input"
-            autoCapitalize="none"
-            autoCorrect="off"
-            value={username}
-            disabled={busy}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="lo-label" htmlFor="p">
-            Mot de passe
-          </label>
-          <input
-            id="p"
-            className="lo-input"
-            type="password"
-            value={password}
-            disabled={busy}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void submit()}
-          />
-        </div>
-
-        <button type="button" className="lo-btn" disabled={busy} onClick={submit}>
-          {busy ? "Connexion…" : "Se connecter"}
-        </button>
+            <button type="button" className="lo-btn" disabled={busy} onClick={submit}>
+              {busy ? "Connexion…" : "Se connecter"}
+            </button>
+            <button type="button" className="lo-btn-ghost" onClick={onScan} disabled={busy}>
+              Scanner un QR de connexion
+            </button>
+          </>
+        )}
 
         {error && <p className="lo-error">{error}</p>}
 
-        <div style={{ marginTop: 8, textAlign: "center" }}>
-          <button
-            type="button"
-            className="lo-btn-small"
-            style={{
-              fontSize: 12,
-              color: "var(--text-faint)",
-              background: "transparent",
-              border: "none",
-            }}
-            onClick={() => onRegistered({ ...status, servers: 0 })}
-          >
-            Changer de serveur
-          </button>
-        </div>
+        <button type="button" className="lo-btn-ghost" disabled={busy} onClick={annuler}>
+          Annuler
+        </button>
       </div>
 
       {successInfo && (

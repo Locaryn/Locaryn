@@ -189,7 +189,7 @@ async fn construire_charge(
                         .into(),
                 ));
             }
-            s.local_url.clone()
+            s.url_locale()
         }
         "tunnel" => {
             let Some(u) = s.travel.tunnel_url().await.filter(|u| !u.is_empty()) else {
@@ -256,7 +256,7 @@ async fn construire_charge(
         access_mode: Some(mode.to_string()),
         note: String::new(),
         login_code,
-        local_url: (mode == "public" && s.auth_required).then(|| s.local_url.clone()),
+        local_url: (mode == "public" && s.auth_required).then(|| s.url_locale()),
     };
     let charge = match serde_json::to_string(&provisioning) {
         Ok(c) => c,

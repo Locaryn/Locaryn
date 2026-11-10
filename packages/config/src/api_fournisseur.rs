@@ -25,8 +25,12 @@ pub fn regler(actif: bool) -> Result<(), crate::ConfigError> {
 /// Le port en HTTP simple, réservé à cette machine (`127.0.0.1`), à côté du
 /// port HTTPS du mode serveur : un éditeur local n'a pas à accepter le
 /// certificat auto-signé du serveur.
+///
+/// Deux ports au-dessus : celui d'à côté (`+1`) est le port Internet à
+/// certificat client. Les deux se disputaient 7475, et le port Internet ne
+/// s'ouvrait jamais.
 pub fn port_local(port_serveur: u16) -> u16 {
-    port_serveur.saturating_add(1)
+    port_serveur.saturating_add(2)
 }
 
 /// Les routes que sert une clé d'API, et rien d'autre : une clé confiée à un
