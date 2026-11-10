@@ -2526,6 +2526,9 @@ export interface CoreApi {
 
   /** Ce qui est actuellement en mémoire, et si le minuteur peut y toucher. */
   modelResidency(): Promise<ResidencyStatus>;
+  /** Inactivité avant éjection du modèle, en secondes ; 0 : jamais. */
+  ejectDelay(): Promise<number>;
+  setEjectDelay(secs: number): Promise<number>;
   /** La personne se sert de l'application : le modèle reste en mémoire. */
   signalerActivite(): Promise<void>;
   /** Ce que donnerait le chargement de ce modèle, sans rien charger. */
@@ -3156,6 +3159,8 @@ const tauriCore: CoreApi = {
   checkHardware: () => invoke("check_hardware"),
 
   modelResidency: () => invoke<ResidencyStatus>("model_residency"),
+  ejectDelay: () => invoke<number>("delai_ejection"),
+  setEjectDelay: (secs) => invoke<number>("definir_delai_ejection", { secs }),
   signalerActivite: () => invoke<void>("signaler_activite"),
   checkModelFit: (model) => invoke<ModelFit>("check_model_fit", { model }),
   cloudProviders: () => invoke<CloudProvider[]>("cloud_providers"),
@@ -3959,6 +3964,9 @@ const demoSourceStatuses: CatalogSourceStatus[] = demoSources.map((source) => ({
 // vérifier. La machine simulée a 32 Go dont 9 libres, ce qui suffit à faire
 // refuser un gros modèle pour de vrai.
 const demoMemory = { freeRamGb: 9.2, freeVramGb: 3.4 };
+/** Le délai d'éjection de la démo, en secondes. */
+let demoDelaiEjection = 1800;
+
 let demoResident: { model: string | null; pinned: boolean; since: number } = {
   model: null,
   pinned: false,
@@ -5793,6 +5801,13 @@ Contenu de démonstration, avec **du gras** et une liste :
     };
   },
   async signalerActivite() {},
+  async ejectDelay() {
+    return demoDelaiEjection;
+  },
+  async setEjectDelay(secs: number) {
+    demoDelaiEjection = secs;
+    return secs;
+  },
   async modelResidency() {
     return demoResidencyStatus();
   },

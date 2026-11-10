@@ -1,4 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
+import { EjectDelaySetting } from "./EjectDelaySetting";
 import { ImageModelSetting } from "./ImageModelSetting";
 import { MicroModelSetting } from "./MicroModelSetting";
 import { SystemPromptSetting } from "./SystemPromptSetting";
@@ -29,6 +30,17 @@ export function ModelPreferencesSettings({
       </div>
 
       <div className="locaryn-model-preferences-stack">
+        <section className="locaryn-model-preference-card">
+          <div className="locaryn-model-preference-heading">
+            <Icon name="models" size={17} />
+            <div>
+              <h4>Mémoire</h4>
+              <p>Combien de temps le modèle reste chargé quand vous ne l'utilisez pas.</p>
+            </div>
+          </div>
+          <EjectDelaySetting />
+        </section>
+
         <section className="locaryn-model-preference-card">
           <div className="locaryn-model-preference-heading">
             <Icon name="memory" size={17} />

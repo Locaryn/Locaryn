@@ -414,6 +414,9 @@ async fn init_core() -> anyhow::Result<Core> {
         },
         storage.clone(),
     );
+    if let Some(secs) = locaryn_config::idle_unload_secs() {
+        supervisor.set_idle_timeout_secs(secs);
+    }
     let _hc = supervisor.spawn_healthcheck_loop();
 
     tokio::spawn(async move {
@@ -7830,6 +7833,8 @@ pub fn run() {
             taches_fond::taches_distantes_ecrire,
             travel_mode::micro_model,
             travel_mode::consigne_systeme,
+            model_residency::delai_ejection,
+            model_residency::definir_delai_ejection,
             travel_mode::definir_consigne_systeme,
             travel_mode::modeles_debrides,
             travel_mode::basculer_debridage_modele,

@@ -194,6 +194,9 @@ pub struct Supervisor {
 
 struct SupervisorInner {
     cfg: SupervisorConfig,
+    /// Délai d'inactivité avant éjection, en secondes, réglable par la
+    /// personne. 0 : jamais.
+    delai_inactivite: std::sync::atomic::AtomicU64,
     states: Mutex<HashMap<ProviderEngine, EngineState>>,
     storage: Storage,
     http: reqwest::Client,
@@ -295,6 +298,7 @@ impl Supervisor {
             .unwrap_or_default();
         Self {
             inner: Arc::new(SupervisorInner {
+                delai_inactivite: std::sync::atomic::AtomicU64::new(cfg.idle_timeout.as_secs()),
                 cfg,
                 states: Mutex::new(HashMap::new()),
                 storage,
@@ -918,8 +922,19 @@ impl Supervisor {
 
     /// How long an unpinned engine may sit idle before it is unloaded. The
     /// status bar states this rather than leaving the user to discover it.
+    /// 0 : le modèle n'est jamais éjecté.
     pub fn idle_timeout_secs(&self) -> u64 {
-        self.inner.cfg.idle_timeout.as_secs()
+        self.inner
+            .delai_inactivite
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Changer le délai d'inactivité avant éjection (0 : jamais). Pris en
+    /// compte au prochain tour de surveillance, sans relancer le moteur.
+    pub fn set_idle_timeout_secs(&self, secs: u64) {
+        self.inner
+            .delai_inactivite
+            .store(secs, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Whether this engine is pinned in memory.
@@ -953,10 +968,12 @@ impl Supervisor {
     /// pinned — what the status bar needs to explain itself.
     pub async fn residency(&self, engine: &ProviderEngine) -> Option<(u64, bool, bool)> {
         let mut states = self.inner.states.lock().await;
-        let timeout = self.inner.cfg.idle_timeout.as_secs();
+        let timeout = self.idle_timeout_secs();
         states.get_mut(engine).map(|s| {
             let idle = Instant::now().duration_since(s.last_activity).as_secs();
-            (idle.min(timeout), s.pinned, s.is_running())
+            // « Jamais » se présente comme un modèle épinglé : aucun compte à
+            // rebours à afficher.
+            (idle.min(timeout), s.pinned || timeout == 0, s.is_running())
         })
     }
 
@@ -1064,11 +1081,17 @@ impl Supervisor {
     /// shut it down.
     async fn healthcheck_loop(&self) {
         let interval = self.inner.cfg.healthcheck_interval;
-        let idle_timeout = self.inner.cfg.idle_timeout;
-        tracing::debug!(?interval, ?idle_timeout, "supervisor loop started");
+        tracing::debug!(?interval, "supervisor loop started");
 
         loop {
             tokio::time::sleep(interval).await;
+            let delai = self.idle_timeout_secs();
+            // 0 : jamais d'éjection ; un délai infini garde le reste intact.
+            let idle_timeout = if delai == 0 {
+                Duration::MAX
+            } else {
+                Duration::from_secs(delai)
+            };
 
             let mut to_shutdown = Vec::new();
             // Photographié hors du verrou des états : la sonde d'un moteur

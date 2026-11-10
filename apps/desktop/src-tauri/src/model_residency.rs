@@ -370,6 +370,26 @@ pub async fn model_residency(core: State<'_, Core>) -> Result<ResidencyStatus, S
 /// longue réponse, écrire la suite, relire du code, et l'écran annonçait
 /// « libéré dans 27 min » à quelqu'un en plein travail. L'interface appelle
 /// ceci, au plus une fois par minute, quand on tape ou clique.
+/// Le délai d'inactivité avant éjection, en secondes (0 : jamais).
+#[tauri::command]
+pub async fn delai_ejection(core: State<'_, Core>) -> Result<u64, String> {
+    Ok(core.supervisor.idle_timeout_secs())
+}
+
+/// Régler le délai d'éjection : appliqué tout de suite, gardé pour les
+/// prochains lancements. 0 : le modèle reste chargé.
+#[tauri::command]
+pub async fn definir_delai_ejection(core: State<'_, Core>, secs: u64) -> Result<u64, String> {
+    locaryn_config::set_global(
+        "assistance",
+        serde_json::json!({ "idle_unload_secs": secs }),
+    )
+    .map_err(|e| e.to_string())?;
+    core.supervisor.set_idle_timeout_secs(secs);
+    tracing::info!(secs, "délai d'éjection du modèle changé");
+    Ok(secs)
+}
+
 #[tauri::command]
 pub async fn signaler_activite(core: State<'_, Core>) -> Result<(), String> {
     if let Some(p) = core.storage.providers.active().await.ok().flatten() {

@@ -251,6 +251,9 @@ async fn main() -> anyhow::Result<()> {
     // idle-shutdown loop. The supervisor auto-spawns `ollama serve` when the
     // daemon needs it and shuts it down after 30 min of inactivity.
     let supervisor = Supervisor::new(SupervisorConfig::default(), storage.clone());
+    if let Some(secs) = locaryn_config::idle_unload_secs() {
+        supervisor.set_idle_timeout_secs(secs);
+    }
     let _hc_handle = supervisor.spawn_healthcheck_loop();
     tracing::info!("provider supervisor started (healthcheck + idle-shutdown loop)");
 

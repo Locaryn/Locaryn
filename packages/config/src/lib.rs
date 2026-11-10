@@ -83,6 +83,15 @@ pub struct AssistanceConfig {
     /// avait écrits seuls.
     #[serde(default = "default_true")]
     pub commit_contributeur: bool,
+    /// Inactivité avant éjection du modèle, en secondes. `None` : 30 min ;
+    /// `Some(0)` : jamais.
+    #[serde(default)]
+    pub idle_unload_secs: Option<u64>,
+}
+
+/// Le délai d'éjection réglé par la personne, s'il y en a un.
+pub fn idle_unload_secs() -> Option<u64> {
+    load(None).ok().and_then(|c| c.assistance.idle_unload_secs)
 }
 
 fn default_true() -> bool {
