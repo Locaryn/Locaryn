@@ -892,6 +892,23 @@ impl SessionRepo {
         }
     }
 
+    /// Le fournisseur et le modèle avec lesquels cette conversation parle.
+    /// `None` : elle suit le modèle actif de l'application.
+    pub async fn set_model(
+        &self,
+        id: Uuid,
+        provider_id: Option<Uuid>,
+        model: Option<&str>,
+    ) -> Result<(), StorageError> {
+        sqlx::query("UPDATE sessions SET provider_id = ?, model = ? WHERE id = ?")
+            .bind(provider_id.map(|p| p.to_string()))
+            .bind(model)
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     /// Bump `last_message_at` whenever a message is appended.
     pub async fn touch(&self, id: Uuid) -> Result<(), StorageError> {
         let now = chrono::Utc::now().to_rfc3339();
@@ -1378,6 +1395,17 @@ impl ProviderRepo {
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(Provider::try_from).collect()
+    }
+
+    /// Un fournisseur par son identifiant, s'il existe encore.
+    pub async fn get(&self, id: Uuid) -> Result<Option<Provider>, StorageError> {
+        let row = sqlx::query_as::<_, ProviderRow>(
+            "SELECT id, kind, engine, endpoint, model, is_active, status, config, created_at, updated_at              FROM providers WHERE id = ?",
+        )
+        .bind(id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(Provider::try_from).transpose()
     }
 
     /// Return the currently active provider (is_active = 1), if any.
@@ -2816,5 +2844,61 @@ mod rewind_tests {
             .map(|m| m.content)
             .collect();
         assert_eq!(reste, vec!["un", "réponse un"]);
+    }
+}
+
+#[cfg(test)]
+mod modele_par_conversation_tests {
+    use super::{ProjectRepo, ProviderRepo, SessionRepo};
+    use locaryn_shared_types::TrustLevel;
+
+    /// Deux conversations gardent chacune leur modèle, même quand le
+    /// fournisseur actif change entre elles.
+    #[tokio::test]
+    async fn chaque_conversation_garde_son_modele() {
+        let pool = crate::open(std::path::Path::new(":memory:")).await.unwrap();
+        let projets = ProjectRepo::new(pool.clone());
+        let sessions = SessionRepo::new(pool.clone());
+        let fournisseurs = ProviderRepo::new(pool);
+
+        let projet = projets
+            .create("C:/essai", "essai", TrustLevel::Untrusted)
+            .await
+            .unwrap();
+        let a = sessions.create(projet.id, None).await.unwrap();
+        let b = sessions.create(projet.id, None).await.unwrap();
+        assert!(a.provider_id.is_none() && a.model.is_none());
+
+        let omni = fournisseurs
+            .upsert_cloud("omniroute", "http://127.0.0.1:20128", "nvidia/nemotron")
+            .await
+            .unwrap();
+        sessions
+            .set_model(a.id, Some(omni.id), Some("nvidia/nemotron"))
+            .await
+            .unwrap();
+        let claude = fournisseurs
+            .upsert_cloud("claude-code", "http://127.0.0.1:20129", "claude-opus-5")
+            .await
+            .unwrap();
+        sessions
+            .set_model(b.id, Some(claude.id), Some("claude-opus-5"))
+            .await
+            .unwrap();
+
+        let a = sessions.get(a.id).await.unwrap();
+        let b = sessions.get(b.id).await.unwrap();
+        assert_eq!(a.model.as_deref(), Some("nvidia/nemotron"));
+        assert_eq!(a.provider_id, Some(omni.id));
+        assert_eq!(b.model.as_deref(), Some("claude-opus-5"));
+        assert_eq!(b.provider_id, Some(claude.id));
+        // Le fournisseur se retrouve par son identifiant.
+        let retrouve = fournisseurs.get(omni.id).await.unwrap().expect("présent");
+        assert_eq!(retrouve.endpoint, "http://127.0.0.1:20128");
+        assert!(fournisseurs
+            .get(uuid::Uuid::new_v4())
+            .await
+            .unwrap()
+            .is_none());
     }
 }

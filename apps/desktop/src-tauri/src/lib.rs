@@ -41,6 +41,7 @@ mod project_context;
 mod rapports;
 mod reponses_vives;
 mod reveler;
+mod session_model;
 mod skills;
 mod snippets;
 mod sous_agents;
@@ -2070,6 +2071,26 @@ async fn envoyer_message(
     // d'arrière-plan (tri de la mémoire) lui cède la place.
     let _utilisation = core.supervisor.utilisation();
     core.arriere_plan_stop.cancel_all();
+    // Le modèle de CETTE conversation : celui qu'on lui a choisi, pas celui de la
+    // dernière conversation ouverte. Une conversation neuve retient le modèle
+    // actif au premier message, pour que les suivantes ne le changent plus.
+    if core.remote_client().is_none() {
+        match core.storage.sessions.get(session_id).await {
+            Ok(session) => match session_model::appliquer(&core, &session).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    if let Err(e) = session_model::retenir(&core, session_id).await {
+                        tracing::warn!(error = %e, "modèle de la conversation non retenu");
+                    }
+                }
+                Err(e) => {
+                    liberer_annulation(&core.chat_cancels, session_id, generation).await;
+                    return Err(e);
+                }
+            },
+            Err(e) => tracing::warn!(error = %e, "conversation introuvable pour son modèle"),
+        }
+    }
     // La prudence refuse le modèle à charger : rien ne part, rien ne
     // s'enregistre. La fenêtre de refus garde le message ; « Charger quand
     // même » le renvoie une fois le moteur prêt.
@@ -7928,6 +7949,8 @@ pub fn run() {
             taches_fond::taches_distantes_ecrire,
             travel_mode::micro_model,
             travel_mode::consigne_systeme,
+            session_model::remember_session_model,
+            session_model::apply_session_model,
             model_residency::delai_ejection,
             model_residency::definir_delai_ejection,
             travel_mode::definir_consigne_systeme,

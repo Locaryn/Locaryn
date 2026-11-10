@@ -1133,6 +1133,42 @@ ${d.texte}`
   // Un modèle choisi dans le dossier d'un fournisseur distant — depuis « Mes
   // modèles » ou depuis le panneau du morph — doit se voir tout de suite sous
   // le champ de saisie, sans que l'utilisateur ait à rouvrir la conversation.
+  // Un modèle choisi vaut pour la conversation ouverte, pas pour toutes : elle
+  // le retient, et les autres gardent le leur.
+  useEffect(() => {
+    const retenir = () => {
+      const sid = sessionRef.current;
+      if (!sid || !isTauri) return;
+      core.rememberSessionModel(sid).catch((e) => {
+        console.warn("[modèle] non retenu pour cette conversation :", e);
+      });
+    };
+    window.addEventListener(ACTIVE_MODEL_CHANGED, retenir);
+    window.addEventListener("locaryn:cloud-model-selected", retenir);
+    return () => {
+      window.removeEventListener(ACTIVE_MODEL_CHANGED, retenir);
+      window.removeEventListener("locaryn:cloud-model-selected", retenir);
+    };
+  }, []);
+
+  // Passer à une autre conversation : son modèle redevient le modèle actif, et
+  // le sélecteur le montre.
+  useEffect(() => {
+    if (!sessionId || !isTauri) return;
+    let vivant = true;
+    core
+      .applySessionModel(sessionId)
+      .then((applique) => {
+        if (vivant && applique) void refreshActiveModel();
+      })
+      .catch((e) => {
+        console.warn("[modèle] celui de la conversation n'a pas pu être activé :", e);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [sessionId, refreshActiveModel]);
+
   useEffect(() => {
     const onCloudSelected = () => void refreshActiveModel();
     window.addEventListener("locaryn:cloud-model-selected", onCloudSelected);
