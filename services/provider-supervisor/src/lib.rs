@@ -1633,6 +1633,55 @@ fn parse_list_devices(texte: &str) -> Option<Vec<String>> {
     )
 }
 
+/// Les réglages fins du chargement, tels que la personne les a posés : cache
+/// KV, points de reprise, décodage spéculatif. Rien n'est ajouté pour une
+/// valeur laissée par défaut — le moteur garde alors son propre choix.
+/// Drapeaux vérifiés sur le `--help` de b11003.
+fn reglages_avances(cfg: &serde_json::Value) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    if cfg["kv_unified"].as_bool().unwrap_or(false) {
+        args.push("-kvu".into());
+    }
+    if !cfg["kv_offload"].as_bool().unwrap_or(true) {
+        args.push("-nkvo".into());
+    }
+    if let Some(n) = cfg["ctx_checkpoints"].as_u64().filter(|n| *n > 0) {
+        args.push("--ctx-checkpoints".into());
+        args.push(n.to_string());
+    }
+    let genre = cfg["spec_type"].as_str().unwrap_or("none").trim();
+    // Un nom inconnu ferait refuser le démarrage : seuls ceux du moteur passent.
+    const GENRES: &[&str] = &[
+        "draft-simple",
+        "draft-eagle3",
+        "draft-mtp",
+        "ngram-simple",
+        "ngram-map-k",
+        "ngram-mod",
+        "ngram-cache",
+    ];
+    if GENRES.contains(&genre) {
+        args.push("--spec-type".into());
+        args.push(genre.into());
+        if let Some(n) = cfg["spec_draft_max"].as_u64().filter(|n| *n > 0) {
+            args.push("--spec-draft-n-max".into());
+            args.push(n.to_string());
+        }
+        if let Some(n) = cfg["spec_draft_min"].as_u64().filter(|n| *n > 0) {
+            args.push("--spec-draft-n-min".into());
+            args.push(n.to_string());
+        }
+        if let Some(p) = cfg["spec_draft_p_min"]
+            .as_f64()
+            .filter(|p| *p > 0.0 && *p <= 1.0)
+        {
+            args.push("--spec-draft-p-min".into());
+            args.push(format!("{p:.2}"));
+        }
+    }
+    args
+}
+
 /// Une puce graphique intégrée au processeur, d'après le nom que Vulkan lui
 /// donne. Elle annonce comme « VRAM » une part de la RAM : `--fit` y pose
 /// alors des couches à côté de la vraie carte, et toute la génération
@@ -2423,8 +2472,10 @@ async fn spawn_llama_server(
     // avant le premier mot.
     let default_ubatch = if is_polaris_or_legacy { 256 } else { 512 };
     let batch = inference_cfg["batch_size"].as_u64().unwrap_or(512).max(1);
+    // 0 : pas de choix de la personne, la valeur adaptée à la carte.
     let ubatch = inference_cfg["ubatch_size"]
         .as_u64()
+        .filter(|u| *u > 0)
         .unwrap_or(default_ubatch)
         .min(batch);
     // Le moteur est déjà tombé en pleine réponse avec ce modèle : plus léger.
@@ -2634,8 +2685,24 @@ async fn spawn_llama_server(
     // unifiée (Mac, Snapdragon), le mapping évite au contraire une copie.
     let tout_sur_la_carte =
         !cpu_only && gpu_layers < 0 && !profile.unified_memory && profile.total_vram_gb > 0.0;
-    if !inference_cfg["use_mmap"].as_bool().unwrap_or(true) || tout_sur_la_carte {
-        cmd.arg("-lm").arg("none");
+    let sans_mmap = !inference_cfg["use_mmap"].as_bool().unwrap_or(true) || tout_sur_la_carte;
+    // « Garder en mémoire » : le système ne pagine ni ne compresse les poids.
+    let verrouille = inference_cfg["keep_in_memory"].as_bool().unwrap_or(false);
+    match (sans_mmap, verrouille) {
+        (true, true) => {
+            cmd.arg("-lm").arg("mlock");
+        }
+        (true, false) => {
+            cmd.arg("-lm").arg("none");
+        }
+        (false, true) => {
+            cmd.arg("-lm").arg("mmap+mlock");
+        }
+        (false, false) => {}
+    }
+
+    for arg in reglages_avances(&inference_cfg) {
+        cmd.arg(arg);
     }
 
     cmd.arg("-np").arg(slots.to_string());
@@ -3106,6 +3173,23 @@ mod tests {
 
         let pris = std::io::Error::from(std::io::ErrorKind::AddrInUse);
         assert!(port_error_message(8080, &pris).contains("déjà utilisé"));
+    }
+
+    #[test]
+    fn les_reglages_avances_ne_passent_que_s_ils_sont_poses() {
+        let defaut = serde_json::json!({ "kv_offload": true, "spec_type": "none" });
+        assert!(reglages_avances(&defaut).is_empty());
+        let poses = serde_json::json!({
+            "kv_unified": true, "kv_offload": false, "ctx_checkpoints": 32,
+            "spec_type": "draft-mtp", "spec_draft_max": 2, "spec_draft_p_min": 0.75
+        });
+        assert_eq!(
+            reglages_avances(&poses).join(" "),
+            "-kvu -nkvo --ctx-checkpoints 32 --spec-type draft-mtp --spec-draft-n-max 2 --spec-draft-p-min 0.75"
+        );
+        // Un genre inconnu ne part pas au moteur : il refuserait de démarrer.
+        let inconnu = serde_json::json!({ "spec_type": "magie", "spec_draft_max": 4 });
+        assert!(reglages_avances(&inconnu).is_empty());
     }
 
     #[test]

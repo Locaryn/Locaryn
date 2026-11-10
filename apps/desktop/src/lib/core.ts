@@ -1733,6 +1733,21 @@ export interface InferenceConfig {
   rpc_servers: string;
   /** LoRA adapter .gguf files preloaded at server start (hot-swappable scales). */
   lora_adapters: string[];
+  /** Lot physique (`-ub`). 0 ou absent : choisi par le moteur. */
+  ubatch_size?: number;
+  /** Un seul cache KV partagé entre les emplacements. */
+  kv_unified?: boolean;
+  /** Points de reprise du contexte. 0 ou absent : valeur du moteur. */
+  ctx_checkpoints?: number;
+  /** Cache KV sur la carte graphique (vrai par défaut). */
+  kv_offload?: boolean;
+  /** Verrouiller le modèle en mémoire vive. */
+  keep_in_memory?: boolean;
+  /** Décodage spéculatif : `none`, `draft-mtp`, `draft-simple`, `ngram-simple`. */
+  spec_type?: string;
+  spec_draft_max?: number;
+  spec_draft_min?: number;
+  spec_draft_p_min?: number;
 }
 
 export interface LoraAdapter {

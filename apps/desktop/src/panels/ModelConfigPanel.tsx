@@ -1,5 +1,6 @@
 import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LoadSettings } from "../components/LoadSettings";
 import { SessionTrustControl } from "../components/SessionTrustControl";
 import { useContextStatus } from "../hooks/useContextStatus";
 import { type ModelRecommendation, core } from "../lib/core";
@@ -454,6 +455,9 @@ export function ModelConfigPanel({ onParamsChange, onClose, sessionId }: Props) 
             </button>
           </div>
         </div>
+
+        <div className="lmc-divider" />
+        <LoadSettings onReload={reloadModel} modelLoaded={(contextStatus?.running ?? 0) > 0} />
       </div>
 
       <div className="lmc-footer">

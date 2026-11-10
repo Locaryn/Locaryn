@@ -6167,8 +6167,11 @@ pub fn summarise_python_error(stderr: &str) -> String {
 // Inference config
 // ============================================================================
 
+// `default` : un fichier écrit par une version antérieure n'a pas les champs
+// ajoutés depuis ; sans cela il était rejeté en bloc et tous les réglages de
+// la personne revenaient aux valeurs d'usine.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", default)]
 pub struct InferenceConfig {
     pub profile: String,
     pub gpu_layers: i32,
@@ -6184,6 +6187,25 @@ pub struct InferenceConfig {
     pub n_cpu_moe: i32,
     pub rpc_servers: String,
     pub lora_adapters: Vec<String>,
+    /// Lot physique (`-ub`). 0 : celui que le moteur choisit pour la carte.
+    pub ubatch_size: u32,
+    /// Un seul cache KV partagé entre les emplacements (`-kvu`).
+    pub kv_unified: bool,
+    /// Points de reprise du contexte gardés par emplacement
+    /// (`--ctx-checkpoints`). 0 : la valeur du moteur.
+    pub ctx_checkpoints: u32,
+    /// Garder le cache KV sur la carte graphique. Faux : `-nkvo`.
+    pub kv_offload: bool,
+    /// Verrouiller le modèle en mémoire vive (mode de chargement `mlock`).
+    pub keep_in_memory: bool,
+    /// Décodage spéculatif (`--spec-type`) : `none`, `draft-mtp`,
+    /// `draft-simple`, `ngram-simple`…
+    pub spec_type: String,
+    /// Jetons proposés d'avance, au plus et au moins (0 : valeur du moteur).
+    pub spec_draft_max: u32,
+    pub spec_draft_min: u32,
+    /// Probabilité minimale pour garder une proposition (0 : valeur du moteur).
+    pub spec_draft_p_min: f32,
 }
 
 /// `context_length` à 0 avec toutes les couches demandées : le profil
@@ -6206,6 +6228,15 @@ impl Default for InferenceConfig {
             n_cpu_moe: 0,
             rpc_servers: String::new(),
             lora_adapters: Vec::new(),
+            ubatch_size: 0,
+            kv_unified: false,
+            ctx_checkpoints: 0,
+            kv_offload: true,
+            keep_in_memory: false,
+            spec_type: "none".into(),
+            spec_draft_max: 0,
+            spec_draft_min: 0,
+            spec_draft_p_min: 0.0,
         }
     }
 }
