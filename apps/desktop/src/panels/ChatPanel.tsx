@@ -838,6 +838,28 @@ export function ChatPanel({
   const arretsRef = useRef<Set<string>>(new Set());
   /** Ce que la boucle d'agent a mesuré au dernier tour de cette conversation. */
   const [ctxUsage, setCtxUsage] = useState<ContextUsage | null>(null);
+  // Le brouillon appartient à la conversation où il a été écrit : en changer ne
+  // l'emporte pas avec soi, et le retrouver à son retour. Sur l'écran d'accueil
+  // (aucune conversation), il ne se garde pas.
+  const brouillonsRef = useRef<Map<string, { texte: string; pieces: Attachment[] }>>(new Map());
+  const champRef = useRef({ input, attachments });
+  champRef.current = { input, attachments };
+  const champDeRef = useRef<string | null>(sessionId);
+  useEffect(() => {
+    const avant = champDeRef.current;
+    if (avant === sessionId) return;
+    if (avant) {
+      brouillonsRef.current.set(avant, {
+        texte: champRef.current.input,
+        pieces: champRef.current.attachments,
+      });
+    }
+    const suivant = sessionId ? brouillonsRef.current.get(sessionId) : undefined;
+    setInput(suivant?.texte ?? "");
+    setAttachments(suivant?.pieces ?? []);
+    champDeRef.current = sessionId;
+  }, [sessionId]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: `sessionId` n'est pas lu, il signale le changement de conversation.
   useEffect(() => {
     setCtxUsage(null);
