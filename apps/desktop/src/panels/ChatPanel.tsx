@@ -1759,6 +1759,33 @@ ${d.texte}`
     }
   }
 
+  /** Coller une capture ou une image copiée : elle se joint comme un fichier
+   *  déposé. Un collage qui porte aussi du texte (tableur, traitement de texte
+   *  y mettent une image de leur sélection) reste un collage de texte. */
+  function surCollage(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (!canCompose) return;
+    const presse = e.clipboardData;
+    if (presse.getData("text/plain").trim()) return;
+    const fichiers = Array.from(presse.files);
+    if (fichiers.length === 0) return;
+    e.preventDefault();
+    const horodatage = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    // Une capture arrive sans nom (« image.png ») : plusieurs collages
+    // successifs se confondraient dans la liste des pièces jointes.
+    const nommes = fichiers.map((f, i) =>
+      /^image\.[a-z]+$/i.test(f.name)
+        ? new File(
+            [f],
+            `capture-${horodatage}${fichiers.length > 1 ? `-${i + 1}` : ""}.${f.name.split(".").pop()}`,
+            {
+              type: f.type,
+            },
+          )
+        : f,
+    );
+    void joindreFichiers(nommes);
+  }
+
   async function joindreFichiers(picked: File[]) {
     // Rien n'est ecarte avant lecture : c'est elle qui dit ce qu'on peut faire
     // de chaque fichier. Ce qui ne passe pas est rapporte nommement — un
@@ -3867,6 +3894,7 @@ ${preview}`,
               suivreMention(val, cursor);
             }}
             onKeyDown={handleComposerKeyDown}
+            onPaste={surCollage}
           />
           <div className="locaryn-composer-bar">
             {/* Slot toolbar pour les extensions (boutons personnalisés, raccourcis) */}
