@@ -999,19 +999,52 @@ pub async fn invoke_extension_tool(
     Err(format!("aucune extension active n'expose « {tool} »"))
 }
 
+/// Quel serveur sert quel outil, appris à la première découverte.
+///
+/// Sans lui, chaque appel redemandait `tools/list` à tous les serveurs l'un
+/// après l'autre : une dictée en direct (trois envois par seconde) prenait du
+/// retard sur la voix dès qu'un seul serveur répondait lentement.
+fn serveurs_des_outils() -> &'static std::sync::Mutex<HashMap<String, Arc<dyn McpClient>>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Arc<dyn McpClient>>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+/// Délai d'une découverte : un serveur figé ne retient pas les autres.
+const DELAI_DECOUVERTE: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// Le serveur MCP en marche qui expose `tool`, s'il y en a un.
 async fn client_exposant(core: &Core, tool: &str) -> Option<Arc<dyn McpClient>> {
     let clients: Vec<Arc<dyn McpClient>> = {
         let running = core.mcp.running.read().await;
         running.values().cloned().collect()
     };
+    // Le serveur connu, s'il tourne encore (un redémarrage en crée un neuf).
+    let connu = serveurs_des_outils()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(tool)
+        .cloned();
+    if let Some(connu) = connu {
+        if clients.iter().any(|c| Arc::ptr_eq(c, &connu)) {
+            return Some(connu);
+        }
+    }
     for client in clients {
-        match client.discover().await {
-            Ok(capabilities) if capabilities.tools.iter().any(|e| e.name == tool) => {
-                return Some(client);
+        match tokio::time::timeout(DELAI_DECOUVERTE, client.discover()).await {
+            Ok(Ok(capabilities)) => {
+                let mut cache = serveurs_des_outils()
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                for outil in &capabilities.tools {
+                    cache.insert(outil.name.clone(), client.clone());
+                }
+                if capabilities.tools.iter().any(|e| e.name == tool) {
+                    return Some(client);
+                }
             }
-            Ok(_) => {}
-            Err(error) => tracing::debug!(%error, "serveur MCP muet à la découverte"),
+            Ok(Err(error)) => tracing::debug!(%error, "serveur MCP muet à la découverte"),
+            Err(_) => tracing::warn!(outil = tool, "serveur MCP sans réponse à la découverte"),
         }
     }
     None
