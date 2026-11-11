@@ -21,6 +21,7 @@ import {
 } from "../lib/core";
 import type { ModelFit as FitType } from "../lib/core";
 import { useI18n } from "../lib/i18n";
+import { decrireModele } from "../lib/modelName";
 import { findMetric, formatRate, formatSpeed } from "./SpeedBadge";
 type Lang = "fr" | "en";
 
@@ -148,6 +149,12 @@ function isChatModel(name: string): boolean {
     return false;
   }
   return true;
+}
+
+/** Le titre lisible d'un fichier de poids (« Qwen3.5 4B ») ; un identifiant de
+ *  fournisseur distant reste tel quel. Le nom complet reste dans l'infobulle. */
+function titreAffiche(modele: string): string {
+  return /\.(gguf|safetensors)$/i.test(modele) ? decrireModele(modele).titre : modele;
 }
 
 export function ModelResidency() {
@@ -370,9 +377,11 @@ export function ModelResidency() {
         aria-expanded={open}
       >
         {busy === "load"
-          ? `Chargement de ${picked ?? "…"}`
+          ? `Chargement de ${picked ? titreAffiche(picked) : "…"}`
           : loaded
-            ? (status?.model ?? "modèle inconnu")
+            ? status?.model
+              ? titreAffiche(status.model)
+              : "modèle inconnu"
             : status?.loading
               ? "Chargement du modèle…"
               : "Aucun modèle chargé"}

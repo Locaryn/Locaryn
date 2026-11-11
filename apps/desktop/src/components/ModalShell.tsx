@@ -9,7 +9,7 @@
 // clic dedans ne ferme pas, et la carte s'annonce comme un vrai dialogue.
 
 import type { CSSProperties, ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 type Props = {
@@ -27,6 +27,9 @@ type Props = {
   overlayClassName?: string;
 };
 
+/** Les fenêtres ouvertes, de la plus ancienne à celle du dessus. */
+const pile: object[] = [];
+
 export function ModalShell({
   onClose,
   children,
@@ -38,13 +41,28 @@ export function ModalShell({
 }: Props) {
   // Écoute au niveau du document : Échap doit fermer quel que soit l'élément
   // qui a le focus, y compris un champ de saisie à l'intérieur de la carte.
+  // En phase de capture, et pour la fenêtre du dessus seulement : Échap ferme
+  // une fenêtre à la fois, et ne descend pas jusqu'à l'écran derrière — qui se
+  // fermait lui aussi (vu sur « Modèles » : annuler une suppression ramenait
+  // à la conversation).
+  const fermerRef = useRef(onClose);
+  fermerRef.current = onClose;
   useEffect(() => {
+    const moi = {};
+    pile.push(moi);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape" || pile[pile.length - 1] !== moi) return;
+      e.preventDefault();
+      e.stopPropagation();
+      fermerRef.current();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      const i = pile.indexOf(moi);
+      if (i >= 0) pile.splice(i, 1);
+    };
+  }, []);
 
   return createPortal(
     // Comparer la cible au conteneur remplace le `stopPropagation` que chaque
@@ -56,9 +74,6 @@ export function ModalShell({
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
       }}
     >
       {/* `dialog open` plutôt qu'un div portant role="dialog" : l'élément natif

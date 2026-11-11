@@ -13,6 +13,7 @@
 // `puppeteer-core` n'est pas une dépendance du dépôt : `NODE_PATH` désigne un
 // dossier `node_modules` qui le contient.
 
+import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -79,7 +80,21 @@ async function principal() {
         break;
       case "capture": {
         const fichier = args[0] ?? "capture.png";
-        await page.screenshot({ path: fichier });
+        // Par le protocole, sans passer par la surface de la fenêtre : posée
+        // hors de l'écran, celle-ci n'est pas toujours rafraîchie par Windows,
+        // et la capture ordinaire attendait alors une image qui ne venait pas.
+        const session = await page.createCDPSession();
+        // Deux façons de prendre l'image ; selon l'écran, l'une des deux échoue.
+        const prendre = (fromSurface) =>
+          Promise.race([
+            session.send("Page.captureScreenshot", { format: "png", fromSurface }),
+            new Promise((_, refus) =>
+              setTimeout(() => refus(new Error("capture sans réponse après 15 s")), 15000),
+            ),
+          ]);
+        const { data } = await prendre(true).catch(() => prendre(false));
+        await writeFile(fichier, Buffer.from(data, "base64"));
+        await session.detach();
         console.log(fichier);
         break;
       }

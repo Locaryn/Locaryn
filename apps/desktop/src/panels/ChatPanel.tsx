@@ -57,6 +57,7 @@ import { confirmer, informer, pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
+import { nomCourt } from "../lib/modelName";
 import { jouerSon, notifierSysteme } from "../lib/osNotify";
 import { pluginBridge } from "../lib/pluginBridge";
 import {
@@ -4071,7 +4072,11 @@ ${preview}`,
                   <Icon name={isLocalModel ? "cpu" : "cloud"} size={14} />
                 </span>
                 <span className="locaryn-model-picker-label" style={{ fontWeight: 700 }}>
-                  {activeModel || "Choisir un modèle"}
+                  {activeModel
+                    ? isLocalModel
+                      ? nomCourt(activeModel)
+                      : activeModel
+                    : "Choisir un modèle"}
                 </span>
                 <Icon name="caret-down" size={12} />
               </button>

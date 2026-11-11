@@ -39,6 +39,12 @@ function sansInteret(mot: string): boolean {
   return /^\d+$/.test(mot);
 }
 
+/** Le nom d'un modèle local en une ligne courte : « Qwen3 8B · IQ4_NL ». */
+export function nomCourt(brut: string): string {
+  const nom = decrireModele(brut);
+  return [nom.titre, nom.quantification].filter(Boolean).join(" · ");
+}
+
 /** Découper un nom de fichier ou de dépôt en ce qu'une carte doit montrer. */
 export function decrireModele(brut: string): NomDeModele {
   const normalise = brut.replace(/\\/g, "/");

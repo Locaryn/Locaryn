@@ -43,7 +43,9 @@ const VARIANTES_MAX = 5;
 function etiquettesDuNom(nom: NomDeModele): string[] {
   const visibles = nom.variantes.slice(0, VARIANTES_MAX);
   const reste = nom.variantes.length - visibles.length;
-  return [nom.quantification, ...visibles, reste > 0 ? `+${reste}` : null, nom.format].filter(
+  // « MODEL » : un dossier sans extension de fichier — rien à dire du format.
+  const format = nom.format === "MODEL" ? null : nom.format;
+  return [nom.quantification, ...visibles, reste > 0 ? `+${reste}` : null, format].filter(
     (t): t is string => !!t,
   );
 }
@@ -280,7 +282,7 @@ export function InstalledModelsView({
     const broken: StoredEntry[] = incompatibleModels.map((name) => ({
       tag: name,
       kind: "incompatible",
-      title: name,
+      title: decrireModele(name).titre,
       brand: "TRANSFORMERS",
       group: "Non exécutable",
       tags: ["SAFETENSORS"],

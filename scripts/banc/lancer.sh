@@ -69,7 +69,9 @@ export LOCARYN_HOME
 LOCARYN_HOME="$(cygpath -w "$BANC/profil")"
 export WEBVIEW2_USER_DATA_FOLDER
 WEBVIEW2_USER_DATA_FOLDER="$(cygpath -w "$BANC/webview")"
-export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=$PORT"
+# Hors de l'écran, Chromium tient la fenêtre pour masquée et cesse de la
+# dessiner : les captures attendaient une image qui ne venait jamais.
+export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=$PORT --disable-features=CalculateNativeWinOcclusion --disable-backgrounding-occluded-windows --disable-renderer-backgrounding"
 export RUST_LOG="${RUST_LOG:-info,locaryn=debug}"
 if [ -n "${MODELES:-}" ]; then
   export LOCARYN_MODELS_DIR="$MODELES"
