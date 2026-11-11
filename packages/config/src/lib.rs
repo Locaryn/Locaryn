@@ -271,6 +271,9 @@ fn default_log_level() -> String {
 /// user's home directory behind their back, and a half-finished move is worse
 /// than none. Once `~/.locaryn` exists, it takes precedence for good.
 pub fn global_dir() -> PathBuf {
+    if let Some(profil) = profil_d_essai() {
+        return profil;
+    }
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     let current = home.join(".locaryn");
     if current.exists() {
@@ -281,6 +284,20 @@ pub fn global_dir() -> PathBuf {
         return legacy;
     }
     current
+}
+
+/// Un profil à part, désigné par `LOCARYN_HOME` : configuration, base et
+/// données vivent dans ce dossier au lieu de `~/.locaryn`.
+///
+/// Sert à lancer une seconde application à côté de celle de la personne — un
+/// essai sur un profil vierge, une version en cours de vérification — sans
+/// toucher à ses conversations ni à ses réglages. Sous Windows, le dossier
+/// personnel ne se déplace pas par variable d'environnement : sans cela, un
+/// essai « comme sur un PC neuf » obligeait à renommer le vrai profil.
+pub fn profil_d_essai() -> Option<PathBuf> {
+    std::env::var_os("LOCARYN_HOME")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
 }
 
 /// `~/.locaryn/config.toml`

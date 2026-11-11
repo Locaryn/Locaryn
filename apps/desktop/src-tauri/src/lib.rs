@@ -7718,7 +7718,19 @@ pub fn run() {
 
     tracing::info!("Starting Locaryn desktop v{}", env!("CARGO_PKG_VERSION"));
 
-    tauri::Builder::default()
+    // Une seule application par profil. Sur un profil d'essai (`LOCARYN_HOME`),
+    // elle tourne à côté de celle de la personne au lieu de lui céder la place.
+    let constructeur = tauri::Builder::default();
+    let constructeur = if locaryn_config::profil_d_essai().is_some() {
+        tracing::info!("profil d'essai : seconde instance autorisée");
+        constructeur
+    } else {
+        constructeur.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tracing::info!("second instance launched — focusing main window");
+            startup::focus_existing(app);
+        }))
+    };
+    constructeur
         // L'aperçu d'une page HTML de la conversation, limité à son dossier.
         .register_asynchronous_uri_scheme_protocol(apercu::SCHEMA, |_ctx, requete, repondeur| {
             let chemin = requete.uri().path().to_string();
@@ -7749,10 +7761,6 @@ pub fn run() {
                 }
             }
         })
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            tracing::info!("second instance launched — focusing main window");
-            startup::focus_existing(app);
-        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
