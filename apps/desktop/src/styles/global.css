@@ -2483,6 +2483,19 @@ dialog:where([open]) {
 .locaryn-etat-terminee {
   background: var(--accent);
 }
+/* Au travail : un anneau qui tourne, sans couleur d'alerte — rien a faire,
+   seulement savoir que ca avance. */
+.locaryn-etat-en-cours {
+  box-sizing: border-box;
+  border: 1.5px solid var(--text-faint);
+  border-top-color: var(--accent);
+  animation: locaryn-tourne 0.9s linear infinite;
+}
+@keyframes locaryn-tourne {
+  to {
+    transform: rotate(360deg);
+  }
+}
 @keyframes locaryn-battement {
   0%,
   100% {
@@ -2493,7 +2506,8 @@ dialog:where([open]) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .locaryn-etat-attente {
+  .locaryn-etat-attente,
+  .locaryn-etat-en-cours {
     animation: none;
   }
 }
@@ -13249,6 +13263,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
 .lw-launcher-card:focus-visible,
 .lw-entry:focus-visible,
 .lw-crumb:focus-visible,
+.lw-viewer-crumb:focus-visible,
 .lw-link-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -14729,6 +14744,29 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   margin: 0 4px;
   color: var(--text-faint);
 }
+.lw-viewer-crumb {
+  min-height: 28px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.lw-viewer-crumb:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.lw-viewer-crumb:active {
+  transform: translateY(1px);
+}
+
 .lw-viewer-actions {
   display: flex;
   align-items: center;

@@ -166,6 +166,7 @@ export function FilesTab({ sessionId, visible }: Props) {
           source={source}
           onApercu={() => void apercu(fichier.chemin)}
           onRetour={() => setFichier(null)}
+          onDossier={(chemin) => void charger(chemin)}
         />
       ) : (
         <ul className="lw-entries">

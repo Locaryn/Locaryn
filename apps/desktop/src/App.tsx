@@ -149,6 +149,8 @@ export function App() {
   const [sessionsEnErreur, setSessionsEnErreur] = useState<ReadonlySet<string>>(new Set());
   /** Réponses finies pendant qu'on regardait une autre conversation. */
   const [sessionsTerminees, setSessionsTerminees] = useState<ReadonlySet<string>>(new Set());
+  /** Conversations dont le modèle travaille en ce moment. */
+  const [sessionsEnCours, setSessionsEnCours] = useState<ReadonlySet<string>>(new Set());
   /** Conversations dont le titre se génère en fond : leur ligne montre « Nommage… ». */
   const [sessionsEnNommage, setSessionsEnNommage] = useState<ReadonlySet<string>>(new Set());
   const sessionAfficheeRef = useRef<string | null>(null);
@@ -208,16 +210,36 @@ export function App() {
     setSessionsTerminees((p) => (p.has(id) ? new Set([...p].filter((s) => s !== id)) : p));
   }, [activeSession?.id]);
   useEffect(() => {
-    const un = listen<string>("locaryn://reponse-finie", (ev) => {
+    const sans = (p: ReadonlySet<string>, id: string) =>
+      p.has(id) ? new Set([...p].filter((s) => s !== id)) : p;
+    const debut = listen<string>("locaryn://reponse-commencee", (ev) => {
       const id = ev.payload;
+      setSessionsEnCours((p) => (p.has(id) ? p : new Set([...p, id])));
+      // Une nouvelle réponse remplace la pastille de la précédente.
+      setSessionsTerminees((p) => sans(p, id));
+    }).catch((e: unknown) => {
+      console.warn("début des réponses non suivi :", e);
+      return null;
+    });
+    const fin = listen<string>("locaryn://reponse-finie", (ev) => {
+      const id = ev.payload;
+      setSessionsEnCours((p) => sans(p, id));
       if (id === sessionAfficheeRef.current) return;
       setSessionsTerminees((p) => (p.has(id) ? p : new Set([...p, id])));
     }).catch((e: unknown) => {
       console.warn("fin des réponses non suivie :", e);
       return null;
     });
+    // Ce qui tournait déjà quand l'écran s'est ouvert.
+    void core
+      .localRepliesRunning()
+      .then((ids) => {
+        if (ids.length > 0) setSessionsEnCours((p) => new Set([...p, ...ids]));
+      })
+      .catch((e: unknown) => console.warn("réponses en cours illisibles :", e));
     return () => {
-      void un.then((f) => f?.());
+      void debut.then((f) => f?.());
+      void fin.then((f) => f?.());
     };
   }, []);
 
@@ -1433,6 +1455,7 @@ export function App() {
                 sessionsEnAttente={sessionsEnAttente}
                 sessionsEnErreur={sessionsEnErreur}
                 sessionsTerminees={sessionsTerminees}
+                sessionsEnCours={sessionsEnCours}
                 sessionsEnNommage={sessionsEnNommage}
                 sessionsByProject={sessionsByProject}
                 standaloneSessions={standaloneSessions}

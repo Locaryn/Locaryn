@@ -13,6 +13,8 @@ type Props = {
   /** Afficher une page HTML dans le navigateur de la conversation. */
   onApercu: () => void;
   onRetour: () => void;
+  /** Ouvrir un dossier du chemin (relatif à la racine, "" pour elle). */
+  onDossier: (chemin: string) => void;
 };
 
 type Rendu = "markdown" | "html" | "svg" | null;
@@ -43,7 +45,14 @@ function taille(octets: number): string {
  * bureau, elle se rend dans un cadre isolé. Le Markdown et le SVG
  * s'affichent tels quels.
  */
-export function FileViewer({ sessionId, fichier, source = false, onApercu, onRetour }: Props) {
+export function FileViewer({
+  sessionId,
+  fichier,
+  source = false,
+  onApercu,
+  onRetour,
+  onDossier,
+}: Props) {
   const rendu = renduPour(fichier.chemin);
   /** Une page HTML se prévisualise dans le navigateur, pas dans ce panneau. */
   const apercuAilleurs = rendu === "html" && isTauri;
@@ -126,13 +135,29 @@ export function FileViewer({ sessionId, fichier, source = false, onApercu, onRet
         </button>
         <span className="lw-viewer-path" title={fichier.absolu ?? fichier.chemin}>
           <Icon name="folder-simple" size={13} />
-          {morceaux.map((m, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: un segment de chemin n'a pas d'autre identité que sa place.
-            <span key={i} className={i === morceaux.length - 1 ? "is-dernier" : undefined}>
-              {i > 0 && <span className="lw-viewer-sep">›</span>}
-              {m}
-            </span>
-          ))}
+          {morceaux.map((m, i) => {
+            const chemin = morceaux.slice(0, i + 1).join("/");
+            const dernier = i === morceaux.length - 1;
+            return (
+              <span key={chemin} className={dernier ? "is-dernier" : undefined}>
+                {i > 0 && <span className="lw-viewer-sep">›</span>}
+                {dernier ? (
+                  m
+                ) : (
+                  // Chaque dossier du chemin y mène : on remonte d'un clic,
+                  // sans repasser par la liste.
+                  <button
+                    type="button"
+                    className="lw-viewer-crumb"
+                    title={`Ouvrir le dossier ${chemin}`}
+                    onClick={() => onDossier(chemin)}
+                  >
+                    {m}
+                  </button>
+                )}
+              </span>
+            );
+          })}
         </span>
 
         <div className="lw-viewer-actions">

@@ -5,7 +5,7 @@ import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuU
 import { clicApresGlisser, suivreAppui } from "../lib/sessionDrag";
 
 /** La pastille d'une conversation dans la liste. */
-export type EtatSession = "attente" | "erreur" | "terminee" | null;
+export type EtatSession = "attente" | "erreur" | "en_cours" | "terminee" | null;
 
 const PASTILLES: Record<Exclude<EtatSession, null>, { classe: string; titre: string }> = {
   attente: {
@@ -15,6 +15,10 @@ const PASTILLES: Record<Exclude<EtatSession, null>, { classe: string; titre: str
   erreur: {
     classe: "locaryn-etat-erreur",
     titre: "Quelque chose est cassé dans cette conversation",
+  },
+  en_cours: {
+    classe: "locaryn-etat-en-cours",
+    titre: "Le modèle travaille dans cette conversation",
   },
   terminee: {
     classe: "locaryn-etat-terminee",

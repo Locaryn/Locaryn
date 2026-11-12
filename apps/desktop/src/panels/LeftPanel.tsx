@@ -39,6 +39,8 @@ type Props = {
   sessionsEnErreur?: ReadonlySet<string>;
   /** Une réponse y a fini pendant qu'on regardait ailleurs. */
   sessionsTerminees?: ReadonlySet<string>;
+  /** Conversations dont le modèle travaille en ce moment. */
+  sessionsEnCours?: ReadonlySet<string>;
   /** Son titre se génère en fond : la ligne montre « Nommage… ». */
   sessionsEnNommage?: ReadonlySet<string>;
   onSelectProject: (p: Project | null) => void;
@@ -106,15 +108,17 @@ const PASTILLE_TITRE: Record<"attente" | "erreur", string> = {
   erreur: "Quelque chose est cassé dans une conversation",
 };
 
-/** L'état d'une conversation, l'erreur passant devant l'attente. */
+/** L'état d'une conversation : l'erreur, puis l'attente, puis le travail. */
 function etatDe(
   id: string,
   attente?: ReadonlySet<string>,
   erreur?: ReadonlySet<string>,
   terminee?: ReadonlySet<string>,
+  enCours?: ReadonlySet<string>,
 ): EtatSession {
   if (erreur?.has(id)) return "erreur";
   if (attente?.has(id)) return "attente";
+  if (enCours?.has(id)) return "en_cours";
   if (terminee?.has(id)) return "terminee";
   return null;
 }
@@ -270,6 +274,7 @@ export function LeftPanel({
   sessionsEnAttente,
   sessionsEnErreur,
   sessionsTerminees,
+  sessionsEnCours,
   sessionsEnNommage,
   onSelectProject,
   onSelectSession,
@@ -732,7 +737,13 @@ export function LeftPanel({
                       label={sessionLabel(s)}
                       bullet="chat"
                       active={activeSession?.id === s.id}
-                      etat={etatDe(s.id, sessionsEnAttente, sessionsEnErreur, sessionsTerminees)}
+                      etat={etatDe(
+                        s.id,
+                        sessionsEnAttente,
+                        sessionsEnErreur,
+                        sessionsTerminees,
+                        sessionsEnCours,
+                      )}
                       nommageEnFond={sessionsEnNommage?.has(s.id) ?? false}
                       leaving={leaving === s.id}
                       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
@@ -937,6 +948,7 @@ export function LeftPanel({
                                 sessionsEnAttente,
                                 sessionsEnErreur,
                                 sessionsTerminees,
+                                sessionsEnCours,
                               )}
                               nommageEnFond={sessionsEnNommage?.has(s.id) ?? false}
                               leaving={leaving === s.id}

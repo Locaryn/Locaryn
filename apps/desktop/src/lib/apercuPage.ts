@@ -1,5 +1,5 @@
 import { core, isTauri } from "./core";
-import { getWorkspaceConversation, openTabFor, ouvrirFichier } from "./workspace";
+import { getWorkspaceConversation, openTab, openTabFor, ouvrirFichier } from "./workspace";
 
 /**
  * Une page HTML de la conversation s'ouvre dans le navigateur intégré de sa
@@ -49,6 +49,22 @@ export async function ouvrirApercu(sessionId: string | null, chemin: string): Pr
 export async function ouvrirAdresse(session: string, url: string): Promise<void> {
   openTabFor(session, "browser");
   await core.browserNavigate(session, url);
+}
+
+/**
+ * Ouvrir un lien ou une recherche dans le navigateur intégré de la
+ * conversation affichée ; hors de l'application de bureau, dans un onglet.
+ */
+export function ouvrirLien(cible: string): void {
+  if (!isTauri) {
+    window.open(cible, "_blank", "noopener,noreferrer");
+    return;
+  }
+  openTab("browser");
+  const conversation = getWorkspaceConversation();
+  void core
+    .browserNavigate(conversation === "" ? null : conversation, cible)
+    .catch((e: unknown) => console.warn("navigateur intégré indisponible :", e));
 }
 
 /**

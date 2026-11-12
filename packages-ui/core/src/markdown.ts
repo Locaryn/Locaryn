@@ -28,8 +28,14 @@ function renderInline(raw: string): string {
   // Code spans are cut out first so nothing inside them becomes bold/links.
   const spans: string[] = [];
   const sansCode = raw.replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (_, _ticks, body: string) => {
+    const code = `<code>${escapeHtml(body.trim() === "" ? body : body.replace(/^ (.*) $/, "$1"))}</code>`;
+    // `http://localhost:3000` : les modèles écrivent l'adresse d'un serveur
+    // en code ; elle doit s'ouvrir d'un clic comme une adresse ordinaire.
+    const adresse = body.trim();
     spans.push(
-      `<code>${escapeHtml(body.trim() === "" ? body : body.replace(/^ (.*) $/, "$1"))}</code>`,
+      /^https?:\/\/[^\s"<>`]+$/.test(adresse)
+        ? `<a href="${escapeHtml(adresse)}" target="_blank" rel="noopener noreferrer">${code}</a>`
+        : code,
     );
     // Repère d'usage privé (U+E000) : ni échappé par escapeHtml, ni touché par les motifs.
     return `${spans.length - 1}`;

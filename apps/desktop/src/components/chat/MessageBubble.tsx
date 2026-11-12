@@ -1,5 +1,6 @@
 import { Icon, renderMarkdown } from "@locaryn/ui-core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ouvrirLien } from "../../lib/apercuPage";
 import { core } from "../../lib/core";
 import { pickSaveFile } from "../../lib/dialog";
 import { useI18n } from "../../lib/i18n";
@@ -147,6 +148,17 @@ function sourcePathFromAssetUrl(src: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Un clic sur un lien d'une réponse : il s'ouvre dans le navigateur intégré.
+ * Laissé à la vue web, un lien `target="_blank"` n'ouvrait rien du tout.
+ */
+function surClicDeLien(e: React.MouseEvent<HTMLDivElement>) {
+  const lien = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
+  if (!lien || !/^https?:/i.test(lien.href)) return;
+  e.preventDefault();
+  ouvrirLien(lien.href);
 }
 
 export function MessageBubble({
@@ -557,6 +569,7 @@ export function MessageBubble({
       <div
         ref={mdRef}
         className="locaryn-msg-md"
+        onClick={surClicDeLien}
         // Rempli par `patcherHtml` (effet ci-dessus). renderMarkdown échappe tout
         // le HTML source avant d'injecter ses propres balises (modèle de sûreté
         // en tête de packages-ui/core/src/markdown.ts).
