@@ -29,7 +29,9 @@ function chargerPuppeteer() {
       // Dossier suivant : celui-ci ne le contient pas.
     }
   }
-  throw new Error("puppeteer-core introuvable : posez NODE_PATH sur un node_modules qui le contient.");
+  throw new Error(
+    "puppeteer-core introuvable : posez NODE_PATH sur un node_modules qui le contient.",
+  );
 }
 
 /** La page de l'application : pas l'écran de lancement, pas un outil de dev. */
@@ -49,9 +51,9 @@ async function pageDeLApplication(navigateur) {
 
 async function cliquerParTexte(page, texte) {
   const trouve = await page.evaluate((cherche) => {
-    const visibles = [...document.querySelectorAll("button, a, [role=button], [role=tab], label")].filter(
-      (e) => e.offsetParent !== null,
-    );
+    const visibles = [
+      ...document.querySelectorAll("button, a, [role=button], [role=tab], label"),
+    ].filter((e) => e.offsetParent !== null);
     const libelle = (e) =>
       `${e.textContent ?? ""} ${e.getAttribute("aria-label") ?? ""} ${e.getAttribute("title") ?? ""}`.trim();
     const exact = visibles.find((e) => (e.textContent ?? "").trim() === cherche);
