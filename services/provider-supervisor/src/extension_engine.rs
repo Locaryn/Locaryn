@@ -429,7 +429,7 @@ pub async fn spawn(
     // jamais l'arrêter depuis l'application.
     cmd.kill_on_drop(true);
 
-    cmd.spawn().map_err(|e| {
+    let enfant = cmd.spawn().map_err(|e| {
         SupervisorError::SpawnFailed(
             engine,
             format!(
@@ -443,7 +443,9 @@ pub async fn spawn(
                 describe_install(&spec.manifest)
             ),
         )
-    })
+    })?;
+    crate::tache_windows::rattacher_tokio(&enfant);
+    Ok(enfant)
 }
 
 /// Les moteurs apportés par une liste d'extensions installées.

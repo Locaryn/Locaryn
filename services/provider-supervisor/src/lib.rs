@@ -32,6 +32,7 @@ pub mod engine_manager;
 pub mod extension_engine;
 pub mod llama_runtime;
 pub mod runtime_install;
+pub mod tache_windows;
 
 pub use extension_engine::ExtensionEngineSpec;
 
@@ -2775,8 +2776,13 @@ async fn spawn_llama_server(
         settings_record.to_string(),
     );
 
-    cmd.spawn()
-        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e.to_string()))
+    let enfant = cmd
+        .spawn()
+        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::LlamaCpp, e.to_string()))?;
+    // Tué avec l'application, même par le gestionnaire des tâches : sans
+    // cela, le modèle restait en mémoire vidéo sans plus rien pour l'arrêter.
+    tache_windows::rattacher_tokio(&enfant);
+    Ok(enfant)
 }
 
 /// AirLLM OpenAI-compatible server (embedded Python). Speaks the
@@ -2994,8 +3000,11 @@ async fn spawn_airllm_server(
     // mémoire après la fermeture de l'application n'était plus rattrapable.
     cmd.kill_on_drop(true);
 
-    cmd.spawn()
-        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::AirLlm, e.to_string()))
+    let enfant = cmd
+        .spawn()
+        .map_err(|e| SupervisorError::SpawnFailed(ProviderEngine::AirLlm, e.to_string()))?;
+    tache_windows::rattacher_tokio(&enfant);
+    Ok(enfant)
 }
 
 /// Find the multimodal projector that belongs to `model_path`, if any:

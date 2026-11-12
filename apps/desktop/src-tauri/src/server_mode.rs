@@ -340,8 +340,8 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
         .spawn()
         .map_err(|e| format!("démarrage du service : {e}"))?;
 
-    #[cfg(windows)]
-    win_job::attach_child_to_job(&child);
+    // Le service meurt avec l'application, même tuée net.
+    locaryn_provider_supervisor::tache_windows::rattacher(&child);
 
     {
         let mut guard = CHILD.lock().map_err(|_| "état du serveur illisible")?;
@@ -350,134 +350,6 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
     // Give it a moment to bind, so the first status reflects reality.
     tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
     server_status().await
-}
-
-#[cfg(windows)]
-mod win_job {
-    use std::os::windows::io::AsRawHandle;
-    use std::sync::OnceLock;
-
-    #[repr(C)]
-    #[allow(non_snake_case)]
-    struct IO_COUNTERS {
-        ReadOperationCount: u64,
-        WriteOperationCount: u64,
-        OtherOperationCount: u64,
-        ReadTransferCount: u64,
-        WriteTransferCount: u64,
-        OtherTransferCount: u64,
-    }
-
-    #[repr(C)]
-    #[allow(non_snake_case)]
-    struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
-        PerProcessUserTimeLimit: i64,
-        PerJobUserTimeLimit: i64,
-        LimitFlags: u32,
-        MinimumWorkingSetSize: usize,
-        MaximumWorkingSetSize: usize,
-        ActiveProcessLimit: u32,
-        Affinity: usize,
-        PriorityClass: u32,
-        SchedulingClass: u32,
-    }
-
-    #[repr(C)]
-    #[allow(non_snake_case)]
-    struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
-        BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION,
-        IoInfo: IO_COUNTERS,
-        ProcessMemoryLimit: usize,
-        JobMemoryLimit: usize,
-        PeakProcessMemoryLimit: usize,
-        PeakJobMemoryLimit: usize,
-    }
-
-    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
-    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: u32 = 9;
-
-    type Handle = *mut std::ffi::c_void;
-    type Bool = i32;
-
-    extern "system" {
-        fn CreateJobObjectW(lpJobAttributes: *const std::ffi::c_void, lpName: *const u16)
-            -> Handle;
-        fn SetInformationJobObject(
-            hJob: Handle,
-            JobObjectInformationClass: u32,
-            lpJobObjectInformation: *const std::ffi::c_void,
-            cbJobObjectInformationLength: u32,
-        ) -> Bool;
-        fn AssignProcessToJobObject(hJob: Handle, hProcess: Handle) -> Bool;
-        fn CloseHandle(hObject: Handle) -> Bool;
-    }
-
-    struct SafeJobHandle(Handle);
-    unsafe impl Send for SafeJobHandle {}
-    unsafe impl Sync for SafeJobHandle {}
-
-    impl Drop for SafeJobHandle {
-        fn drop(&mut self) {
-            if !self.0.is_null() {
-                unsafe {
-                    CloseHandle(self.0);
-                }
-            }
-        }
-    }
-
-    static JOB: OnceLock<SafeJobHandle> = OnceLock::new();
-
-    fn get_job_object() -> Option<Handle> {
-        let job = JOB.get_or_init(|| unsafe {
-            let handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-            if handle.is_null() {
-                tracing::warn!("impossible de créer le Windows Job Object pour le daemon");
-                return SafeJobHandle(std::ptr::null_mut());
-            }
-
-            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-
-            let res = SetInformationJobObject(
-                handle,
-                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
-                &info as *const _ as *const std::ffi::c_void,
-                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            );
-
-            if res == 0 {
-                tracing::warn!("impossible de configurer JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE");
-                CloseHandle(handle);
-                return SafeJobHandle(std::ptr::null_mut());
-            }
-
-            SafeJobHandle(handle)
-        });
-
-        if job.0.is_null() {
-            None
-        } else {
-            Some(job.0)
-        }
-    }
-
-    /// Associe le processus enfant au Windows Job Object.
-    ///
-    /// Grâce au flag `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, le noyau Windows tue
-    /// automatiquement tous les processus rattachés dès que le processus parent
-    /// se termine ou plante brutalement.
-    pub fn attach_child_to_job(child: &std::process::Child) {
-        if let Some(job) = get_job_object() {
-            let process_handle = child.as_raw_handle() as Handle;
-            unsafe {
-                let res = AssignProcessToJobObject(job, process_handle);
-                if res == 0 {
-                    tracing::warn!("échec de l'assignation du daemon au Windows Job Object");
-                }
-            }
-        }
-    }
 }
 
 /// Restarts the daemon server. If stopped, starts it up.
