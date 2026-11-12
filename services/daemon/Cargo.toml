@@ -67,6 +67,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 base64 = "0.22"
+netdev = "0.31"
 
 [features]
 # Le trousseau du système, pour les clés des fournisseurs de modèles. Activé

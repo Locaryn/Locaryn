@@ -28,6 +28,7 @@ mod routes;
 
 use std::collections::HashMap;
 mod acces_public;
+mod adresse_locale;
 mod auth;
 mod chat_gpu;
 mod connexions;
@@ -140,6 +141,11 @@ impl DaemonState {
 }
 
 fn local_ip_string() -> String {
+    // La carte du vrai réseau local d'abord : la route vers Internet passe
+    // par le VPN quand il y en a un, et un téléphone du Wi-Fi n'y arrive pas.
+    if let Some(ip) = adresse_locale::adresse() {
+        return ip.to_string();
+    }
     std::net::UdpSocket::bind("0.0.0.0:0")
         .and_then(|s| {
             s.connect("8.8.8.8:80")?;
