@@ -2,12 +2,15 @@ import { Icon } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { ConversationHistorySettings } from "../components/ConversationHistorySettings";
 import { DefaultPermissionsSettings } from "../components/DefaultPermissionsSettings";
+import { DevicesSecurity } from "../components/DevicesSecurity";
 import { InterfaceModeSetting } from "../components/InterfaceModeSetting";
 import { MemorySettings } from "../components/MemorySettings";
 import { ModelPreferencesSettings } from "../components/ModelPreferencesSettings";
 import { NotificationSettings } from "../components/NotificationSettings";
+import { ServerAccountCard } from "../components/ServerAccountCard";
 import { WebPermissionsSettings } from "../components/WebPermissionsSettings";
 import { ExtensionSlot } from "../components/extensions/ExtensionSlot";
+import { useMachineAccount } from "../hooks/useMachineAccount";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import { type LocalProfile, type Project, type Session, core } from "../lib/core";
 import { pickImageFile } from "../lib/dialog";
@@ -46,7 +49,8 @@ export type AccountSection =
   | "memory"
   | "archives"
   | "conversations"
-  | "appearance";
+  | "appearance"
+  | "devices";
 
 /**
  * Espace compte.
@@ -101,6 +105,7 @@ export function AccountView({
     }
   }
   const [isConnected, setIsConnected] = useState(false);
+  const compteServeur = useMachineAccount();
 
   useEffect(() => {
     let cancelled = false;
@@ -122,7 +127,7 @@ export function AccountView({
     };
   }, []);
 
-  const displayName = username.trim() || "Local";
+  const displayName = compteServeur?.username ?? (username.trim() || "Local");
   const initial = useMemo(() => displayName.slice(0, 1).toUpperCase(), [displayName]);
   const avatarUrl = useMemo(
     () => (localProfile.avatar_path ? toMediaUrl(localProfile.avatar_path) : null),
@@ -289,7 +294,15 @@ export function AccountView({
       )}
 
       <div className="locaryn-account-content">
-        {section === "appearance" ? (
+        {section === "devices" ? (
+          compteServeur ? (
+            <DevicesSecurity account={compteServeur} />
+          ) : (
+            <p className="locaryn-field-hint">
+              Liez d'abord cette machine à un compte dans « Serveur &amp; fonctions ».
+            </p>
+          )
+        ) : section === "appearance" ? (
           <>
             <InterfaceModeSetting />
             <div style={{ height: 24 }} />
@@ -330,65 +343,72 @@ export function AccountView({
               style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 12 }}
             />
             <div className="locaryn-card locaryn-account-profile-card">
-              <div className="locaryn-account-profile-head">
-                <div
-                  className="locaryn-account-avatar"
-                  role="img"
-                  aria-label={`Avatar de ${displayName}`}
-                >
-                  {avatarUrl ? <img src={avatarUrl} alt="" /> : initial}
-                </div>
-                <div className="locaryn-account-profile-copy">
-                  <span className="locaryn-account-eyebrow">ZONE COMPTE</span>
-                  <h3>{displayName}</h3>
-                  <p>
-                    {isConnected
-                      ? "Compte relié à un serveur Locaryn."
-                      : "Compte local autonome — aucune connexion distante configurée."}
-                  </p>
-                </div>
-                <span className="locaryn-account-local-badge">
-                  <span className="locaryn-health-dot locaryn-health-ok" />
-                  {isConnected ? "Distant" : "Local"}
-                </span>
-              </div>
+              {compteServeur && <ServerAccountCard account={compteServeur} avatarUrl={avatarUrl} />}
+              {!compteServeur && (
+                <>
+                  <div className="locaryn-account-profile-head">
+                    <div
+                      className="locaryn-account-avatar"
+                      role="img"
+                      aria-label={`Avatar de ${displayName}`}
+                    >
+                      {avatarUrl ? <img src={avatarUrl} alt="" /> : initial}
+                    </div>
+                    <div className="locaryn-account-profile-copy">
+                      <span className="locaryn-account-eyebrow">ZONE COMPTE</span>
+                      <h3>{displayName}</h3>
+                      <p>
+                        {isConnected
+                          ? "Compte relié à un serveur Locaryn."
+                          : "Compte local autonome — aucune connexion distante configurée."}
+                      </p>
+                    </div>
+                    <span className="locaryn-account-local-badge">
+                      <span className="locaryn-health-dot locaryn-health-ok" />
+                      {isConnected ? "Distant" : "Local"}
+                    </span>
+                  </div>
 
-              <div className="locaryn-account-profile-note">
-                Cet espace regroupe votre identité, vos réglages de compte et vos conversations
-                archivées. Aucun compte en ligne n'est nécessaire pour utiliser Locaryn.
-              </div>
+                  <div className="locaryn-account-profile-note">
+                    Cet espace regroupe votre identité, vos réglages de compte et vos conversations
+                    archivées. Aucun compte en ligne n'est nécessaire pour utiliser Locaryn.
+                  </div>
 
-              <div className="locaryn-field">
-                <label className="locaryn-field-label" htmlFor="account-username">
-                  Nom affiché / Alias
-                </label>
-                <input
-                  id="account-username"
-                  className="locaryn-input"
-                  value={username}
-                  placeholder="Local"
-                  maxLength={80}
-                  disabled={!profileLoaded || profileBusy}
-                  onChange={(e) => setUsername(e.target.value)}
-                  onBlur={() => void saveProfileName()}
-                />
-                <p className="locaryn-field-hint">
-                  Ce nom et votre avatar sont conservés sur cette machine et restaurés au prochain
-                  démarrage.
-                </p>
-              </div>
+                  <div className="locaryn-field">
+                    <label className="locaryn-field-label" htmlFor="account-username">
+                      Nom affiché / Alias
+                    </label>
+                    <input
+                      id="account-username"
+                      className="locaryn-input"
+                      value={username}
+                      placeholder="Local"
+                      maxLength={80}
+                      disabled={!profileLoaded || profileBusy}
+                      onChange={(e) => setUsername(e.target.value)}
+                      onBlur={() => void saveProfileName()}
+                    />
+                    <p className="locaryn-field-hint">
+                      Ce nom et votre avatar sont conservés sur cette machine et restaurés au
+                      prochain démarrage.
+                    </p>
+                  </div>
 
-              <div className="locaryn-field-actions locaryn-account-profile-actions">
-                <button
-                  type="button"
-                  className="locaryn-btn-primary"
-                  disabled={!profileLoaded || profileBusy}
-                  onClick={() => void saveProfileName()}
-                >
-                  {profileBusy ? "Enregistrement…" : "Enregistrer le profil"}
-                </button>
-                {profileSaved && <span className="locaryn-account-saved">Profil enregistré</span>}
-              </div>
+                  <div className="locaryn-field-actions locaryn-account-profile-actions">
+                    <button
+                      type="button"
+                      className="locaryn-btn-primary"
+                      disabled={!profileLoaded || profileBusy}
+                      onClick={() => void saveProfileName()}
+                    >
+                      {profileBusy ? "Enregistrement…" : "Enregistrer le profil"}
+                    </button>
+                    {profileSaved && (
+                      <span className="locaryn-account-saved">Profil enregistré</span>
+                    )}
+                  </div>
+                </>
+              )}
 
               <div className="locaryn-field locaryn-account-avatar-field">
                 <div className="locaryn-field-label">Avatar personnalisé</div>
@@ -444,62 +464,64 @@ export function AccountView({
               </div>
             </div>
 
-            <div className="locaryn-card locaryn-account-remote-card">
-              <h3>Connexion distante (facultative)</h3>
-              <p className="locaryn-field-hint">
-                Reliez ce profil à un serveur privé uniquement si vous souhaitez synchroniser ou
-                exécuter des tâches à distance. Sinon, le mode local reste actif.
-              </p>
-              <div className="locaryn-field">
-                <label className="locaryn-field-label" htmlFor="account-server-url">
-                  URL du serveur Locaryn
-                </label>
-                <input
-                  id="account-server-url"
-                  className="locaryn-input"
-                  placeholder="https://votre-serveur-locaryn.net"
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                />
-              </div>
+            {!compteServeur && (
+              <div className="locaryn-card locaryn-account-remote-card">
+                <h3>Connexion distante (facultative)</h3>
+                <p className="locaryn-field-hint">
+                  Reliez ce profil à un serveur privé uniquement si vous souhaitez synchroniser ou
+                  exécuter des tâches à distance. Sinon, le mode local reste actif.
+                </p>
+                <div className="locaryn-field">
+                  <label className="locaryn-field-label" htmlFor="account-server-url">
+                    URL du serveur Locaryn
+                  </label>
+                  <input
+                    id="account-server-url"
+                    className="locaryn-input"
+                    placeholder="https://votre-serveur-locaryn.net"
+                    value={serverUrl}
+                    onChange={(e) => setServerUrl(e.target.value)}
+                  />
+                </div>
 
-              <div className="locaryn-field">
-                <label className="locaryn-field-label" htmlFor="account-token">
-                  Jeton d'accès
-                </label>
-                <input
-                  id="account-token"
-                  type="password"
-                  className="locaryn-input"
-                  placeholder="loch_sec_..."
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                />
-              </div>
+                <div className="locaryn-field">
+                  <label className="locaryn-field-label" htmlFor="account-token">
+                    Jeton d'accès
+                  </label>
+                  <input
+                    id="account-token"
+                    type="password"
+                    className="locaryn-input"
+                    placeholder="loch_sec_..."
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                  />
+                </div>
 
-              <div className="locaryn-field-actions locaryn-account-actions">
-                <button
-                  type="button"
-                  className="locaryn-btn-primary"
-                  disabled={!serverUrl.trim()}
-                  onClick={() => setIsConnected(true)}
-                >
-                  Enregistrer la connexion
-                </button>
-                {isConnected && (
+                <div className="locaryn-field-actions locaryn-account-actions">
                   <button
                     type="button"
-                    className="locaryn-btn-ghost"
-                    onClick={() => {
-                      setIsConnected(false);
-                      setToken("");
-                    }}
+                    className="locaryn-btn-primary"
+                    disabled={!serverUrl.trim()}
+                    onClick={() => setIsConnected(true)}
                   >
-                    Revenir au mode local
+                    Enregistrer la connexion
                   </button>
-                )}
+                  {isConnected && (
+                    <button
+                      type="button"
+                      className="locaryn-btn-ghost"
+                      onClick={() => {
+                        setIsConnected(false);
+                        setToken("");
+                      }}
+                    >
+                      Revenir au mode local
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>

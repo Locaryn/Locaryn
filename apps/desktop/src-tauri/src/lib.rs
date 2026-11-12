@@ -56,6 +56,7 @@ mod wsl_cmd;
 use locaryn_sdk::secure_client;
 mod api_fournisseur;
 mod coffre;
+mod compte_machine;
 mod server_history;
 mod server_mode;
 mod soutien;
@@ -7849,6 +7850,12 @@ pub fn run() {
             server_mode::restart_server,
             server_mode::provisioning,
             server_mode::list_server_users,
+            compte_machine::machine_account,
+            compte_machine::set_machine_account,
+            compte_machine::machine_account_password,
+            compte_machine::machine_account_devices,
+            compte_machine::machine_account_revoke,
+            compte_machine::install_geolocation,
             server_mode::create_server_user,
             server_mode::delete_server_user,
             storage_root::storage_info,

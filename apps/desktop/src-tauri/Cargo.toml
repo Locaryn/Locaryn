@@ -58,6 +58,8 @@ tracing-subscriber = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+# Décompresser la base de géolocalisation téléchargée sur demande.
+flate2 = "1"
 anyhow = { workspace = true }
 tauri-plugin-dialog = "2"
 # Les bannières du système, pour ce qui se termine quand la fenêtre est

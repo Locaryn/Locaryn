@@ -16557,3 +16557,201 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   font-size: var(--text-sm);
   color: var(--text-dim);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   COMPTE DU SERVEUR — appareils et sécurité
+   ═══════════════════════════════════════════════════════════ */
+.locaryn-user-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.locaryn-user-row-actions .locaryn-btn-ghost {
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+.locaryn-user-row-actions .locaryn-btn-ghost[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  opacity: 1;
+}
+.locaryn-user-machine-badge,
+.locaryn-devsec-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.locaryn-devsec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.locaryn-devsec-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.locaryn-devsec-card h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-md);
+}
+.locaryn-devsec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.locaryn-devsec-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--space-3);
+}
+.locaryn-devsec-card .locaryn-btn-ghost,
+.locaryn-devsec-card .locaryn-btn-primary {
+  min-height: 44px;
+}
+.locaryn-devsec-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.locaryn-devsec-device {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.locaryn-devsec-device:first-child {
+  border-top: none;
+}
+.locaryn-devsec-device-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.locaryn-devsec-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-dim);
+}
+.locaryn-devsec-icon-small {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-xs);
+}
+.locaryn-devsec-device-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.locaryn-devsec-device-text strong {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+.locaryn-devsec-history,
+.locaryn-devsec-closed {
+  margin-left: 52px;
+  font-size: var(--text-sm);
+}
+.locaryn-devsec-closed {
+  margin-left: 0;
+}
+.locaryn-devsec-history summary,
+.locaryn-devsec-closed summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.locaryn-devsec-history summary:hover,
+.locaryn-devsec-closed summary:hover {
+  color: var(--text);
+}
+.locaryn-devsec-history summary:focus-visible,
+.locaryn-devsec-closed summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.locaryn-devsec-history ol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.locaryn-devsec-history li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-dim);
+}
+.locaryn-devsec-history time {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.locaryn-devsec-method {
+  color: var(--text-faint);
+}
+.locaryn-devsec-geo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.locaryn-devsec-attribution {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+@media (max-width: 640px) {
+  .locaryn-devsec-device-main {
+    flex-wrap: wrap;
+  }
+  .locaryn-devsec-history {
+    margin-left: 0;
+  }
+  .locaryn-devsec-history li {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+  .locaryn-devsec-history li > :nth-child(n + 3) {
+    grid-column: 2;
+  }
+}

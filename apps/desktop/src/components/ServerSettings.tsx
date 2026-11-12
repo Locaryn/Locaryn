@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { useMachineAccount } from "../hooks/useMachineAccount";
 import { SEGMENT_LOCAL, useSegmentsAppairage } from "../hooks/useSegmentsAppairage";
-import { type ServerStatus, type ServerUserSummary, core } from "../lib/core";
+import {
+  MACHINE_ACCOUNT_EVENT,
+  type ServerStatus,
+  type ServerUserSummary,
+  core,
+} from "../lib/core";
 import { confirmer } from "../lib/dialog";
 import { choisirSegment, useModeAcces } from "../lib/modeAcces";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
@@ -26,6 +32,9 @@ export function ServerSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  /** Le compte du serveur que l'application de cette machine utilise. */
+  const compteMachine = useMachineAccount();
+  const [liaison, setLiaison] = useState<string | null>(null);
   const segments = useSegmentsAppairage();
   const { segment, transport } = useModeAcces();
 
@@ -69,6 +78,19 @@ export function ServerSettings() {
     const t = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(t);
   }, [refresh]);
+
+  async function definirUtilisateur(u: ServerUserSummary) {
+    setLiaison(u.id);
+    setError(null);
+    try {
+      await core.setMachineAccount(u.id);
+      window.dispatchEvent(new Event(MACHINE_ACCOUNT_EVENT));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLiaison(null);
+    }
+  }
 
   async function toggle(enabled: boolean) {
     if (enabled && status && status.accounts === 0) {
@@ -143,6 +165,7 @@ export function ServerSettings() {
       const s = await core.deleteServerUser(userId);
       setStatus(s);
       await refreshUsers();
+      window.dispatchEvent(new Event(MACHINE_ACCOUNT_EVENT));
     } catch (e) {
       setError(String(e));
     }
@@ -383,14 +406,19 @@ export function ServerSettings() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 8,
                   padding: "8px 12px",
                   background: "var(--surface)",
                   borderRadius: "var(--radius-sm, 6px)",
                   border: "1px solid var(--border)",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 600, color: "var(--text)" }}>{u.username}</span>
+                  {compteMachine?.id === u.id && (
+                    <span className="locaryn-user-machine-badge">Cette machine</span>
+                  )}
                   <span
                     style={{
                       fontSize: 11,
@@ -407,11 +435,24 @@ export function ServerSettings() {
                     {u.role === "admin" ? "Administrateur" : "Membre"}
                   </span>
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div className="locaryn-user-row-actions">
                   <button
                     type="button"
                     className="locaryn-btn-ghost"
-                    style={{ fontSize: 11, padding: "2px 8px" }}
+                    disabled={u.disabled || compteMachine?.id === u.id || liaison !== null}
+                    aria-pressed={compteMachine?.id === u.id}
+                    title="L'application de ce PC utilise ce compte au lieu du profil local"
+                    onClick={() => void definirUtilisateur(u)}
+                  >
+                    {liaison === u.id
+                      ? "Liaison…"
+                      : compteMachine?.id === u.id
+                        ? "Utilisateur de cette machine"
+                        : "Définir comme utilisateur de cette machine"}
+                  </button>
+                  <button
+                    type="button"
+                    className="locaryn-btn-ghost"
                     disabled={u.disabled || !qrPret}
                     title={
                       qrPret
@@ -424,8 +465,7 @@ export function ServerSettings() {
                   </button>
                   <button
                     type="button"
-                    className="locaryn-btn-ghost"
-                    style={{ fontSize: 11, padding: "2px 8px", color: "var(--danger)" }}
+                    className="locaryn-btn-ghost locaryn-btn-danger"
                     onClick={() => void handleDeleteUser(u.id, u.username)}
                   >
                     Supprimer

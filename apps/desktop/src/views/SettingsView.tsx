@@ -28,6 +28,7 @@ import {
   type ResolvedSlotContribution,
   getSlotContributions,
 } from "../components/extensions/SlotRegistry";
+import { useMachineAccount } from "../hooks/useMachineAccount";
 import type { UseThemeReturn } from "../hooks/useTheme";
 import {
   type AppInfo,
@@ -49,7 +50,9 @@ import { ProjectSettings } from "./ProjectSettings";
  * menus et un contenu tenaient trois colonnes, et le contenu qu'on cherchait
  * finissait dans le tiers restant.
  */
-const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon: IconName }[] = [
+type AccountSectionDef = { id: AccountSection; label: string; desc: string; icon: IconName };
+
+const ACCOUNT_SECTIONS: AccountSectionDef[] = [
   { id: "profile", label: "Profil local", desc: "Identité, avatar, connexion", icon: "private" },
   {
     id: "models",
@@ -84,6 +87,29 @@ const ACCOUNT_SECTIONS: { id: AccountSection; label: string; desc: string; icon:
     icon: "studio",
   },
 ];
+
+/** Le profil d'un compte du serveur, à la place du profil local. */
+const PROFIL_SERVEUR: AccountSectionDef = {
+  id: "profile",
+  label: "Profil",
+  desc: "Compte du serveur de cette machine",
+  icon: "user-circle",
+};
+
+/** L'onglet propre à un compte du serveur. */
+const VOLET_APPAREILS: AccountSectionDef = {
+  id: "devices",
+  label: "Appareils et sécurité",
+  desc: "Mot de passe, QR de connexion, appareils connectés",
+  icon: "shield-check",
+};
+
+/** Les sous-sections du compte selon qu'il est local ou du serveur. */
+function sectionsDuCompte(serveur: boolean): AccountSectionDef[] {
+  if (!serveur) return ACCOUNT_SECTIONS;
+  const [, ...reste] = ACCOUNT_SECTIONS;
+  return [PROFIL_SERVEUR, VOLET_APPAREILS, ...reste];
+}
 
 /**
  * Le point d'extension du compte : une extension y ajoute sa propre
@@ -320,6 +346,12 @@ export function SettingsView({
   // ne change rien — d'où le pilotage par un attribut, laissé au CSS.
   const [paneOpen, setPaneOpen] = useState(false);
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const compteServeur = useMachineAccount();
+  const sectionsCompte = sectionsDuCompte(compteServeur !== null);
+  // Le compte n'est plus celui du serveur : son onglet n'a plus d'objet.
+  useEffect(() => {
+    if (accountSection === "devices" && !compteServeur) setAccountSection("profile");
+  }, [accountSection, compteServeur]);
 
   useEffect(() => {
     if (initialSection) setSection(initialSection);
@@ -414,7 +446,7 @@ export function SettingsView({
   const currentAccount =
     accountSection === "api-keys"
       ? VOLET_CLES_API
-      : (ACCOUNT_SECTIONS.find((a) => a.id === accountSection) ?? extra);
+      : (sectionsCompte.find((a) => a.id === accountSection) ?? extra);
   const currentTitle =
     section === "account" && currentAccount
       ? { icon: currentAccount.icon, label: currentAccount.label }
@@ -455,7 +487,7 @@ export function SettingsView({
                 </button>
                 <span className="locaryn-settings-group-title">Compte &amp; Profil</span>
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  {ACCOUNT_SECTIONS.map((a) => (
+                  {sectionsCompte.map((a) => (
                     <button
                       key={a.id}
                       type="button"

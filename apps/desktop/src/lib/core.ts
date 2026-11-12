@@ -920,6 +920,49 @@ export interface ServerUserSummary {
   disabled: boolean;
 }
 
+/** Le compte du serveur choisi comme utilisateur de cette machine. */
+export interface MachineAccount {
+  id: string;
+  username: string;
+  role: "admin" | "member";
+}
+
+/** Le type de client d'une connexion, pour son icône. */
+export type DeviceClient = "mobile" | "web" | "desktop" | "cli" | "app";
+
+/** Une connexion d'un appareil : heure (RFC 3339, UTC, à la seconde), adresse, lieu. */
+export interface DeviceConnection {
+  at: string;
+  ip: string | null;
+  location: string | null;
+  client: DeviceClient;
+  user_agent: string | null;
+  method: "password" | "code" | "pairing" | "new_address" | string;
+}
+
+/** Un appareil connecté au compte et son historique. */
+export interface AccountDevice {
+  token_id: string;
+  label: string | null;
+  client: DeviceClient;
+  created_at: string | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  current: boolean;
+  history: DeviceConnection[];
+}
+
+export interface AccountDevicesReport {
+  devices: AccountDevice[];
+  /** La base de géolocalisation locale est installée. */
+  geolocation: boolean;
+  attribution: string;
+}
+
+/** Diffusé quand le compte lié à cette machine change. */
+export const MACHINE_ACCOUNT_EVENT = "locaryn:machine-account-changed";
+
 /** Settings an administrator prepared for this machine. */
 export interface Provisioning {
   serverUrl: string;
@@ -2281,6 +2324,15 @@ export interface CoreApi {
   followLocalReply(sessionId: string, onEvent: (ev: StreamEvent) => void): Promise<boolean>;
   createServerUser(username: string, password: string, isAdmin?: boolean): Promise<ServerStatus>;
   deleteServerUser(userId: string): Promise<ServerStatus>;
+  /** Le compte du serveur lié à cette machine, ou `null` : profil local. */
+  machineAccount(): Promise<MachineAccount | null>;
+  /** Lier cette machine à un compte du serveur ; `null` : revenir au profil local. */
+  setMachineAccount(userId: string | null): Promise<MachineAccount | null>;
+  machineAccountPassword(current: string, nouveau: string): Promise<void>;
+  machineAccountDevices(): Promise<AccountDevicesReport>;
+  machineAccountRevoke(tokenId: string): Promise<void>;
+  /** Télécharge la base de géolocalisation DB-IP Lite (aucune adresse envoyée). */
+  installGeolocation(): Promise<void>;
   providerApiStatus(): Promise<ProviderApiStatus>;
   soutienEtat(): Promise<EtatSoutien>;
   /** Rend la main tout de suite : les étoiles se posent en arrière-plan et leur
@@ -2967,6 +3019,13 @@ const tauriCore: CoreApi = {
       args: { username, password, isAdmin },
     }),
   deleteServerUser: (userId) => invoke<ServerStatus>("delete_server_user", { userId }),
+  machineAccount: () => invoke<MachineAccount | null>("machine_account"),
+  setMachineAccount: (userId) => invoke<MachineAccount | null>("set_machine_account", { userId }),
+  machineAccountPassword: (current, nouveau) =>
+    invoke<void>("machine_account_password", { current, nouveau }),
+  machineAccountDevices: () => invoke<AccountDevicesReport>("machine_account_devices"),
+  machineAccountRevoke: (tokenId) => invoke<void>("machine_account_revoke", { tokenId }),
+  installGeolocation: () => invoke<void>("install_geolocation"),
   providerApiStatus: () => invoke<ProviderApiStatus>("provider_api_status"),
   soutienEtat: () => invoke<EtatSoutien>("soutien_etat"),
   soutienRepondre: (choix) =>
@@ -4215,6 +4274,37 @@ let demoApi: ProviderApiStatus = {
 let demoCles: ApiKeyInfo[] = [];
 
 /** L'etat du serveur de demonstration, modifie par l'interrupteur. */
+let demoCompteMachine: MachineAccount | null = null;
+let demoAppareils: AccountDevice[] = [
+  {
+    token_id: "demo-tel",
+    label: "Pixel 8",
+    client: "mobile",
+    created_at: "2026-11-02T08:14:03Z",
+    last_used_at: "2026-11-12T09:41:27Z",
+    expires_at: null,
+    revoked_at: null,
+    current: false,
+    history: [
+      {
+        at: "2026-11-12T09:41:27Z",
+        ip: "203.0.113.24",
+        location: null,
+        client: "mobile",
+        user_agent: "Locaryn-Mobile/0.4.72 (android)",
+        method: "new_address",
+      },
+      {
+        at: "2026-11-02T08:14:03Z",
+        ip: "192.168.1.31",
+        location: "Réseau local",
+        client: "mobile",
+        user_agent: "Locaryn-Mobile/0.4.72 (android)",
+        method: "code",
+      },
+    ],
+  },
+];
 let demoServeur: ServerStatus = {
   running: false,
   bind: "0.0.0.0",
@@ -5086,6 +5176,23 @@ Contenu de démonstration, avec **du gras** et une liste :
   listServerUsers: async () => [
     { id: "usr-admin-1", username: "admin", role: "admin", disabled: false },
   ],
+  machineAccount: async () => demoCompteMachine,
+  setMachineAccount: async (userId) => {
+    demoCompteMachine = userId ? { id: userId, username: "admin", role: "admin" } : null;
+    return demoCompteMachine;
+  },
+  machineAccountPassword: async () => {},
+  machineAccountDevices: async () => ({
+    devices: demoAppareils,
+    geolocation: false,
+    attribution: "IP Geolocation by DB-IP (https://db-ip.com)",
+  }),
+  machineAccountRevoke: async (tokenId) => {
+    demoAppareils = demoAppareils.map((d) =>
+      d.token_id === tokenId ? { ...d, revoked_at: new Date().toISOString() } : d,
+    );
+  },
+  installGeolocation: async () => {},
   createServerUser: async () => {
     demoServeur = { ...demoServeur, accounts: demoServeur.accounts + 1, blocker: null };
     return demoServeur;
