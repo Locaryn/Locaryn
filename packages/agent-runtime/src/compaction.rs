@@ -27,7 +27,11 @@ pub struct Plan {
 /// réflexion ni les marqueurs d'interface (`<!--locaryn-image:…-->`).
 pub fn sans_marqueurs(content: &str) -> String {
     let mut text = crate::openai_tool_loop::sans_reflexion(content);
-    for marker in ["<!--locaryn-audio:", "<!--locaryn-image:"] {
+    for marker in [
+        "<!--locaryn-audio:",
+        "<!--locaryn-image:",
+        "<!--locaryn-joints:",
+    ] {
         while let Some(start) = text.find(marker) {
             let Some(end_rel) = text[start..].find("-->") else {
                 break;
@@ -38,44 +42,126 @@ pub fn sans_marqueurs(content: &str) -> String {
     text.trim().to_string()
 }
 
-/// Ce qu'il faut résumer. `Err` : conversation trop courte.
+/// En dessous de ce poids (en jetons estimés), une conversation de quelques
+/// messages n'a rien à gagner à être résumée.
+const LOURD: usize = 1_500;
+
+/// Ce qu'un message pèse pour le modèle : son texte et les arguments de ses
+/// appels d'outils.
+fn poids(m: &Message) -> usize {
+    let appels: usize = m
+        .tool_calls
+        .iter()
+        .flatten()
+        .map(|a| a.args.to_string().chars().count())
+        .sum();
+    (m.content.chars().count() + appels).div_ceil(4)
+}
+
+/// Ce qu'il faut résumer. `Err` : rien à gagner à compresser.
+///
+/// Une longue conversation garde ses derniers échanges. Mais une tâche menée
+/// par outils tient en deux messages — la demande, puis une réponse faite de
+/// dizaines d'appels — et remplit la fenêtre quand même : compter les seuls
+/// messages répondait « rien à compresser » devant une fenêtre pleine. Elle
+/// est alors résumée en entier.
 pub fn planifier(messages: &[Message]) -> Result<Plan, String> {
-    let convo: Vec<&Message> = messages
+    let convo: Vec<usize> = messages
         .iter()
-        .filter(|m| matches!(m.role, MessageRole::User | MessageRole::Assistant))
+        .enumerate()
+        .filter(|(_, m)| matches!(m.role, MessageRole::User | MessageRole::Assistant))
+        .map(|(i, _)| i)
         .collect();
-    if convo.len() < MINIMUM {
-        return Err("La conversation est trop courte pour avoir a compresser".into());
-    }
-    let split = convo.len() - GARDER;
-    let transcript: String = convo[..split]
-        .iter()
-        .map(|m| {
-            format!(
-                "{}: {}",
-                if m.role == MessageRole::Assistant {
-                    "assistant"
-                } else {
-                    "user"
-                },
-                sans_marqueurs(&m.content)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-        .chars()
-        .take(TRANSCRIPT_MAX)
-        .collect();
+    let (anciens, cutoff) = if convo.len() >= MINIMUM {
+        let premier_garde = convo[convo.len() - GARDER];
+        (
+            &messages[..premier_garde],
+            messages[premier_garde].created_at,
+        )
+    } else {
+        let dernier = messages
+            .last()
+            .filter(|_| messages.len() >= 2)
+            .filter(|_| messages.iter().map(poids).sum::<usize>() >= LOURD)
+            .ok_or("La conversation est trop courte pour avoir à être compressée.")?;
+        // Tout part dans le résumé : la coupure tombe juste après le dernier.
+        (
+            messages,
+            dernier.created_at + chrono::Duration::milliseconds(1),
+        )
+    };
     Ok(Plan {
-        transcript,
-        cutoff: convo[split].created_at,
+        transcript: transcrire(&historique(anciens)),
+        cutoff,
     })
 }
 
-/// Le résumé, écrit par le modèle actif.
+/// Un appel passé en une ligne : son outil et ses arguments courts (chemin,
+/// commande, adresse). Le contenu d'un fichier écrit n'aide pas un résumé ;
+/// son chemin, si.
+fn appel_en_bref(a: &crate::AppelRejoue) -> String {
+    const VALEUR_MAX: usize = 100;
+    let arguments = match serde_json::from_str::<serde_json::Value>(&a.arguments) {
+        Ok(serde_json::Value::Object(champs)) => champs
+            .iter()
+            .filter_map(|(cle, v)| match v {
+                serde_json::Value::String(s) if s.chars().count() <= VALEUR_MAX => {
+                    Some(format!("{cle}={s}"))
+                }
+                serde_json::Value::Number(_) | serde_json::Value::Bool(_) => {
+                    Some(format!("{cle}={v}"))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => abreger(&a.arguments, VALEUR_MAX),
+    };
+    format!("{}({arguments})", a.name)
+}
+
+/// Les tours à résumer, tels que le modèle les lit : qui parle, ce qu'il dit,
+/// et les outils qu'il a appelés — c'est là que sont les noms de fichiers.
+///
+/// Trop long, le texte garde son début et surtout sa fin : couper la fin
+/// faisait oublier au résumé le travail le plus récent.
+pub fn transcrire(tours: &[crate::ChatTurn]) -> String {
+    let texte = tours
+        .iter()
+        .filter(|t| t.role != "tool")
+        .map(|t| {
+            let appels: Vec<String> = t.tool_calls.iter().map(appel_en_bref).collect();
+            let outils = if appels.is_empty() {
+                String::new()
+            } else {
+                format!(" [outils : {}]", appels.join(", "))
+            };
+            format!("{}: {}{outils}", t.role, t.content)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let caracteres: Vec<char> = texte.chars().collect();
+    if caracteres.len() <= TRANSCRIPT_MAX {
+        return texte;
+    }
+    let tete = TRANSCRIPT_MAX / 4;
+    let queue = TRANSCRIPT_MAX - tete;
+    format!(
+        "{}\n[…]\n{}",
+        caracteres[..tete].iter().collect::<String>(),
+        caracteres[caracteres.len() - queue..]
+            .iter()
+            .collect::<String>()
+    )
+}
+
+/// Le résumé, écrit par le modèle actif. `cle` : celle du fournisseur distant
+/// qui le sert — sans elle, il refusait la requête et la compression
+/// répondait « rien à compresser ».
 pub async fn resumer(
     http: &reqwest::Client,
     endpoint: &str,
+    cle: Option<&str>,
     model: &str,
     transcript: &str,
 ) -> Result<String, String> {
@@ -84,29 +170,38 @@ pub async fn resumer(
         "model": model,
         "messages": [
             { "role": "system", "content":
-              "Resume la conversation ci-dessous en francais, en moins de 200 mots. Conserve les decisions, contraintes, noms de fichiers et faits techniques. Pas de preambule, uniquement le resume." },
+              "Résume la conversation ci-dessous en français, en moins de 250 mots. Conserve les décisions, contraintes, noms de fichiers, faits techniques, et ce qui reste à faire. Pas de préambule, uniquement le résumé." },
             { "role": "user", "content": transcript }
         ],
-        "max_tokens": 320,
+        "max_tokens": 600,
         "temperature": 0.2,
         "stream": false,
         "reasoning_budget": 0,
         "chat_template_kwargs": { "enable_thinking": false }
     });
-    let resp = http
-        .post(&url)
-        .json(&body)
+    let mut requete = http.post(&url).json(&body);
+    if let Some(cle) = cle.filter(|c| !c.is_empty()) {
+        requete = requete.bearer_auth(cle);
+    }
+    let resp = requete
         .send()
         .await
-        .map_err(|e| format!("moteur injoignable : {e}"))?;
+        .map_err(|e| format!("le modèle est injoignable : {e}"))?;
+    let statut = resp.status();
+    if !statut.is_success() {
+        return Err(format!("le modèle a refusé de résumer (HTTP {statut})"));
+    }
     let val: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let summary = val["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    // Un modèle qui réfléchit quand même : sa réflexion n'est pas le résumé.
+    let summary = crate::openai_tool_loop::sans_reflexion(
+        val["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or(""),
+    )
+    .trim()
+    .to_string();
     if summary.is_empty() {
-        return Err("le modele n'a pas produit de resume".into());
+        return Err("le modèle n'a pas produit de résumé".into());
     }
     Ok(summary)
 }
@@ -391,5 +486,42 @@ mod tests {
         assert!(!plan.transcript.contains("locaryn-image"));
         assert_eq!(plan.cutoff, msgs[4].created_at);
         assert!(planifier(&msgs[..5]).is_err());
+    }
+
+    #[test]
+    fn une_tache_d_outils_en_deux_messages_se_compresse_en_entier() {
+        let mut reponse = message(MessageRole::Assistant, "J'ai écrit le site.", 1);
+        reponse.tool_calls = Some(
+            (0..40)
+                .map(|i| locaryn_shared_types::ToolCall {
+                    call_id: format!("c{i}"),
+                    tool: "write_file".into(),
+                    args: serde_json::json!({
+                        "path": format!("src/page{i}.tsx"),
+                        "content": "x".repeat(400),
+                    }),
+                })
+                .collect(),
+        );
+        let msgs = vec![message(MessageRole::User, "Construis le site", 0), reponse];
+        let plan = planifier(&msgs).expect("une fenêtre pleine d'outils se compresse");
+        assert!(plan.transcript.contains("write_file"));
+        assert!(plan.transcript.contains("src/page39.tsx"));
+        assert!(plan.cutoff > msgs[1].created_at);
+    }
+
+    #[test]
+    fn un_long_transcript_garde_sa_fin() {
+        let tours: Vec<crate::ChatTurn> = (0..400)
+            .map(|i| crate::ChatTurn {
+                role: "user".into(),
+                content: format!("message numéro {i} avec un peu de texte pour peser"),
+                ..Default::default()
+            })
+            .collect();
+        let texte = transcrire(&tours);
+        assert!(texte.chars().count() <= TRANSCRIPT_MAX + 10);
+        assert!(texte.contains("message numéro 0 "));
+        assert!(texte.contains("message numéro 399 "));
     }
 }

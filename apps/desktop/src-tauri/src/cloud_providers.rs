@@ -320,6 +320,68 @@ pub async fn demarrer_passerelles(core: &Core) {
     futures::future::join_all(demarrages).await;
 }
 
+/// Le fournisseur d'extension qui sert le modèle actif, s'il y en a un.
+pub async fn fournisseur_actif(
+    core: &Core,
+    provider: &locaryn_shared_types::Provider,
+) -> Option<cloud::DeclaredProvider> {
+    let id = locaryn_storage::repos::ProviderRepo::cloud_provider_of(provider)?;
+    cloud::find(&host(core), &id).await.ok()
+}
+
+/// La fenêtre de contexte du modèle distant actif, d'après le catalogue gardé
+/// de son fournisseur. `None` pour un modèle local, ou si le catalogue ne la
+/// publie pas.
+///
+/// Un service distant ne dit sa fenêtre qu'ici : sans elle, la conversation
+/// était mesurée contre le réglage du moteur local — celui d'un autre modèle.
+pub async fn fenetre_du_modele_actif(
+    core: &Core,
+    provider: &locaryn_shared_types::Provider,
+) -> Option<usize> {
+    let f = fournisseur_actif(core, provider).await?;
+    let modele = provider.model.as_deref()?;
+    let liste = cloud::models(&host(core), &f, false).await.ok()?;
+    liste
+        .iter()
+        .find(|m| m.id == modele)
+        .map(|m| m.context_length as usize)
+        .filter(|n| *n > 0)
+}
+
+/// La passerelle locale de ce fournisseur ne répond pas encore : faut-il
+/// l'attendre avant d'envoyer le message ?
+///
+/// Juste après le lancement de l'application, elle met jusqu'à plusieurs
+/// minutes à servir sa première requête. Le message partait quand même, la
+/// connexion était refusée, et la conversation affichait une panne de modèle
+/// local — avec le conseil d'installer un moteur qui n'a rien à voir.
+pub async fn passerelle_muette(core: &Core, p: &cloud::DeclaredProvider) -> bool {
+    p.manifest.local.is_some() && !cloud::gateway::status(&host(core), p).await.running
+}
+
+/// Attendre la passerelle locale : rejoint le démarrage en cours, ou la lance
+/// si elle est installée. L'erreur dit ce qui l'empêche de répondre.
+pub async fn attendre_passerelle(core: &Core, p: &cloud::DeclaredProvider) -> Result<(), String> {
+    exiger_shell(core, p).await?;
+    let h = host(core);
+    let etat = cloud::gateway::status(&h, p).await;
+    if etat.running {
+        return Ok(());
+    }
+    // Jamais d'installation au détour d'un message : c'est un geste de la
+    // personne, dans le dossier du fournisseur.
+    if !etat.installed {
+        return Err(etat.detail);
+    }
+    let etat = cloud::gateway::start(&h, p).await?;
+    if etat.running {
+        Ok(())
+    } else {
+        Err(etat.detail)
+    }
+}
+
 /// Arrêter, à la fermeture de l'application, les passerelles locales des
 /// extensions actives.
 pub async fn arreter_passerelles(core: &Core) {

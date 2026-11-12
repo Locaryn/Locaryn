@@ -22,6 +22,7 @@ pub mod mailbox;
 pub mod reasoning;
 pub mod suivantes;
 
+pub mod boucle;
 pub mod brouillon;
 pub mod mcp_tools;
 pub mod objectif;
@@ -152,6 +153,12 @@ pub struct AgentInput {
     /// Jeton Bearer envoyé à l'endpoint (noyaux alternatifs : OpenClaw,
     /// Hermes…). `None` = pas d'en-tête d'authentification.
     pub bearer_token: Option<String>,
+    /// La fenêtre de contexte du modèle, quand l'hôte la connaît par ailleurs
+    /// (catalogue d'un fournisseur distant). Un moteur local la dit lui-même
+    /// dans `/props` ; un service distant ne la dit nulle part, et sans elle
+    /// rien n'était retiré d'une conversation trop longue : le fournisseur
+    /// refusait la requête, fenêtre pleine.
+    pub context_window: Option<usize>,
     /// Parler l'API native `/api/chat` d'Ollama plutôt que son endpoint
     /// OpenAI-compat. Mesure du 0.33.x : `/v1/chat/completions` ignore
     /// silencieusement les options — un prompt de 10k jetons y est coupé à

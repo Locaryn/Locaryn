@@ -458,6 +458,7 @@ pub async fn lancer(
         mailbox: None,
         gpu: Some(crate::gpu_arbiter::handle(app)),
         bearer_token: cible.cle.clone(),
+        context_window: None,
         native_chat_api: false,
     };
     let mut agent =

@@ -99,6 +99,7 @@ fn entree(model: &str) -> AgentInput {
         forced_tools: Vec::new(),
         require_tool_call: false,
         bearer_token: Some("cle-de-passerelle".into()),
+        context_window: None,
         native_chat_api: false,
     }
 }
@@ -488,11 +489,10 @@ async fn un_appel_identique_repete_arrete_la_boucle() {
     );
 }
 
-/// Un modèle qui enchaîne des appels différents (arguments distincts à chaque
-/// tour, donc la garde de répétition ne se déclenche pas) doit être arrêté à
-/// la limite de 60 actions, avec le message qui annonce cette limite.
+/// Un modèle qui enchaîne des appels différents n'est arrêté par aucun
+/// plafond : après 150 actions, sa réponse finale arrive.
 #[tokio::test]
-async fn la_limite_de_60_actions_arrete_la_tache() {
+async fn un_long_travail_n_est_pas_arrete_par_un_plafond() {
     let compte: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
     let app = Router::new()
         .route(
@@ -503,11 +503,18 @@ async fn la_limite_de_60_actions_arrete_la_tache() {
                     *a += 1;
                     *a
                 };
-                let corps = format!(
-                    "data: {{\"choices\":[{{\"delta\":{{\"tool_calls\":[{{\"index\":0,\"id\":\"c{n}\",\"function\":{{\"name\":\"outil_inexistant\",\"arguments\":\"{{\\\"n\\\":{n}}}\"}}}}]}},\"finish_reason\":null}}]}}\n\n\
-                     data: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\n\
+                let corps = if n > 150 {
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"terminé\"},\"finish_reason\":null}]}\n\n\
+                     data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
                      data: [DONE]\n\n"
-                );
+                        .to_string()
+                } else {
+                    format!(
+                        "data: {{\"choices\":[{{\"delta\":{{\"tool_calls\":[{{\"index\":0,\"id\":\"c{n}\",\"function\":{{\"name\":\"outil_inexistant\",\"arguments\":\"{{\\\"n\\\":{n}}}\"}}}}]}},\"finish_reason\":null}}]}}\n\n\
+                         data: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\n\
+                         data: [DONE]\n\n"
+                    )
+                };
                 axum::response::Response::builder()
                     .header("content-type", "text/event-stream")
                     .body(axum::body::Body::from(corps))
@@ -529,20 +536,123 @@ async fn la_limite_de_60_actions_arrete_la_tache() {
             .await
             .expect("le flux doit s'ouvrir");
     let mut logs = Vec::new();
+    let mut texte = String::new();
     while let Some(ev) = flux.next().await {
-        if let StreamEvent::Log { msg, .. } = ev {
-            logs.push(msg);
+        match ev {
+            StreamEvent::Log { msg, .. } => logs.push(msg),
+            StreamEvent::Token { text } => texte.push_str(&text),
+            _ => {}
         }
     }
+    assert_eq!(texte, "terminé", "avis reçus : {logs:?}");
+    assert_eq!(
+        *compte.lock().expect("verrou"),
+        151,
+        "150 actions puis la réponse"
+    );
+}
+
+/// Un serveur dont chaque réponse est faite par `corps(n)`, n comptant les
+/// requêtes à partir de 1.
+async fn serveur_compte(
+    corps: impl Fn(u32) -> String + Clone + Send + Sync + 'static,
+) -> (String, Arc<Mutex<u32>>) {
+    let compte: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+    let app = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(move |State(compte): State<Arc<Mutex<u32>>>| {
+                let corps = corps.clone();
+                async move {
+                    let n = {
+                        let mut a = compte.lock().expect("verrou");
+                        *a += 1;
+                        *a
+                    };
+                    axum::response::Response::builder()
+                        .header("content-type", "text/event-stream")
+                        .body(axum::body::Body::from(corps(n)))
+                        .expect("réponse")
+                }
+            }),
+        )
+        .with_state(compte.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("port libre");
+    let addr = listener.local_addr().expect("adresse");
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    (format!("http://{addr}"), compte)
+}
+
+/// Deux appels rejoués en alternance (A, B, A, B, A, B) : aucun n'est répété
+/// d'affilée, mais rien n'avance. Un rappel, puis l'arrêt.
+#[tokio::test]
+async fn un_enchainement_rejoue_arrete_la_tache() {
+    let (base, compte) = serveur_compte(|n| {
+        let outil = if n % 2 == 0 { "outil_a" } else { "outil_b" };
+        format!(
+            "data: {{\"choices\":[{{\"delta\":{{\"tool_calls\":[{{\"index\":0,\"id\":\"c{n}\",\"function\":{{\"name\":\"{outil}\",\"arguments\":\"{{}}\"}}}}]}},\"finish_reason\":null}}]}}\n\n\
+             data: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\n\
+             data: [DONE]\n\n"
+        )
+    })
+    .await;
+    let logs: Vec<String> = evenements(&base)
+        .await
+        .into_iter()
+        .filter_map(|ev| match ev {
+            StreamEvent::Log { msg, .. } => Some(msg),
+            _ => None,
+        })
+        .collect();
     assert!(
-        logs.iter().any(|m| m.contains("Limite de 60 actions")),
-        "message de limite attendu, reçu : {logs:?}"
+        logs.iter().any(|m| m.contains("mêmes appels")),
+        "message d'arrêt attendu, reçu : {logs:?}"
     );
     assert_eq!(
         *compte.lock().expect("verrou"),
-        60,
-        "exactement 60 envois au modèle"
+        12,
+        "six tours, un rappel, six tours, puis l'arrêt"
     );
+}
+
+/// Un modèle qui recopie le même paragraphe sans fin dans sa réflexion : le
+/// flux est coupé, le modèle est rappelé, et la réponse suivante arrive.
+#[tokio::test]
+async fn une_reflexion_en_boucle_est_interrompue_puis_relancee() {
+    let (base, compte) = serveur_compte(|n| {
+        if n > 1 {
+            return "data: {\"choices\":[{\"delta\":{\"content\":\"voilà\"},\"finish_reason\":null}]}\n\n\
+                    data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+                    data: [DONE]\n\n"
+                .to_string();
+        }
+        let cadre = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Je dois d'abord regarder le dossier avant d'écrire le composant demandé. \"},\"finish_reason\":null}]}\n\n";
+        format!("{}data: [DONE]\n\n", cadre.repeat(400))
+    })
+    .await;
+    let evs = evenements(&base).await;
+    let texte: String = evs
+        .iter()
+        .filter_map(|ev| match ev {
+            StreamEvent::Token { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texte.ends_with("voilà"),
+        "fin reçue : {}",
+        &texte[texte.len().saturating_sub(80)..]
+    );
+    assert!(
+        texte.len() < 8_000,
+        "la boucle devait être coupée bien avant ses 400 copies ({} octets reçus)",
+        texte.len()
+    );
+    assert_eq!(*compte.lock().expect("verrou"), 2, "une relance, pas plus");
 }
 
 /// Un hôte dont le navigateur intégré affiche un questionnaire.

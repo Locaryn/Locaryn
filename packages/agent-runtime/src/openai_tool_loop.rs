@@ -20,13 +20,9 @@ use locaryn_events::{LogLevel, StreamEvent};
 use locaryn_shared_types::TrustLevel;
 use std::time::Instant;
 
-/// Dix tours ne suffisaient pas à une tâche menée par étapes : construire six
-/// éléments, plus lire l'état et vérifier, en prend déjà huit.
-const MAX_TOOL_ROUNDS: u32 = 60;
-
 /// Nombre de tours d'affilée où le modèle renvoie exactement le même appel
 /// (même outil, mêmes arguments) avant d'arrêter la tâche. Un modèle bloqué
-/// rejoue ainsi le même appel jusqu'à la limite de tours sans rien changer.
+/// rejoue ainsi le même appel sans fin, sans rien changer.
 const APPELS_IDENTIQUES_MAX: u32 = 3;
 
 /// Message interne envoyé au modèle quand il rejoue le même appel d'outil :
@@ -36,8 +32,13 @@ const CORRECTION_APPEL_IDENTIQUE: &str = "Tu viens de refaire exactement le mêm
     donne rien, puis essaie une autre approche : un autre outil, d'autres arguments, \
     ou une réponse directe à l'utilisateur avec ce que tu sais déjà.";
 
-/// Source de l'avis émis quand un tour finit sans réponse finale (limite
-/// d'actions atteinte, ou modèle arrêté). L'interface la reconnaît.
+/// Rappel quand la réponse a été interrompue parce qu'elle recopiait le même
+/// passage sans fin.
+const RELANCE_BOUCLE: &str = "Ta réponse a été interrompue : elle répétait le même passage en \
+boucle. Ne reprends pas ce passage. Appelle l'outil suivant, ou donne ta réponse en une fois.";
+
+/// Source de l'avis émis quand un tour finit sans réponse finale (boucle
+/// détectée, ou modèle arrêté). L'interface la reconnaît.
 pub const SOURCE_TOUR_INACHEVE: &str = "tour_inacheve";
 
 /// Rappel envoyé quand un tour n'a produit que de la réflexion. Mécanique des
@@ -139,6 +140,8 @@ struct RoundResult {
     /// `tool_calls`, `length` (coupé à la limite)… Absent si le flux s'est
     /// interrompu sans le dire.
     fin: Option<String>,
+    /// Le flux a été coupé : le modèle recopiait le même passage sans fin.
+    boucle: bool,
     calls: Vec<AssembledCall>,
     tokens_in: u64,
     tokens_out: u64,
@@ -255,7 +258,12 @@ pub async fn run_openai_tool_loop(
     // Roblox Studio). Ce qui ne tient pas est différé, jamais retiré.
     // Les outils qui ne tenaient pas dans la fenêtre, chargeables à la demande.
     let mut differes: Vec<crate::tools::ToolSpec> = Vec::new();
-    let contexte_serveur = crate::tool_budget::server_context(client, endpoint).await;
+    // La fenêtre connue de l'hôte (modèle distant) dispense de la demander à
+    // un service qui ne la publie pas.
+    let contexte_serveur = match input.context_window.filter(|f| *f > 0) {
+        Some(f) => Some(f),
+        None => crate::tool_budget::server_context(client, endpoint).await,
+    };
     // Toute la conversation départage les outils, pas le seul dernier
     // message : « continue » ne nomme rien, et l'outil dont la tâche
     // dépendait disparaissait au tour suivant (le modèle essayait alors de
@@ -824,6 +832,22 @@ pub async fn run_openai_tool_loop(
             let mut tokens_out = 0u64;
             let mut timings = RoundTimings::default();
 
+            // Dès l'envoi, la jauge montre ce qui part vraiment au modèle : la
+            // mesure du moteur n'arrive qu'à la fin du premier tour, parfois
+            // des minutes plus tard, et une conversation tout juste compressée
+            // gardait jusque-là son ancien chiffre.
+            let _ = tx
+                .send(bilan_du_contexte(
+                    &messages,
+                    &tools_for_dispatch,
+                    &noms_mcp,
+                    &differes,
+                    contexte_serveur.unwrap_or(0) as u64,
+                    (estimation_premiere as f64 * echelle_connue()) as u64,
+                    0,
+                ))
+                .await;
+
             // Consume the first (already-sent) response, then loop.
             let mut pending_resp = Some(first_resp);
             let mut got_final = false;
@@ -832,7 +856,7 @@ pub async fn run_openai_tool_loop(
             // il sert à dire pourquoi la tâche s'arrête, si elle s'arrête.
             let mut relances_sans_effet: u8 = 0;
             let mut motif_sans_effet: Option<&'static str> = None;
-            let mut limite_atteinte = false;
+            let mut tours_passes: Vec<String> = Vec::new();
             let mut derniere_signature: Option<String> = None;
             let mut repetitions_identiques: u32 = 0;
             let mut boucle_detectee = false;
@@ -850,7 +874,8 @@ pub async fn run_openai_tool_loop(
             let mut estimation_envoyee = estimation_premiere;
 
             let mut relances_moteur: u8 = 0;
-            for round in 0..MAX_TOOL_ROUNDS {
+            // Aucun plafond d'actions : seule une vraie boucle arrête la tâche.
+            loop {
                 let resp = match pending_resp.take() {
                     Some(r) => Some(r),
                     None => loop {
@@ -1061,6 +1086,25 @@ pub async fn run_openai_tool_loop(
                     .await;
                 timings.add(round_result.timings);
 
+                // Le même passage recopié sans fin : le flux a été coupé. Rien
+                // de ce tour ne repart au modèle, seulement le rappel.
+                if round_result.boucle {
+                    motif_sans_effet = Some("boucle");
+                    if relances_sans_effet < RELANCES_SANS_EFFET_MAX {
+                        relances_sans_effet += 1;
+                        tracing::warn!(
+                            essai = relances_sans_effet,
+                            "réponse en boucle interrompue : relance"
+                        );
+                        messages
+                            .as_array_mut()
+                            .unwrap()
+                            .push(serde_json::json!({ "role": "user", "content": RELANCE_BOUCLE }));
+                        continue;
+                    }
+                    break;
+                }
+
                 if round_result.calls.is_empty() {
                     // Un tour fait de réflexion seule, sans appel ni réponse : le
                     // modèle a écrit son appel d'outil dans sa réflexion (Bonsai y
@@ -1084,9 +1128,7 @@ pub async fn run_openai_tool_loop(
                     };
                     if let Some((motif, rappel)) = sans_effet {
                         motif_sans_effet = Some(motif);
-                        if relances_sans_effet < RELANCES_SANS_EFFET_MAX
-                            && round + 1 < MAX_TOOL_ROUNDS
-                        {
+                        if relances_sans_effet < RELANCES_SANS_EFFET_MAX {
                             relances_sans_effet += 1;
                             tracing::info!(
                                 motif,
@@ -1114,7 +1156,6 @@ pub async fn run_openai_tool_loop(
                     if !relance_faite
                         && !tools_for_dispatch.is_empty()
                         && appel_ecrit_en_texte(&round_result.content, &tools_for_dispatch)
-                        && round + 1 < MAX_TOOL_ROUNDS
                     {
                         relance_faite = true;
                         let liste = messages.as_array_mut().unwrap();
@@ -1133,7 +1174,6 @@ pub async fn run_openai_tool_loop(
                     if !relance_faite
                         && !tools_for_dispatch.is_empty()
                         && annonce_sans_agir(&round_result.content)
-                        && round + 1 < MAX_TOOL_ROUNDS
                     {
                         relance_faite = true;
                         let liste = messages.as_array_mut().unwrap();
@@ -1149,20 +1189,18 @@ pub async fn run_openai_tool_loop(
                     }
                     // Une correction remise pendant la réponse finale n'attend pas
                     // le message suivant : le modèle la lit et reprend.
-                    if round + 1 < MAX_TOOL_ROUNDS {
-                        if let Some(boite) = &input.mailbox {
-                            let mut suite = serde_json::json!([]);
-                            let lus = boite.verser(&mut suite).await;
-                            if !lus.is_empty() {
-                                let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
-                                let liste = messages.as_array_mut().unwrap();
-                                liste.push(serde_json::json!({
-                                    "role": "assistant",
-                                    "content": round_result.content,
-                                }));
-                                liste.extend(suite.as_array().cloned().unwrap_or_default());
-                                continue;
-                            }
+                    if let Some(boite) = &input.mailbox {
+                        let mut suite = serde_json::json!([]);
+                        let lus = boite.verser(&mut suite).await;
+                        if !lus.is_empty() {
+                            let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
+                            let liste = messages.as_array_mut().unwrap();
+                            liste.push(serde_json::json!({
+                                "role": "assistant",
+                                "content": round_result.content,
+                            }));
+                            liste.extend(suite.as_array().cloned().unwrap_or_default());
+                            continue;
                         }
                     }
                     got_final = true;
@@ -1177,13 +1215,21 @@ pub async fn run_openai_tool_loop(
                     .map(|c| format!("{}\u{1f}{}", c.name, c.arguments_raw))
                     .collect::<Vec<_>>()
                     .join("\u{1e}");
+                tours_passes.push(signature.clone());
+                if tours_passes.len() > crate::boucle::TOURS_GARDES {
+                    tours_passes.remove(0);
+                }
                 if derniere_signature.as_deref() == Some(signature.as_str()) {
                     repetitions_identiques += 1;
                 } else {
                     derniere_signature = Some(signature);
                     repetitions_identiques = 1;
                 }
-                if repetitions_identiques >= APPELS_IDENTIQUES_MAX {
+                // Le même appel d'affilée, ou le même enchaînement rejoué
+                // (A, B, A, B, A, B) : dans les deux cas rien n'avance.
+                if repetitions_identiques >= APPELS_IDENTIQUES_MAX
+                    || crate::boucle::tours_en_cycle(&tours_passes)
+                {
                     if !correction_identique {
                         // Première fois : on ne rejoue pas l'appel, on dit au
                         // modèle de changer d'approche, puis on lui laisse un tour.
@@ -1192,6 +1238,7 @@ pub async fn run_openai_tool_loop(
                             "appel d'outil identique répété : correction envoyée au modèle"
                         );
                         correction_identique = true;
+                        tours_passes.clear();
                         derniere_signature = None;
                         repetitions_identiques = 0;
                         messages.as_array_mut().unwrap().push(serde_json::json!({
@@ -1320,10 +1367,6 @@ pub async fn run_openai_tool_loop(
                         let _ = tx.send(StreamEvent::MailRead { ids: lus }).await;
                     }
                 }
-
-                if round + 1 == MAX_TOOL_ROUNDS {
-                    limite_atteinte = true;
-                }
             }
 
             // La tâche s'arrête sur un outil qui avait libéré la carte : le modèle
@@ -1345,15 +1388,9 @@ pub async fn run_openai_tool_loop(
             // relancer le travail au lieu de juger un tour coupé.
             if !got_final {
                 let msg = if boucle_detectee {
-                    format!(
-                        "Le modèle a répété {APPELS_IDENTIQUES_MAX} fois de suite le même appel d'outil \
-                         sans progrès : la tâche s'arrête ici. Reformulez la demande ou changez d'approche."
-                    )
-                } else if limite_atteinte {
-                    format!(
-                        "Limite de {MAX_TOOL_ROUNDS} actions atteinte pour ce message : la tâche \
-                         s'arrête ici, sans réponse finale. Écrivez « continue » pour reprendre."
-                    )
+                    "Le modèle a répété les mêmes appels d'outil sans progrès, même après un rappel : \
+                     la tâche s'arrête ici. Reformulez la demande ou changez d'approche."
+                        .to_string()
                 } else {
                     match motif_sans_effet {
                         Some("coupe") => "Le fournisseur coupe les réponses du modèle à sa limite de \
@@ -1362,6 +1399,10 @@ pub async fn run_openai_tool_loop(
                             .to_string(),
                         Some("reflexion") => "Le modèle a réfléchi plusieurs fois de suite sans agir ni \
                              répondre : la tâche s'arrête ici. Écrivez « continue » pour reprendre, ou \
+                             choisissez un autre modèle."
+                            .to_string(),
+                        Some("boucle") => "Le modèle recopiait le même passage en boucle, même après \
+                             plusieurs rappels : la tâche s'arrête ici. Reformulez la demande, ou \
                              choisissez un autre modèle."
                             .to_string(),
                         Some("vide") => "Le fournisseur a renvoyé plusieurs réponses vides de suite \
@@ -1730,11 +1771,14 @@ fn server_error_message(status: u16, body: &str) -> String {
     if fenetre_pleine(&detail) {
         if let Some(n) = jetons_annonces(body) {
             return format!(
-                "Le message dépasse la fenêtre de contexte du modèle ({n} jetons). Un document                  joint trop long en est la cause la plus fréquente : joignez-en une partie, ou                  augmentez la fenêtre dans Paramètres du modèle."
+                "Le message dépasse la fenêtre de contexte du modèle ({n} jetons). Un document \
+                 joint trop long en est la cause la plus fréquente : joignez-en une partie, ou \
+                 choisissez un modèle à fenêtre plus large."
             );
         }
-        return "La fenêtre de contexte du modèle est pleine. Augmentez-la dans Paramètres du \
-                modèle, ou repartez d'une nouvelle conversation."
+        return "La fenêtre de contexte du modèle est pleine, même après avoir raccourci la \
+                conversation. Maintenez la jauge de contexte pour la compresser, ou repartez \
+                d'une nouvelle conversation."
             .into();
     }
     if detail.to_lowercase().contains("errordevicelost")
@@ -1750,8 +1794,8 @@ fn server_error_message(status: u16, body: &str) -> String {
         .contains("failed to parse tool call arguments")
     {
         return "L'appel d'outil du modèle est arrivé incomplet, le plus souvent parce que la \
-                fenêtre de contexte s'est remplie pendant qu'il l'écrivait. Augmentez-la dans \
-                Paramètres du modèle, ou demandez une tâche plus courte."
+                fenêtre de contexte s'est remplie pendant qu'il l'écrivait. Maintenez la jauge de \
+                contexte pour compresser la conversation, ou demandez une tâche plus courte."
             .into();
     }
     let detail: String = detail.chars().take(300).collect();
@@ -1807,6 +1851,9 @@ async fn send_token(
         .map_err(|_| "client gone".to_string())
 }
 
+/// Octets écrits entre deux examens de la réponse à la recherche d'une boucle.
+const PALIER_BOUCLE: usize = 256;
+
 /// Consume one streamed response: emit `Token` events live for text deltas,
 /// assemble fragmented tool calls, and pick up `usage` from the final frame.
 ///
@@ -1821,6 +1868,9 @@ async fn stream_one_round(
 ) -> Result<RoundResult, String> {
     let mut out = RoundResult::default();
     let mut reflexion_ouverte = false;
+    // La réflexion du tour, gardée seulement pour y voir une boucle.
+    let mut pensee_du_tour = String::new();
+    let mut examine_a: usize = 0;
     // index → (id, name, args buffer)
     let mut partial: std::collections::BTreeMap<u64, (String, String, String)> =
         std::collections::BTreeMap::new();
@@ -1934,6 +1984,7 @@ async fn stream_one_round(
                 };
                 reflexion_ouverte = true;
                 out.reasoned = true;
+                pensee_du_tour.push_str(pensee);
                 send_token(tx, texte).await?;
             }
 
@@ -1950,6 +2001,24 @@ async fn stream_one_round(
             if let Some(text) = text {
                 out.content.push_str(text);
                 send_token(tx, text.to_string()).await?;
+            }
+
+            // Un modèle qui recopie le même passage ne s'arrête pas seul : on
+            // lâche le flux, et le moteur cesse d'écrire. Examiné par paliers,
+            // pas à chaque jeton.
+            let ecrit = pensee_du_tour.len() + out.content.len();
+            if ecrit >= examine_a + PALIER_BOUCLE {
+                examine_a = ecrit;
+                if crate::boucle::texte_en_boucle(&pensee_du_tour)
+                    || crate::boucle::texte_en_boucle(&out.content)
+                {
+                    tracing::warn!(octets = ecrit, "réponse en boucle : flux interrompu");
+                    if reflexion_ouverte {
+                        send_token(tx, format!("{REFLEXION_FIN}\n\n")).await?;
+                    }
+                    out.boucle = true;
+                    return Ok(out);
+                }
             }
 
             if let Some(tcs) = tcs {

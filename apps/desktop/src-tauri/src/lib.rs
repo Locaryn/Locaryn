@@ -16,6 +16,7 @@ use locaryn_agent_runtime::approval_gate;
 mod attention;
 mod client_cert;
 mod cloud_providers;
+mod compression;
 mod core_engines;
 mod extensions;
 mod gpu_arbiter;
@@ -36,6 +37,7 @@ mod model_recommendations;
 mod model_residency;
 mod notifications;
 mod permissions_web;
+mod pieces_jointes;
 mod presse_papiers;
 mod project_context;
 mod pty;
@@ -1109,132 +1111,6 @@ fn approx_tokens_tour(t: &locaryn_agent_runtime::ChatTurn) -> usize {
     approx_tokens(&t.content) + appels
 }
 
-/// Un résumé demandé au moteur : `None` si le serveur a refusé ou n'a rien
-/// rendu. Réutilisé pour la nouvelle tentative.
-async fn demande_resume(
-    http: &reqwest::Client,
-    url: &str,
-    body: &serde_json::Value,
-) -> Option<String> {
-    let r = http.post(url).json(body).send().await.ok()?;
-    if !r.status().is_success() {
-        return None;
-    }
-    let v: serde_json::Value = r.json().await.ok()?;
-    let s = v["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    (!s.is_empty()).then_some(s)
-}
-
-/// Summarise the oldest turns into one compact note so a long conversation keeps
-/// fitting in the context window. Mirrors what assistants do around 70-90% usage:
-/// old turns are replaced by a summary, recent ones are kept verbatim.
-async fn compact_history(
-    core: &Core,
-    endpoint: &str,
-    model: &str,
-    turns: Vec<locaryn_agent_runtime::ChatTurn>,
-    budget_tokens: usize,
-    on_event: &Channel<StreamEvent>,
-) -> Vec<locaryn_agent_runtime::ChatTurn> {
-    let total: usize = turns.iter().map(approx_tokens_tour).sum();
-    // Une conversation courte peut déborder aussi : deux longues réponses
-    // suffisent. On garde alors le dernier échange et on résume le reste.
-    if total <= budget_tokens || turns.len() < 3 {
-        return turns;
-    }
-    // Le résumé est écrit par le modèle : quelques secondes de calcul local.
-    // Le fil le montre (animation) plutôt que de laisser croire à un silence.
-    let _ = on_event.send(StreamEvent::ContextCompaction {
-        phase: "started".into(),
-        detail: "Contexte en cours de compression…".into(),
-    });
-    // Keep the last few exchanges verbatim; summarise everything before them.
-    let keep = if turns.len() >= 6 { 4 } else { 2 };
-    let split = turns.len() - keep;
-    let (old, recent) = turns.split_at(split);
-
-    let transcript: String = old
-        .iter()
-        .map(|t| format!("{}: {}", t.role, t.content))
-        .collect::<Vec<_>>()
-        .join(
-            "
-",
-        )
-        .chars()
-        .take(12000)
-        .collect();
-
-    let url = format!("{}/v1/chat/completions", endpoint.trim_end_matches('/'));
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content":
-              "Résume la conversation ci-dessous en français, en moins de 200 mots.                Conserve les décisions, contraintes, noms de fichiers et faits techniques.                Pas de préambule, uniquement le résumé." },
-            { "role": "user", "content": transcript }
-        ],
-        "max_tokens": 320,
-        "temperature": 0.2,
-        "stream": false,
-        "reasoning_budget": 0,
-        "chat_template_kwargs": { "enable_thinking": false }
-    });
-    let mut summary = demande_resume(&core.http, &url, &body).await;
-    if summary.is_none() {
-        // Un modèle local en mémoire serrée peut rater sa première passe : on
-        // retente une fois avant de retirer les échanges sans les résumer.
-        tracing::warn!("résumé de conversation raté — nouvelle tentative");
-        summary = demande_resume(&core.http, &url, &body).await;
-    }
-
-    let mut out = Vec::with_capacity(keep + 1);
-    match summary {
-        Some(sum) => {
-            tracing::info!(
-                turns = old.len(),
-                total,
-                budget = budget_tokens,
-                "compacted conversation history"
-            );
-            let _ = on_event.send(StreamEvent::ContextCompaction {
-                phase: "done".into(),
-                detail: format!(
-                    "Contexte compressé : {} anciens échanges tiennent dans un résumé.",
-                    old.len()
-                ),
-            });
-            out.push(locaryn_agent_runtime::ChatTurn {
-                role: "system".into(),
-                content: format!(
-                    "[Résumé des échanges précédents]
-{}",
-                    sum.trim()
-                ),
-                ..Default::default()
-            });
-        }
-        // Summarisation failed: drop the oldest turns rather than blow the
-        // window — mais la personne le voit : un contexte qui s'amincit sans
-        // rien dire ressemble à un modèle qui oublie.
-        None => {
-            tracing::warn!("history compaction failed, truncating instead");
-            let _ = on_event.send(StreamEvent::ContextCompaction {
-                phase: "failed".into(),
-                detail: format!(
-                    "Le modèle n'a pas su résumer : {} anciens échanges retirés sans résumé.",
-                    old.len()
-                ),
-            });
-        }
-    }
-    out.extend(recent.iter().cloned());
-    out
-}
-
 /// `/equipe` : la consigne qui répartit la demande entre plusieurs
 /// sous-agents, avec la liste des modèles disponibles.
 #[tauri::command]
@@ -1300,6 +1176,9 @@ async fn rewind_last_message(
         .messages
         .rewind_last_user(session_id)
         .await
+        // Le texte revient au champ tel qu'il a été tapé, sans les marqueurs
+        // de ses pièces jointes.
+        .map(|texte| texte.map(|t| locaryn_agent_runtime::compaction::sans_marqueurs(&t)))
         .map_err(|e| e.to_string())
 }
 
@@ -1612,7 +1491,10 @@ async fn delete_session(core: State<'_, Core>, id: Uuid) -> Result<(), String> {
         .sessions
         .delete(id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    pieces_jointes::oublier(&core.data_dir, id);
+    compression::oublier(id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1982,6 +1864,10 @@ async fn send_message(
     // quand on en ouvre une autre, et se rejoint en revenant.
     let vives = core.reponses_vives.clone();
     let ticket = vives.commencer(session_id);
+    // La barre latérale montre la conversation au travail, où qu'on regarde.
+    if let Err(e) = app.emit("locaryn://reponse-commencee", session_id.to_string()) {
+        tracing::warn!(error = %e, "début de réponse non signalé");
+    }
     let canal = reponses_vives::dedoubler(on_event, vives.clone(), session_id, ticket);
     let resultat = envoyer_message(
         app.clone(),
@@ -2127,11 +2013,19 @@ async fn envoyer_message(
         return Err(reason);
     }
 
-    // 1. Persist the user's message.
+    // 1. Persist the user's message, avec la trace de ses pièces jointes :
+    //    sans elle, la bulle rouverte n'avait plus ni fichier ni image.
+    let enregistre = pieces_jointes::message_enregistre(
+        &core.data_dir,
+        session_id,
+        &content,
+        documents.as_deref().unwrap_or_default(),
+        images.as_deref().unwrap_or_default(),
+    );
     if let Err(e) = core
         .storage
         .messages
-        .append(session_id, MessageRole::User, &content)
+        .append(session_id, MessageRole::User, &enregistre)
         .await
     {
         tracing::warn!(error = %e, "failed to persist user message");
@@ -2257,6 +2151,12 @@ async fn envoyer_message(
     }
 
     let model = active_provider.as_ref().and_then(|p| p.model.clone());
+    // Un modèle distant a sa propre fenêtre, publiée par son catalogue : le
+    // réglage du moteur local est celui d'un autre modèle.
+    let fenetre_distante = match active_provider.as_ref() {
+        Some(p) => cloud_providers::fenetre_du_modele_actif(&core, p).await,
+        None => None,
+    };
 
     // Sampling params saved from the Model Config panel (provider.config) are
     // translated to OpenAI request fields and merged into every round.
@@ -2367,34 +2267,30 @@ async fn envoyer_message(
         // The message we just persisted is the current one — it is sent separately.
         turns.pop();
 
-        if !turns.is_empty() {
-            let cfg = InferenceConfig::load(&core.data_dir);
-            let endpoint = active_provider
-                .as_ref()
-                .map(|p| p.endpoint.clone())
-                .unwrap_or_else(|| {
-                    locaryn_provider_supervisor::default_endpoint(&ProviderEngine::LlamaCpp)
-                        .unwrap_or("http://127.0.0.1:8080")
-                        .into()
-                });
-            // En automatique, aucune fenêtre n'est réglée : c'est celle que le
-            // moteur a choisie qui compte.
-            let fenetre = match cfg.context_length {
-                0 => locaryn_agent_runtime::tool_budget::server_context(&core.http, &endpoint)
-                    .await
-                    .unwrap_or(locaryn_provider_supervisor::AUTO_FIT_MIN_CTX as usize),
-                n => n as usize,
+        if let Some(p) = active_provider.as_ref().filter(|_| !turns.is_empty()) {
+            let fenetre = match fenetre_distante {
+                Some(f) => f,
+                // En automatique, aucune fenêtre n'est réglée : c'est celle
+                // que le moteur a choisie qui compte.
+                None => match InferenceConfig::load(&core.data_dir).context_length {
+                    0 => {
+                        locaryn_agent_runtime::tool_budget::server_context(&core.http, &p.endpoint)
+                            .await
+                            .unwrap_or(locaryn_provider_supervisor::AUTO_FIT_MIN_CTX as usize)
+                    }
+                    n => n as usize,
+                },
             };
             // Leave room for the new message, the answer and the system prompt.
             let budget = (fenetre * 60) / 100;
-            let m = model.clone().unwrap_or_else(|| "default".into());
+            let moteur = compression::Moteur::actif(&core, p).await;
             turns = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => {
                     liberer_annulation(&core.chat_cancels, session_id, generation).await;
                     return Ok(());
                 }
-                t = compact_history(&core, &endpoint, &m, turns, budget, &on_event) => t,
+                t = compression::compacter(session_id, &moteur, turns, budget, &on_event) => t,
             };
         }
         turns
@@ -2686,6 +2582,7 @@ async fn envoyer_message(
         gpu: Some(gpu_arbiter::handle(&app)),
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
+        context_window: fenetre_distante,
         // Le dialecte natif n'existait que pour Ollama, qui n'honorait
         // `num_ctx` que la ; plus aucun moteur servi ici n'en a besoin.
         native_chat_api: false,
@@ -2738,18 +2635,57 @@ async fn envoyer_message(
                     if let Some(http) = cloud_providers::http_for_active_provider(&core, p).await {
                         agent = agent.with_client(http);
                     }
-                    match agent.run(input.clone()).await {
-                        Ok(stream) => stream,
-                        // Le moteur a lu la requête et l'a refusée : ce n'est pas
-                        // une panne, sa raison suffit.
-                        Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
-                            tracing::warn!(%raison, "requête refusée par le moteur");
-                            cloud_providers::signaler_echec_du_modele(&core, p, &raison);
-                            refus_du_moteur(raison)
+                    // Un modèle servi par la passerelle d'une extension : si elle
+                    // démarre encore, on l'attend au lieu d'annoncer une panne.
+                    let fournisseur = cloud_providers::fournisseur_actif(&core, p).await;
+                    let passerelle = match &fournisseur {
+                        Some(f) if cloud_providers::passerelle_muette(&core, f).await => {
+                            let _ = on_event.send(StreamEvent::Log {
+                                level: locaryn_events::LogLevel::Warn,
+                                msg: format!(
+                                    "{} démarre. Votre message partira dès qu'elle répond — \
+                                     jusqu'à quelques minutes juste après le lancement de l'application.",
+                                    f.label()
+                                ),
+                                source: "fournisseur".to_string(),
+                            });
+                            cloud_providers::attendre_passerelle(&core, f).await
                         }
-                        Err(e) => {
-                            tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
-                            panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
+                        _ => Ok(()),
+                    };
+                    if let Err(raison) = passerelle {
+                        tracing::warn!(%raison, "passerelle du fournisseur injoignable");
+                        panne_de_fournisseur(&core, project_id, session_id, &raison).await
+                    } else {
+                        match agent.run(input.clone()).await {
+                            Ok(stream) => stream,
+                            // Le moteur a lu la requête et l'a refusée : ce n'est pas
+                            // une panne, sa raison suffit.
+                            Err(locaryn_agent_runtime::AgentError::Refused(raison)) => {
+                                tracing::warn!(%raison, "requête refusée par le moteur");
+                                cloud_providers::signaler_echec_du_modele(&core, p, &raison);
+                                refus_du_moteur(raison)
+                            }
+                            Err(e) if fournisseur.is_some() => {
+                                tracing::warn!(error = %e, "le fournisseur du modèle n'a pas répondu");
+                                let nom =
+                                    fournisseur.as_ref().map(|f| f.label()).unwrap_or_default();
+                                panne_de_fournisseur(
+                                &core,
+                                project_id,
+                                session_id,
+                                &format!(
+                                    "{nom} n'a pas répondu pour le modèle{} ({e}). Vérifiez votre \
+                                     connexion et l'état du fournisseur dans « Mes modèles », puis \
+                                     renvoyez votre message.",
+                                    model.as_deref().map(|m| format!(" « {m} »")).unwrap_or_default()
+                                ),
+                            )
+                            .await
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "OpenAiCompatAgent run failed");
+                                panne_de_modele(&core, project_id, session_id, &match &panne_du_moteur {
                             Some(cause) => {
                                 format!("Le moteur local n'a pas démarré : {cause}")
                             }
@@ -2759,6 +2695,7 @@ async fn envoyer_message(
                             ),
                         })
                         .await
+                            }
                         }
                     }
                 }
@@ -2987,6 +2924,26 @@ async fn panne_de_modele(
         )
         .await;
     no_model_stream(reason)
+}
+
+/// Le fournisseur d'une extension n'a pas répondu : sa raison, la pastille, et
+/// rien du mode d'emploi du moteur local — installer llama.cpp ne répare pas
+/// une passerelle ni un service distant.
+async fn panne_de_fournisseur(
+    core: &Core,
+    project_id: Option<uuid::Uuid>,
+    session_id: uuid::Uuid,
+    raison: &str,
+) -> EventStream {
+    core.attention
+        .alerter(
+            project_id.map(|p| p.to_string()),
+            Some(session_id.to_string()),
+            "Le fournisseur du modèle n'a pas répondu",
+            Some(raison.to_string()),
+        )
+        .await;
+    refus_du_moteur(raison.to_string())
 }
 
 /// L'erreur d'un envoi retenu par la prudence. La conversation la reconnaît :
@@ -5632,18 +5589,29 @@ async fn compress_chat_context(core: State<'_, Core>, session_id: Uuid) -> Resul
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "aucun fournisseur actif".to_string())?;
-    let model = active
-        .model
-        .clone()
-        .unwrap_or_else(|| "default".to_string());
+    // Pendant une réponse, le fil est en train de s'écrire : le couper sous
+    // elle laissait le résumé à la place de la réponse.
+    if core
+        .chat_cancels
+        .lock()
+        .await
+        .get(&session_id)
+        .is_some_and(|jetons| !jetons.is_empty())
+    {
+        return Err("Attendez la fin de la réponse pour compresser.".into());
+    }
+    let moteur = compression::Moteur::actif(&core, &active).await;
     let summary = locaryn_agent_runtime::compaction::resumer(
-        &core.http,
-        &active.endpoint,
-        &model,
+        &moteur.http,
+        &moteur.endpoint,
+        moteur.cle.as_deref(),
+        &moteur.model,
         &plan.transcript,
     )
-    .await?;
+    .await
+    .map_err(|e| format!("Compression impossible : {e}."))?;
     let cutoff = plan.cutoff;
+    compression::oublier(session_id);
 
     // Le resume remplace les vieux tours. La coupure se fait au message
     // conserve le plus ancien : tout ce qui est avant part, le resume entre.

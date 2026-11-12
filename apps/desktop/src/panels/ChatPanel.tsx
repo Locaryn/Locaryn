@@ -40,6 +40,7 @@ import {
   ERREUR_MODELE_TROP_LOURD,
   type InstalledExtension,
   type McpServerInfo,
+  type Message,
   type ModelAbilities,
   type ReasoningLevel,
   type RefusDeChargement,
@@ -343,6 +344,30 @@ function splitInlineSuivi(content: string): { text: string; suivi: Suivi | null 
   return { text, suivi };
 }
 
+/** Les fichiers joints à un message (hors images), gardés avec lui dans un
+ *  marqueur : rouverte, la bulle montre encore ce qui avait été joint. */
+function splitInlineJoints(content: string): { text: string; joints: MessageAttachment[] } {
+  const joints: MessageAttachment[] = [];
+  const natures: MessageAttachment["kind"][] = ["text", "audio", "video", "other"];
+  const text = content
+    .replace(/<!--locaryn-joints:([\s\S]*?)-->/g, (_m, encoded: string) => {
+      try {
+        const liste: unknown = JSON.parse(encoded);
+        if (!Array.isArray(liste)) return "";
+        for (const j of liste as { kind?: unknown; name?: unknown }[]) {
+          if (typeof j?.name !== "string" || !j.name) continue;
+          const kind = natures.find((n) => n === j.kind) ?? "other";
+          joints.push({ kind, name: j.name });
+        }
+      } catch {
+        // Un marqueur abîmé : la bulle s'affiche sans ses pièces, pas avec du JSON.
+      }
+      return "";
+    })
+    .trim();
+  return { text, joints };
+}
+
 /** Audio artifacts are persisted as transparent HTML comments so a session
  *  can restore the playable note without showing a filesystem path to the
  *  model or the user. */
@@ -362,6 +387,10 @@ function splitInlineAudio(content: string): { text: string; paths: string[] } {
   return { text, paths };
 }
 
+/** En tête du message qui remplace les échanges compressés (même texte que
+ *  `PREFIXE_RESUME` côté Rust). */
+const PREFIXE_RESUME = "[Resume des echanges precedents]\n";
+
 function storedMessageItems(m: {
   id: string;
   role: string;
@@ -374,7 +403,19 @@ function storedMessageItems(m: {
   // Les consignes d'étape que l'application s'envoie : le modèle les relit,
   // la personne ne doit pas les voir comme si elle les avait écrites.
   if (m.role === "user" && estConsigneInterne(m.content)) return [];
-  const avecSuivi = splitInlineSuivi(m.content);
+  // Le résumé qui remplace les vieux échanges : une note dans le fil, pas une
+  // bulle signée du modèle.
+  if (m.role === "assistant" && m.content.startsWith(PREFIXE_RESUME)) {
+    return [
+      {
+        id: m.id,
+        kind: "log",
+        text: `Résumé des échanges précédents — ${m.content.slice(PREFIXE_RESUME.length).trim()}`,
+      },
+    ];
+  }
+  const avecJoints = splitInlineJoints(m.content);
+  const avecSuivi = splitInlineSuivi(avecJoints.text);
   const audio = splitInlineAudio(avecSuivi.text);
   const parsed = splitInlineImages(audio.text);
   const result: ChatItem[] = [];
@@ -385,7 +426,7 @@ function storedMessageItems(m: {
       suivi: avecSuivi.suivi,
     });
   }
-  if (parsed.text || parsed.images?.length) {
+  if (parsed.text || parsed.images?.length || avecJoints.joints.length) {
     result.push({
       id: m.id,
       kind: "msg",
@@ -394,6 +435,7 @@ function storedMessageItems(m: {
       at: m.created_at,
       images: parsed.images,
       imagePaths: parsed.imagePaths,
+      attachments: avecJoints.joints.length ? avecJoints.joints : undefined,
     });
   }
   audio.paths.forEach((path, index) => {
@@ -406,6 +448,41 @@ function storedMessageItems(m: {
     });
   });
   return result;
+}
+
+/** En tête d'un résultat d'outil enregistré après un échec (posé côté Rust). */
+const PREFIXE_ECHEC = "[échec] ";
+
+/**
+ * Une conversation rouverte, telle qu'elle était à l'écran : les messages,
+ * mais aussi les outils que le modèle a appelés et ce qu'ils ont rendu.
+ *
+ * Les appels sont gardés avec la réponse et leurs résultats la suivent ; les
+ * ignorer faisait disparaître tout le travail du modèle à la réouverture —
+ * il ne restait que sa phrase de fin.
+ */
+function storedConversationItems(msgs: Message[]): ChatItem[] {
+  const sorties = new Map<string, string>();
+  for (const m of msgs) {
+    if (m.role === "tool" && m.tool_call_id) sorties.set(m.tool_call_id, m.content);
+  }
+  return msgs.flatMap((m) => {
+    const appels = m.role === "assistant" ? (m.tool_calls ?? []) : [];
+    const outils: ChatItem[] = appels.map((a) => {
+      const sortie = sorties.get(a.call_id) ?? "";
+      const echec = sortie.startsWith(PREFIXE_ECHEC);
+      return {
+        id: `${m.id}:outil:${a.call_id}`,
+        kind: "tool",
+        callId: a.call_id,
+        tool: a.tool,
+        args: a.args,
+        status: echec ? "error" : "ok",
+        output: echec ? sortie.slice(PREFIXE_ECHEC.length) : sortie,
+      };
+    });
+    return [...outils, ...storedMessageItems(m)];
+  });
 }
 
 /**
@@ -983,7 +1060,7 @@ export function ChatPanel({
     const relire = async () => {
       try {
         const msgs = await core.listMessages(sid);
-        if (sessionRef.current === sid) setItems(msgs.flatMap(storedMessageItems));
+        if (sessionRef.current === sid) setItems(storedConversationItems(msgs));
       } catch (e) {
         console.warn("conversation non relue :", e);
       }
@@ -1319,7 +1396,7 @@ ${d.texte}`
     (async () => {
       try {
         const msgs = await core.listMessages(sessionId);
-        const restored = msgs.flatMap(storedMessageItems);
+        const restored = storedConversationItems(msgs);
         setItems(restored);
         for (const item of restored) {
           if (item.kind !== "audio") continue;
@@ -2457,8 +2534,8 @@ ${d.texte}`
       holdTimer.current = null;
       setHolding(false);
       setCtxBulle("Compression en cours…");
-      const ok = await compressConversation();
-      direBulle(ok ? "Contexte compressé" : "Rien à compresser pour l'instant");
+      const refus = await compressConversation();
+      direBulle(refus ?? "Contexte compressé", refus ? 5000 : 2600);
     }, APPUI_COMPRESSION_MS);
   }
 
@@ -2474,27 +2551,27 @@ ${d.texte}`
     annulerAppui();
   }
 
-  /** Compression proposee quand la fenetre appliquee passe sous ce que la
-   *  conversation a deja consomme. Les vieux tours partent dans un resume
-   *  produit par le modele lui-meme — le meme travail que la compaction
-   *  automatique, ici declenche a la main. */
-  async function compressConversation(): Promise<boolean> {
-    if (!sessionId || compressing) return false;
+  /** Compresser à la main : les vieux tours partent dans un résumé écrit par
+   *  le modèle — le même travail que la compression automatique de l'envoi.
+   *  Rend `null` quand c'est fait, sinon la raison à montrer. */
+  async function compressConversation(): Promise<string | null> {
+    if (!sessionId || compressing) return "Compression déjà en cours.";
+    // Le fil est en train de s'écrire : le recharger sous la réponse la
+    // faisait disparaître, le résumé à sa place.
+    if (streaming) return "Attendez la fin de la réponse pour compresser.";
     setCompressing(true);
     try {
       const retires = await core.compressChatContext(sessionId);
       const fresh = await core.listMessages(sessionId);
-      setItems(fresh.flatMap(storedMessageItems));
-      setCompressProposal(null);
+      setItems(storedConversationItems(fresh));
       // La mesure d'avant ne vaut plus : la conversation a rétréci.
       setCtxUsage(null);
-      return retires > 0;
+      return retires > 0 ? null : "Rien à compresser pour l'instant.";
     } catch (e) {
-      // Le resume a echoue : la proposition reste, l'utilisateur peut
-      // retenter. Rien n'a ete efface — la commande ne supprime qu'apres un
-      // resume reussi.
+      // Rien n'a été effacé : la commande ne supprime qu'après un résumé
+      // réussi. La raison est dite, pas remplacée par « rien à compresser ».
       console.warn("compression impossible :", e);
-      return false;
+      return String(e);
     } finally {
       setCompressing(false);
     }
@@ -2848,14 +2925,10 @@ ${preview}`,
         break;
       }
       case "compresser":
-        void compressConversation().then((ok) =>
+        void compressConversation().then((refus) =>
           setItems((prev) => [
             ...prev,
-            {
-              id: nextId("log"),
-              kind: "log",
-              text: ok ? "Conversation compressée." : "Rien à compresser pour l'instant.",
-            },
+            { id: nextId("log"), kind: "log", text: refus ?? "Conversation compressée." },
           ]),
         );
         break;
@@ -3260,32 +3333,10 @@ ${preview}`,
   const ctxWindow: number | null = isLocalModel
     ? (contextStatus?.running ?? null)
     : distant.fenetre;
-  // Reduire sous ce qui est deja utilise : la conversation ne tiendrait plus.
-  // On ne bloque pas — on propose de compresser, c'est l'utilisateur qui decide.
-  const [compressProposal, setCompressProposal] = useState<{
-    from: number;
-    to: number;
-  } | null>(null);
-  const [compressing, setCompressing] = useState(false);
-  /** La fenêtre déjà annoncée : ne pas remettre la même alerte à chaque
-   *  relecture de l'état du moteur (toutes les 5 s). */
-  const alerteCtxRef = useRef<number | null>(null);
   // Une fenêtre plus petite que la conversation — modèle plus court choisi,
-  // contexte réglé plus bas — et une grande partie du fil disparaîtrait. On ne
-  // bloque pas : on prévient, et c'est la personne qui décide. Reprendre le
-  // même modèle (ou un plus large) évite la compression ; remonter le réglage
-  // de contexte suffit aussi.
-  useEffect(() => {
-    if (ctxWindow === null) return;
-    if (usedTokens <= ctxWindow) {
-      // De nouveau assez large : une baisse future sera annoncée à nouveau.
-      alerteCtxRef.current = null;
-      return;
-    }
-    if (alerteCtxRef.current === ctxWindow) return;
-    alerteCtxRef.current = ctxWindow;
-    setCompressProposal({ from: usedTokens, to: ctxWindow });
-  }, [ctxWindow, usedTokens]);
+  // contexte réglé plus bas — ne demande rien à la personne : au prochain
+  // envoi, les vieux échanges sont résumés d'office pour tenir dedans.
+  const [compressing, setCompressing] = useState(false);
   const ctxPct = ctxWindow === null ? 0 : Math.min(usedTokens / ctxWindow, 1);
   const ctxWarnLevel =
     ctxWindow === null ? "ok" : ctxPct > 0.85 ? "danger" : ctxPct > 0.6 ? "warn" : "ok";
@@ -4085,13 +4136,13 @@ ${preview}`,
             {/* Mode simplifié : la mémoire de la conversation, dite avec des mots. */}
             <ConversationMemory
               used={usedTokens}
-              window={isLocalModel ? (ctxUsage?.window ?? ctxWindow) : ctxWindow}
+              window={isLocalModel ? ctxUsage?.window || ctxWindow : ctxWindow}
               compressing={compressing}
               onCompress={
                 sessionId
                   ? () =>
-                      void compressConversation().then((ok) =>
-                        direBulle(ok ? "Conversation résumée" : "Rien à résumer pour l'instant"),
+                      void compressConversation().then((refus) =>
+                        direBulle(refus ?? "Conversation résumée", refus ? 5000 : 2600),
                       )
                   : undefined
               }
@@ -4110,7 +4161,7 @@ ${preview}`,
                   />
                   <ContextDetails
                     usage={ctxUsage}
-                    fenetre={ctxUsage?.window ?? ctxWindow}
+                    fenetre={ctxUsage?.window || ctxWindow}
                     estimeMessages={estimeMessages}
                   />
                 </>
@@ -4191,51 +4242,6 @@ ${preview}`,
           </div>
         </div>
       </div>
-
-      {compressProposal && (
-        <ModalShell
-          onClose={() => setCompressProposal(null)}
-          label="Compression de la conversation"
-          role="alertdialog"
-          className="locaryn-card locaryn-compress-card"
-        >
-          <h3 style={{ margin: "0 0 8px", fontSize: "var(--text-md)", fontWeight: 700 }}>
-            La fenêtre est plus petite que la conversation
-          </h3>
-          <p style={{ margin: "0 0 12px", color: "var(--muted)", lineHeight: 1.5 }}>
-            Cette conversation pèse déjà ~{ctxFmt(compressProposal.from)} tokens, la fenêtre
-            actuelle n'en offre que {ctxFmt(compressProposal.to)}. Sans compression, le modèle ne
-            verrait plus le début du fil.
-          </p>
-          <p style={{ margin: "0 0 12px", color: "var(--muted)", lineHeight: 1.5 }}>
-            Le plus sûr est de reprendre le même modèle que la dernière fois — ou un modèle dont le
-            contexte est plus grand. Et si c'est le réglage de contexte qui a baissé, le remonter
-            suffit : changer de modèle n'est pas obligatoire.
-          </p>
-          <p style={{ margin: "0 0 16px", color: "var(--muted)", lineHeight: 1.5 }}>
-            Compresser maintenant ? Les anciens échanges deviennent un résumé concis, les derniers
-            restent intacts.
-          </p>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-            <button
-              type="button"
-              className="locaryn-btn-ghost"
-              onClick={() => setCompressProposal(null)}
-              disabled={compressing}
-            >
-              Garder le fil tronque
-            </button>
-            <button
-              type="button"
-              className="locaryn-send"
-              onClick={compressConversation}
-              disabled={compressing}
-            >
-              {compressing ? "Compression…" : "Compresser la conversation"}
-            </button>
-          </div>
-        </ModalShell>
-      )}
 
       {ragOpen && projectId && <RagPanel projectId={projectId} onClose={() => setRagOpen(false)} />}
     </section>

@@ -295,7 +295,8 @@ async fn compresser_session(s: &DaemonState, sid: Uuid) -> Result<u64, String> {
         .map_err(|e| e.to_string())?
         .ok_or("aucun fournisseur actif")?;
     let modele = actif.model.clone().unwrap_or_else(|| "default".into());
-    let resume = compaction::resumer(&s.http, &actif.endpoint, &modele, &plan.transcript).await?;
+    let resume =
+        compaction::resumer(&s.http, &actif.endpoint, None, &modele, &plan.transcript).await?;
     let retires = s
         .storage
         .messages

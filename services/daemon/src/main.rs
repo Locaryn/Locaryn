@@ -1647,6 +1647,7 @@ async fn send_message(
         require_tool_call: false,
         // Renseigné plus bas si la session est confiée à un noyau alternatif.
         bearer_token: None,
+        context_window: None,
         // Le dialecte natif n'existait que pour Ollama : plus aucun moteur
         // servi ici ne le demande.
         native_chat_api: false,

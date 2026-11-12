@@ -92,6 +92,7 @@ fn input(session: uuid::Uuid, message: &str) -> AgentInput {
         forced_tools: Vec::new(),
         require_tool_call: false,
         bearer_token: None,
+        context_window: None,
         native_chat_api: false,
     }
 }
