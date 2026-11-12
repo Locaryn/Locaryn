@@ -124,7 +124,7 @@ pub async fn qr(
         charge,
         svg,
         avertissement,
-    } = match construire_charge(&s, &mode, q.url, None).await {
+    } = match construire_charge(&s, &mode, q.url, false).await {
         Ok(c) => c,
         Err(r) => return r,
     };
@@ -169,7 +169,7 @@ async fn construire_charge(
     s: &DaemonState,
     mode: &str,
     url_publique: Option<String>,
-    login_code: Option<String>,
+    login: bool,
 ) -> Result<Charge, Response> {
     let q_url = url_publique;
     let mut avertissement = None;
@@ -255,7 +255,8 @@ async fn construire_charge(
         authority_pem: Some(ca.cert_pem),
         access_mode: Some(mode.to_string()),
         note: String::new(),
-        login_code,
+        login_code: None,
+        login,
         local_url: (mode == "public" && s.auth_required).then(|| s.url_locale()),
     };
     let charge = match serde_json::to_string(&provisioning) {
@@ -377,7 +378,7 @@ pub async fn login_qr(
     let mode = q.mode.as_deref().unwrap_or("local").to_string();
     let Charge {
         url, charge, svg, ..
-    } = match construire_charge(&s, &mode, q.url, Some(code.clone())).await {
+    } = match construire_charge(&s, &mode, q.url, true).await {
         Ok(c) => c,
         Err(r) => return r,
     };

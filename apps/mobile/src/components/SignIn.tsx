@@ -20,12 +20,6 @@ type Props = {
    * faut un identifiant et un mot de passe. Jamais les deux à la fois.
    */
   parcours?: "compte" | "identifiants";
-  /** Le code du QR de connexion scanné, déjà rempli. */
-  codeInitial?: string;
-  /** Le code d'un QR de compte est déjà en train d'être validé. */
-  connexionEnCours?: boolean;
-  /** Ce qui a empêché la connexion automatique après le scan. */
-  erreurInitiale?: string | null;
 };
 
 export function SignIn({
@@ -36,17 +30,14 @@ export function SignIn({
   onSettings,
   onPairConfirm,
   parcours = "identifiants",
-  codeInitial = "",
-  erreurInitiale = null,
-  connexionEnCours = false,
 }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   /** Code de connexion d'un compte, affiché sous son QR sur l'ordinateur. */
-  const [codeConnexion, setCodeConnexion] = useState(codeInitial);
+  const [codeConnexion, setCodeConnexion] = useState("");
   const [address, setAddress] = useState("");
-  const [busy, setBusy] = useState(connexionEnCours);
-  const [error, setError] = useState<string | null>(erreurInitiale);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const parCode = parcours === "compte";
   /** Revenir au choix du serveur, sans rien garder de cette tentative. */
   const annuler = () => onRegistered({ ...status, servers: 0 });

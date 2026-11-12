@@ -55,12 +55,16 @@ pub struct Provisioning {
     /// Optional note displayed under the sign-in form.
     #[serde(default)]
     pub note: String,
-    /// Code de connexion temporaire d'un compte (QR « Afficher le QR de
-    /// connexion » d'un utilisateur) : le téléphone qui scanne ouvre la
-    /// session de ce compte sans identifiant ni mot de passe. Absent du QR
-    /// d'appairage ordinaire.
+    /// Ancien champ : le code de connexion voyageait dans le QR. Plus jamais
+    /// écrit — une photo du QR suffisait à ouvrir le compte. Gardé pour lire
+    /// les fichiers et les QR d'avant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub login_code: Option<String>,
+    /// QR de connexion d'un compte : le téléphone ouvre l'écran du code à
+    /// six caractères, que la personne lit sur l'ordinateur et saisit. Le
+    /// code n'est jamais dans le QR : il est le second facteur.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub login: bool,
     /// Code Internet : l'adresse du réseau local, en plus de `server_url`.
     ///
     /// Le port Internet exige un certificat client que le téléphone n'a pas
@@ -365,6 +369,7 @@ mod tests {
             authority_pem: None,
             access_mode: Some("local".into()),
             login_code: None,
+            login: false,
             local_url: None,
         };
         let path = write(&dir, &p).expect("écriture");

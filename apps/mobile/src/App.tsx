@@ -255,13 +255,10 @@ export function App() {
 
   const [provisioningSuccess, setProvisioningSuccess] = useState(false);
   // Ce que le dernier scan attend de l'écran de connexion : le code d'un
-  // QR de compte à valider, ou des identifiants.
+  // QR de compte à saisir, ou des identifiants. `scan` distingue deux scans.
   const [parcours, setParcours] = useState<{
     mode: "compte" | "identifiants";
-    code?: string;
-    erreur?: string;
-    /** Le code scanné est en train d'être échangé contre une session. */
-    enCours?: boolean;
+    scan: number;
   } | null>(null);
   const [pairCodeNeeded, setPairCodeNeeded] = useState(false);
   const [pairConfirmBusy, setPairConfirmBusy] = useState(false);
@@ -290,32 +287,17 @@ export function App() {
       const nextStatus = await api.registerServer(pendingProvisioning.raw);
       setProvisioningSuccess(true);
       await new Promise((r) => setTimeout(r, 850));
-      const codeConnexion = pendingProvisioning.apercu.loginCode;
-      // Le parcours avant l'écran : posé après, l'écran de connexion
-      // s'affichait d'abord avec identifiant et mot de passe, le temps que le
-      // code soit échangé — alors qu'un QR de compte n'en demande aucun.
-      if (codeConnexion) setParcours({ mode: "compte", code: codeConnexion, enCours: true });
+      // QR de connexion d'un compte : l'écran du code s'ouvre, vide. Le code
+      // à six caractères se lit sur l'ordinateur et se saisit ici — c'est le
+      // second facteur ; une photo du QR seule ne doit ouvrir aucun compte.
+      // Posé avant l'écran : posé après, identifiant et mot de passe
+      // s'affichaient d'abord.
+      const parCode = pendingProvisioning.apercu.connexionParCode === true;
+      if (parCode) setParcours({ mode: "compte", scan: Date.now() });
       setStatus(nextStatus);
       setProvisioningSuccess(false);
       setPendingProvisioning(null);
-      // QR de connexion d'un compte : le code scanné ouvre la session tout de
-      // suite — ni identifiant, ni mot de passe, ni code à recopier.
-      if (codeConnexion) {
-        try {
-          setPaired(await api.redeemLoginCode(codeConnexion));
-          setParcours(null);
-          await refresh();
-        } catch (e) {
-          // Le code reste à l'écran, seul : ni identifiant ni autre QR à
-          // proposer, la personne a déjà dit quel compte elle veut.
-          setParcours({
-            mode: "compte",
-            code: codeConnexion,
-            erreur: e instanceof Error ? e.message : String(e),
-          });
-        }
-        return;
-      }
+      if (parCode) return;
       // « J'ai scanné, je suis là » : c'est cette annonce qui fait apparaître
       // le code sur l'écran de l'hôte, avec le nom de ce téléphone et
       // l'adresse d'où il vient. Sans elle, il n'y a rien à recopier.
@@ -455,13 +437,9 @@ export function App() {
               setStatus(s);
               remplacer("chat");
             }}
-            // Remonté à chaque scan : le code et l'erreur du nouveau QR
-            // remplacent ceux de l'essai précédent.
-            key={`${parcours?.mode ?? "identifiants"}:${parcours?.code ?? ""}:${parcours?.enCours ? "1" : "0"}:${parcours?.erreur ?? ""}`}
+            // Remonté à chaque scan : rien de l'essai précédent ne reste.
+            key={`${parcours?.mode ?? "identifiants"}:${parcours?.scan ?? 0}`}
             parcours={parcours?.mode}
-            codeInitial={parcours?.code}
-            erreurInitiale={parcours?.erreur}
-            connexionEnCours={parcours?.enCours ?? false}
             onRegistered={(s) => {
               setParcours(null);
               setStatus(s);

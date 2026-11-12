@@ -1387,6 +1387,7 @@ async fn provision_cmd(
         // canal il vient d'être produit.
         access_mode: None,
         login_code: None,
+        login: false,
         local_url: None,
     };
     let dir = std::path::PathBuf::from(out.unwrap_or_else(|| ".".into()));

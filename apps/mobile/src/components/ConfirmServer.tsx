@@ -7,7 +7,8 @@ export type ProvisioningApercu = {
   organisation: string;
   accessMode?: string | null;
   /** QR de connexion d'un compte : le code qui ouvre sa session. */
-  loginCode?: string | null;
+  /** QR de connexion d'un compte : le code se saisit, il n'est pas dans le QR. */
+  connexionParCode?: boolean;
 };
 
 const MODES: Record<string, { label: string; explication: string }> = {
@@ -192,7 +193,9 @@ export function lireApercu(brut: string): ProvisioningApercu | null {
           : typeof v.access_mode === "string"
             ? v.access_mode
             : null,
-      loginCode: typeof v.loginCode === "string" ? v.loginCode : null,
+      // `loginCode` : les QR d'avant portaient le code. Il n'est jamais
+      // repris — une photo du QR aurait suffi à ouvrir le compte.
+      connexionParCode: v.login === true || typeof v.loginCode === "string",
     };
   } catch {
     return null;
