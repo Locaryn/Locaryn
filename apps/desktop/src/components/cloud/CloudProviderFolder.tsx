@@ -89,29 +89,56 @@ export function useModelesEnLigne(
       return;
     }
     let vivant = true;
-    void Promise.all(
-      directs.map((provider) =>
-        core
-          // Relue chez le moteur : ce qui est téléchargé change d'une minute à l'autre.
-          .cloudProviderModels(provider.id, true)
-          .then((liste) =>
-            liste
-              .filter((m) => (m.kind ?? "chat") === "chat" && m.available !== false)
-              .map((model) => ({ provider, model })),
-          )
-          .catch((e: unknown) => {
-            console.warn(`[modèles] ${provider.label} :`, e);
-            return [] as ModeleEnLigne[];
-          }),
-      ),
-    ).then((listes) => {
-      if (vivant) setModeles(listes.flat());
-    });
+    let minuterie: ReturnType<typeof setTimeout> | undefined;
+    const lire = (essai: number) => {
+      void lireModelesEnLigne(directs).then(({ modeles: lus, injoignables }) => {
+        if (!vivant) return;
+        setModeles(lus);
+        // Juste après le lancement, la passerelle installe son moteur et lit
+        // son catalogue pendant plusieurs minutes : lue une seule fois, la
+        // liste restait vide et aucun badge n'apparaissait jamais.
+        if (injoignables > 0 && essai < RELECTURES_MAX) {
+          minuterie = setTimeout(() => lire(essai + 1), RELECTURE_MS);
+        }
+      });
+    };
+    lire(0);
     return () => {
       vivant = false;
+      if (minuterie !== undefined) clearTimeout(minuterie);
     };
   }, [providers, actif, relecture]);
   return modeles;
+}
+
+/** Délai entre deux lectures d'une passerelle qui ne répond pas encore. */
+const RELECTURE_MS = 15_000;
+/** Dix minutes : le temps qu'une passerelle se donne pour démarrer. */
+const RELECTURES_MAX = 40;
+
+/** Les modèles de chat proposés par ces fournisseurs, et combien n'ont pas répondu. */
+async function lireModelesEnLigne(
+  directs: CloudProvider[],
+): Promise<{ modeles: ModeleEnLigne[]; injoignables: number }> {
+  let injoignables = 0;
+  const listes = await Promise.all(
+    directs.map((provider) =>
+      core
+        // Relue chez le moteur : ce qui est téléchargé change d'une minute à l'autre.
+        .cloudProviderModels(provider.id, true)
+        .then((liste) =>
+          liste
+            .filter((m) => (m.kind ?? "chat") === "chat" && m.available !== false)
+            .map((model) => ({ provider, model })),
+        )
+        .catch((e: unknown) => {
+          injoignables += 1;
+          console.warn(`[modèles] ${provider.label} ne répond pas encore :`, e);
+          return [] as ModeleEnLigne[];
+        }),
+    ),
+  );
+  return { modeles: listes.flat(), injoignables };
 }
 
 /** Lettres et chiffres seuls : « Qwen2.5-1.5B » et « qwen2.5 1.5b » se valent. */
