@@ -10,9 +10,11 @@ use sqlx::SqlitePool;
 use std::path::Path;
 use std::str::FromStr;
 
+pub mod connexions;
 pub mod error;
 pub mod figures;
 pub mod figures_import;
+pub mod geoip;
 pub mod memory;
 pub mod metrics;
 pub mod project_context;

@@ -144,6 +144,11 @@ impl UserRepo {
         Self { pool }
     }
 
+    /// Le journal des connexions, sur la même base que les comptes.
+    pub fn connections(&self) -> crate::connexions::ConnectionRepo {
+        crate::connexions::ConnectionRepo::new(self.pool.clone())
+    }
+
     /// The first admin account, if any — the pairing host. Devices pair to
     /// an account, and on a single-host deployment that account is this one.
     pub async fn first_admin_id(&self) -> Option<Uuid> {
@@ -461,6 +466,18 @@ impl UserRepo {
         &self,
         plaintext: &str,
     ) -> Result<Option<(User, TokenKind)>, StorageError> {
+        Ok(self
+            .token_owner_with_id(plaintext)
+            .await?
+            .map(|(u, k, _)| (u, k)))
+    }
+
+    /// Comme [`Self::token_owner`], avec l'identifiant du jeton : le journal
+    /// des connexions rattache une nouvelle adresse à l'appareil qui l'utilise.
+    pub async fn token_owner_with_id(
+        &self,
+        plaintext: &str,
+    ) -> Result<Option<(User, TokenKind, Uuid)>, StorageError> {
         if plaintext.trim().is_empty() {
             return Ok(None);
         }
@@ -498,7 +515,12 @@ impl UserRepo {
             let kind = TokenKind::parse(t.kind.as_deref().unwrap_or("session"));
             return match user {
                 // A disabled account's tokens stop working immediately.
-                Some(u) if u.disabled_at.is_none() => Ok(Some((u.to_user()?, kind))),
+                Some(u) if u.disabled_at.is_none() => {
+                    let Ok(token_id) = Uuid::parse_str(&t.id) else {
+                        return Ok(None);
+                    };
+                    Ok(Some((u.to_user()?, kind, token_id)))
+                }
                 _ => Ok(None),
             };
         }
@@ -512,6 +534,35 @@ impl UserRepo {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    /// Révoquer un jeton seulement s'il appartient à ce compte : un membre
+    /// ne déconnecte pas les appareils d'un autre. `false` : rien de tel.
+    pub async fn revoke_own_token(
+        &self,
+        user_id: Uuid,
+        token_id: Uuid,
+    ) -> Result<bool, StorageError> {
+        let res = sqlx::query(
+            "UPDATE auth_tokens SET revoked_at = ?              WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+        )
+        .bind(Utc::now().to_rfc3339())
+        .bind(token_id.to_string())
+        .bind(user_id.to_string())
+        .execute(&self.pool)
+        .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// Un compte par son identifiant, désactivé ou non.
+    pub async fn get(&self, user_id: Uuid) -> Result<Option<User>, StorageError> {
+        let row = sqlx::query_as::<_, UserRow>(
+            "SELECT id, username, password_hash, role, disabled_at FROM users WHERE id = ?",
+        )
+        .bind(user_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|r| r.to_user()).transpose()
     }
 
     pub async fn set_disabled(&self, user_id: Uuid, disabled: bool) -> Result<(), StorageError> {
@@ -572,6 +623,10 @@ impl UserRepo {
 
     pub async fn delete(&self, user_id: Uuid) -> Result<bool, StorageError> {
         let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM auth_connections WHERE user_id = ?")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM auth_tokens WHERE user_id = ?")
             .bind(user_id.to_string())
             .execute(&mut *tx)

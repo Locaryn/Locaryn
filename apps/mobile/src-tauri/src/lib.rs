@@ -593,7 +593,14 @@ pub(crate) fn client_for_with(
     server: &servers::KnownServer,
     timeout: std::time::Duration,
 ) -> Result<reqwest::Client, String> {
-    let mut builder = reqwest::Client::builder().timeout(timeout);
+    // Le serveur range la connexion sous « application mobile » d'après ce nom.
+    let mut builder = reqwest::Client::builder()
+        .timeout(timeout)
+        .user_agent(format!(
+            "Locaryn-Mobile/{} ({})",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS
+        ));
 
     let autorite = if server.authority_pem.trim().is_empty() {
         None

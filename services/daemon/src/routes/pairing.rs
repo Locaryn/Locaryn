@@ -423,6 +423,8 @@ const ECHECS_FENETRE: std::time::Duration = std::time::Duration::from_secs(300);
 /// session d'appareil pour le compte qu'il désigne. Une seule fois.
 pub async fn redeem_login_code(
     State(s): State<Arc<DaemonState>>,
+    pair: Option<ConnectInfo<SocketAddr>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<RedeemBody>,
 ) -> Response {
     {
@@ -459,6 +461,15 @@ pub async fn redeem_login_code(
     {
         Ok(tok) => {
             tracing::info!(compte = %trouve.username, "connexion par code temporaire");
+            crate::connexions::noter(
+                &s.users.connections(),
+                trouve.user_id,
+                tok.id,
+                crate::connexions::adresse(pair.map(|p| p.0)).as_deref(),
+                crate::connexions::user_agent(&headers).as_deref(),
+                locaryn_storage::connexions::Method::Code,
+            )
+            .await;
             Json(serde_json::json!({
                 "token": tok.plaintext,
                 "expires_at": tok.expires_at,
@@ -600,6 +611,8 @@ pub struct PairAnnounceBody {
 /// délivre alors un token de session dédié à l'appareil.
 pub async fn confirm(
     State(s): State<Arc<DaemonState>>,
+    pair: Option<ConnectInfo<SocketAddr>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<PairConfirmBody>,
 ) -> Response {
     let code_saisi = body.pairing_code.trim();
@@ -663,6 +676,15 @@ pub async fn confirm(
     {
         Ok(tok) => {
             tracing::info!("appairage confirmé, token de session appareil émis");
+            crate::connexions::noter(
+                &s.users.connections(),
+                admin_id,
+                tok.id,
+                crate::connexions::adresse(pair.map(|p| p.0)).as_deref(),
+                crate::connexions::user_agent(&headers).as_deref(),
+                locaryn_storage::connexions::Method::Pairing,
+            )
+            .await;
             let etiquette = label_appareil(&body.device_label);
             Json(serde_json::json!({
                 "token": tok.plaintext,

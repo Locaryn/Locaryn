@@ -86,6 +86,8 @@ pub struct AuthState {
     /// Le jeton du poste (voir [`jeton_du_poste`]) : accepté depuis la boucle
     /// locale seulement, au nom du premier administrateur.
     pub jeton_poste: Option<String>,
+    /// La base de géolocalisation locale, si la personne l'a installée.
+    pub geo_base: Option<std::path::PathBuf>,
 }
 
 impl AuthState {
@@ -95,6 +97,7 @@ impl AuthState {
             required,
             api_active: api_fournisseur::active,
             jeton_poste: None,
+            geo_base: None,
         }
     }
 }
@@ -246,8 +249,8 @@ pub async fn require_token(
         }
     }
 
-    match state.users.token_owner(&token).await {
-        Ok(Some((user, kind))) => {
+    match state.users.token_owner_with_id(&token).await {
+        Ok(Some((user, kind, token_id))) => {
             if kind == TokenKind::Api {
                 // Une clé d'API ne sert que les modèles : confiée à un
                 // éditeur, elle n'ouvre ni les conversations, ni les
@@ -263,6 +266,23 @@ pub async fn require_token(
                     return api_eteinte();
                 }
             }
+            if kind == TokenKind::Session {
+                let pair = req
+                    .extensions()
+                    .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                    .map(|c| c.0);
+                let ua = crate::connexions::user_agent(req.headers());
+                crate::connexions::noter_activite(
+                    &state.users.connections(),
+                    user.id,
+                    token_id,
+                    crate::connexions::adresse(pair).as_deref(),
+                    ua.as_deref(),
+                )
+                .await;
+            }
+            req.extensions_mut()
+                .insert(crate::connexions::JetonCourant(token_id));
             // Downstream handlers can scope work to the caller — which is what
             // will keep one user's distributed tasks off another user's machines.
             req.extensions_mut().insert(user);
@@ -326,8 +346,10 @@ fn trop_d_essais(attente: std::time::Duration) -> Response {
 pub async fn login(
     State(state): State<Arc<AuthState>>,
     pair: Option<axum::extract::ConnectInfo<std::net::SocketAddr>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<LoginBody>,
 ) -> Response {
+    let ip = crate::connexions::adresse(pair.as_ref().map(|p| p.0));
     let cles = match pair {
         Some(axum::extract::ConnectInfo(a)) => crate::frein_connexion::cles(a.ip(), &body.username),
         None => vec![format!("compte:{}", body.username.trim().to_lowercase())],
@@ -348,19 +370,30 @@ pub async fn login(
                 .issue_token(user.id, body.label.as_deref(), 30)
                 .await
             {
-                Ok(tok) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({
-                        "token": tok.plaintext,
-                        "expires_at": tok.expires_at,
-                        "user": {
-                            "id": user.id,
-                            "username": user.username,
-                            "role": if user.role == Role::Admin { "admin" } else { "member" },
-                        }
-                    })),
-                )
-                    .into_response(),
+                Ok(tok) => {
+                    crate::connexions::noter(
+                        &state.users.connections(),
+                        user.id,
+                        tok.id,
+                        ip.as_deref(),
+                        crate::connexions::user_agent(&headers).as_deref(),
+                        locaryn_storage::connexions::Method::Password,
+                    )
+                    .await;
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({
+                            "token": tok.plaintext,
+                            "expires_at": tok.expires_at,
+                            "user": {
+                                "id": user.id,
+                                "username": user.username,
+                                "role": if user.role == Role::Admin { "admin" } else { "member" },
+                            }
+                        })),
+                    )
+                        .into_response()
+                }
                 Err(e) => {
                     tracing::error!(error = %e, "émission du jeton impossible");
                     (
@@ -575,11 +608,18 @@ pub async fn revoke_token(
         )
             .into_response();
     };
-    match state.users.revoke_token(token_id).await {
-        Ok(()) => {
+    // Seulement les jetons du compte appelant : un membre ne déconnecte pas
+    // les appareils d'un autre en devinant un identifiant.
+    match state.users.revoke_own_token(u.id, token_id).await {
+        Ok(true) => {
             tracing::info!(user = %u.username, "jeton révoqué");
             (StatusCode::OK, Json(serde_json::json!({ "revoked": true }))).into_response()
         }
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "token_not_found" })),
+        )
+            .into_response(),
         Err(e) => {
             tracing::error!(error = %e, "révocation impossible");
             (
@@ -825,6 +865,112 @@ mod tests {
             statut(depuis([127, 0, 0, 1], &"b".repeat(64))).await,
             StatusCode::UNAUTHORIZED
         );
+    }
+
+    #[tokio::test]
+    async fn une_nouvelle_adresse_entre_au_journal_et_seul_le_proprietaire_deconnecte() {
+        use tower::ServiceExt as _;
+        let pool = locaryn_storage::open_in_memory().await.unwrap();
+        let repo = UserRepo::new(pool);
+        let alice = repo
+            .create("alice", "un-mot-de-passe-solide", Role::Admin)
+            .await
+            .unwrap();
+        repo.create("bruno", "un-mot-de-passe-solide", Role::Member)
+            .await
+            .unwrap();
+        let tel = repo
+            .issue_token(alice.id, Some("téléphone"), 30)
+            .await
+            .unwrap();
+        let etat = Arc::new(AuthState::new(repo.clone(), true));
+        let app = axum::Router::new()
+            .route("/v1/sessions", axum::routing::get(|| async { "sessions" }))
+            .route(
+                "/v1/auth/devices",
+                axum::routing::get(crate::connexions::appareils),
+            )
+            .route("/v1/auth/login", axum::routing::post(login))
+            .route("/v1/auth/tokens/:id", axum::routing::delete(revoke_token))
+            .with_state(etat.clone())
+            .layer(axum::middleware::from_fn_with_state(etat, require_token));
+        let requete = |methode: &str, uri: &str, jeton: Option<&str>, ip: [u8; 4], corps: &str| {
+            let mut b = Request::builder()
+                .method(methode)
+                .uri(uri)
+                .header("user-agent", "Locaryn-Mobile/0.4.72 (android)")
+                .header("content-type", "application/json");
+            if let Some(j) = jeton {
+                b = b.header("authorization", format!("Bearer {j}"));
+            }
+            let mut req = b.body(Body::from(corps.to_string())).unwrap();
+            req.extensions_mut()
+                .insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+                    ip, 4000,
+                ))));
+            req
+        };
+        for ip in [[192, 168, 1, 5], [192, 168, 1, 5], [203, 0, 113, 9]] {
+            let r = app
+                .clone()
+                .oneshot(requete("GET", "/v1/sessions", Some(&tel.plaintext), ip, ""))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::OK);
+        }
+        let r = app
+            .clone()
+            .oneshot(requete(
+                "GET",
+                "/v1/auth/devices",
+                Some(&tel.plaintext),
+                [203, 0, 113, 9],
+                "",
+            ))
+            .await
+            .unwrap();
+        let corps = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&corps).unwrap();
+        let appareil = &v["devices"][0];
+        assert_eq!(appareil["current"], true);
+        assert_eq!(appareil["client"], "mobile");
+        let historique = appareil["history"].as_array().unwrap();
+        assert_eq!(
+            historique.len(),
+            2,
+            "une ligne par adresse, pas par requête"
+        );
+        assert_eq!(historique[0]["ip"], "203.0.113.9");
+        assert_eq!(historique[1]["location"], "Réseau local");
+
+        // Bruno se connecte et tente de déconnecter le téléphone d'Alice.
+        let r = app
+            .clone()
+            .oneshot(requete(
+                "POST",
+                "/v1/auth/login",
+                None,
+                [10, 0, 0, 3],
+                r#"{"username":"bruno","password":"un-mot-de-passe-solide"}"#,
+            ))
+            .await
+            .unwrap();
+        let corps = axum::body::to_bytes(r.into_body(), 1 << 20).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&corps).unwrap();
+        let jeton_bruno = v["token"].as_str().unwrap().to_string();
+        let r = app
+            .clone()
+            .oneshot(requete(
+                "DELETE",
+                &format!("/v1/auth/tokens/{}", tel.id),
+                Some(&jeton_bruno),
+                [10, 0, 0, 3],
+                "",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert!(repo.token_owner(&tel.plaintext).await.unwrap().is_some());
     }
 
     #[tokio::test]

@@ -88,6 +88,8 @@ rustls      = { version = "0.23", default-features = false, features = ["ring"] 
 reqwest     = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
 sqlx        = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "macros", "migrate", "chrono"] }
 chrono      = { version = "0.4", features = ["serde"] }
+# Lecture de la base de géolocalisation locale (DB-IP Lite, format MaxMind).
+maxminddb   = "0.33"
 uuid        = { version = "1.11", features = ["v4", "serde"] }
 clap        = { version = "4.5", features = ["derive", "env"] }
 futures     = "0.3"

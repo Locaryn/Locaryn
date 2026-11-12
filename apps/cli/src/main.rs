@@ -296,6 +296,8 @@ enum DaemonCmd {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Le serveur range ces connexions sous « terminal ».
+    locaryn_sdk::secure_client::set_client_name("Cli");
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

@@ -130,6 +130,27 @@ fn identity(pem: &str) -> Option<(Vec<CertificateDer<'static>>, PrivateKeyDer<'s
     (!certs.is_empty()).then_some((certs, key))
 }
 
+/// Le nom sous lequel ce programme se présente au serveur ; le serveur range
+/// ses connexions par type de client (application PC, terminal…) d'après lui.
+static CLIENT: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// À appeler une fois au démarrage d'un programme qui n'est pas l'application
+/// de bureau (`"Cli"` pour le terminal). Sans appel : `"Desktop"`.
+pub fn set_client_name(nom: &'static str) {
+    if CLIENT.set(nom).is_err() {
+        tracing::debug!("nom du client déjà fixé");
+    }
+}
+
+fn user_agent() -> String {
+    format!(
+        "Locaryn-{}/{} ({})",
+        CLIENT.get().copied().unwrap_or("Desktop"),
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS
+    )
+}
+
 /// Build a client for one server.
 ///
 /// `client_pem` is the installed identity bundle, `authority_pem` the
@@ -207,6 +228,7 @@ pub fn build(
     reqwest::Client::builder()
         .use_preconfigured_tls(config)
         .timeout(timeout)
+        .user_agent(user_agent())
         .build()
         .map_err(|e| format!("client HTTP : {e}"))
 }

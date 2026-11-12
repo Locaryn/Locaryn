@@ -30,6 +30,7 @@ use std::collections::HashMap;
 mod acces_public;
 mod auth;
 mod chat_gpu;
+mod connexions;
 mod frein_connexion;
 mod live;
 mod media;
@@ -334,6 +335,7 @@ async fn main() -> anyhow::Result<()> {
     if exposed {
         auth_state.jeton_poste = auth::jeton_du_poste(&data_dir_for_tls);
     }
+    auth_state.geo_base = Some(locaryn_storage::geoip::database_path(&data_dir_for_tls));
     let auth_state = std::sync::Arc::new(auth_state);
 
     // L'API fournisseur en HTTP simple sur 127.0.0.1 : un éditeur de cette
@@ -630,6 +632,7 @@ async fn main() -> anyhow::Result<()> {
                     get(auth::list_tokens).post(auth::create_api_token),
                 )
                 .route("/v1/auth/tokens/:id", delete(auth::revoke_token))
+                .route("/v1/auth/devices", get(connexions::appareils))
                 .route("/v1/users", get(auth::list_users).post(auth::create_user))
                 .route("/v1/users/:id", delete(auth::delete_user))
                 .with_state(auth_state.clone()),
