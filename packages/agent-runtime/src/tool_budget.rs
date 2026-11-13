@@ -687,6 +687,9 @@ const MOTS_NAVIGATEUR_EXTERNE: &[&str] = &[
     "opera",
     "brave",
     "safari",
+    "vivaldi",
+    // Comet (Perplexity) se présente comme Chrome : l'extension la nomme.
+    "comet",
     "mon navigateur",
     "extension",
 ];
@@ -1405,5 +1408,14 @@ mod tests {
         assert!(d.navigateur_externe);
         let d = demande_ecran("prends le contrôle de mon ordinateur");
         assert_eq!(d.bureau, Some(true));
+    }
+
+    #[test]
+    fn une_consigne_venue_de_la_barre_laterale_d_un_navigateur_vise_ce_navigateur() {
+        let d = demande_ecran(
+            "remplis le formulaire\n\n(Consigne envoyée depuis la barre latérale de Comet — browser « comet »)",
+        );
+        assert!(d.navigateur && d.navigateur_externe);
+        assert!(demande_ecran("ouvre-le dans Vivaldi").navigateur_externe);
     }
 }
