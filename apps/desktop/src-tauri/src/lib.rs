@@ -8000,6 +8000,7 @@ pub fn run() {
             memory::forget_all_memory,
             memory::run_memory_command,
             memory::force_memory_sort,
+            memory::memory_sort_ready,
             memory::memory_sort_status,
             memory::get_welcome_suggestions,
             local_profile::get_local_profile,

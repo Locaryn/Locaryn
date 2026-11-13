@@ -2411,8 +2411,12 @@ export interface CoreApi {
   forgetAllMemory(): Promise<number>;
   /** La boîte de commande : décrire ce qu'il faut changer, plutôt que le faire à la main. */
   runMemoryCommand(instruction: string): Promise<MemoryCommandResult>;
-  /** Trie toute la mémoire maintenant, sans attendre l'inactivité du modèle. */
-  forceMemorySort(): Promise<void>;
+  /** Trie toute la mémoire maintenant, sans attendre l'inactivité du modèle.
+   *  `choix` : un modèle distant pour ce tri seulement. */
+  forceMemorySort(choix?: { provider: string; model: string }): Promise<void>;
+  /** Un modèle trierait-il sans rien demander (moteur local chargé, ou
+   *  fournisseur autorisé pour le tri) ? */
+  memorySortReady(): Promise<boolean>;
   memorySortStatus(): Promise<MemorySortStatus>;
   /** Les phrases proposées à l'ouverture d'une conversation. */
   welcomeSuggestions(): Promise<WelcomeSuggestions>;
@@ -3089,7 +3093,12 @@ const tauriCore: CoreApi = {
   forgetAllMemory: () => invoke<number>("forget_all_memory"),
   runMemoryCommand: (instruction) =>
     invoke<MemoryCommandResult>("run_memory_command", { instruction }),
-  forceMemorySort: () => invoke<void>("force_memory_sort"),
+  forceMemorySort: (choix) =>
+    invoke<void>("force_memory_sort", {
+      provider: choix?.provider ?? null,
+      model: choix?.model ?? null,
+    }),
+  memorySortReady: () => invoke<boolean>("memory_sort_ready"),
   memorySortStatus: () => invoke<MemorySortStatus>("memory_sort_status"),
   welcomeSuggestions: () => invoke<WelcomeSuggestions>("get_welcome_suggestions"),
   listExtensions: () => invoke<InstalledExtension[]>("list_extensions"),
@@ -5449,6 +5458,7 @@ Contenu de démonstration, avec **du gras** et une liste :
     unloadInSecs: null,
   }),
   welcomeSuggestions: async () => ({ simple: [], expert: [] }),
+  memorySortReady: async () => false,
   runMemoryCommand: async () => ({
     summary: "Mode aperçu navigateur : la boîte de commande a besoin d'un moteur actif.",
     applied: 0,

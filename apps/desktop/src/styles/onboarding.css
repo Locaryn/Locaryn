@@ -612,11 +612,54 @@
   font-size: var(--text-sm);
   line-height: 1.5;
 }
-.locaryn-sort-head .locaryn-btn-primary {
+.locaryn-sort-head .locaryn-btn-primary,
+.locaryn-sort-head .locaryn-btn-ghost {
   display: inline-flex;
   gap: 8px;
   align-items: center;
   min-height: 44px;
+}
+/* Choisir un modèle distant pour un tri unique. */
+.locaryn-sort-pick {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  animation: lo-ob-rise 220ms var(--ease) both;
+}
+@media (min-width: 640px) {
+  .locaryn-sort-pick {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    align-items: end;
+  }
+}
+.locaryn-sort-pick label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+.locaryn-sort-pick select {
+  width: 100%;
+  min-height: 44px;
+}
+.locaryn-sort-pick-actions {
+  display: flex;
+  gap: 8px;
+}
+.locaryn-sort-pick-actions button {
+  min-height: 44px;
+}
+.locaryn-sort-pick-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  line-height: 1.5;
 }
 .locaryn-sort-body {
   display: flex;

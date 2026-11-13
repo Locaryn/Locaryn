@@ -205,6 +205,49 @@ pub async fn cible(core: &Core, tache: Tache, explicite: bool) -> Option<Cible> 
     })
 }
 
+/// Un modèle de fournisseur choisi à l'instant pour une tâche : il ne devient
+/// pas le modèle de la conversation, et rien n'est retenu.
+pub async fn cible_ponctuelle(core: &Core, provider: &str, model: &str) -> Result<Cible, String> {
+    if model.trim().is_empty() {
+        return Err("Choisissez un modèle.".into());
+    }
+    let m = crate::cloud_providers::modele_distant(core, provider, model).await?;
+    let http = m.http_autorite.unwrap_or_else(|| client(m.cle.as_deref()));
+    Ok(Cible {
+        endpoint: m.endpoint,
+        modele: m.modele,
+        http,
+        distant: true,
+    })
+}
+
+/// Un fournisseur autorisé pour cette tâche avec un modèle à lui, même quand
+/// la conversation tourne sur un modèle local. Sans cela, la case cochée dans
+/// le dossier du fournisseur ne servait que si son modèle était déjà actif :
+/// un tri avec le moteur local déchargé échouait sur « aucun modèle chargé ».
+async fn fournisseur_autorise(core: &Core, tache: Tache) -> Option<Cible> {
+    for (fournisseur, reglages) in lire(&core.data_dir) {
+        let a = reglages.pour(tache);
+        let Some(modele) = a.modele.as_deref().filter(|m| a.actif && !m.trim().is_empty()) else {
+            continue;
+        };
+        match cible_ponctuelle(core, &fournisseur, modele).await {
+            Ok(c) => return Some(c),
+            Err(e) => tracing::info!(%fournisseur, raison = %e, "fournisseur autorisé inutilisable"),
+        }
+    }
+    None
+}
+
+/// Le modèle d'une tâche de fond, ou à défaut un fournisseur que la personne a
+/// autorisé pour elle avec un modèle choisi.
+pub async fn cible_ou_autorise(core: &Core, tache: Tache) -> Option<Cible> {
+    match cible(core, tache, false).await {
+        Some(c) => Some(c),
+        None => fournisseur_autorise(core, tache).await,
+    }
+}
+
 /// Les autorisations d'un fournisseur, pour son dossier.
 #[tauri::command]
 pub fn taches_distantes(core: State<'_, Core>, provider_id: String) -> Reglages {

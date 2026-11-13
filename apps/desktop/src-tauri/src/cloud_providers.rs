@@ -31,6 +31,46 @@ pub fn key_for_active_provider(
     cloud::key_for_active_provider(&host(core), provider)
 }
 
+/// Un modèle d'un fournisseur pour une tâche ponctuelle (un tri de la mémoire
+/// demandé à l'instant), sans en faire le modèle de la conversation : son
+/// adresse, le nom du modèle tel que le fournisseur l'attend, sa clé, et le
+/// client de son autorité quand c'est un autre PC Locaryn.
+pub struct ModeleDistant {
+    pub endpoint: String,
+    pub modele: String,
+    pub cle: Option<String>,
+    pub http_autorite: Option<reqwest::Client>,
+}
+
+pub async fn modele_distant(
+    core: &Core,
+    provider: &str,
+    model: &str,
+) -> Result<ModeleDistant, String> {
+    let h = host(core);
+    let p = cloud::find(&h, provider).await?;
+    let cle = cloud::stored_key(&h, &p.id);
+    if cloud::key_required(&p) && cle.is_none() {
+        return Err(format!(
+            "Aucune clé enregistrée pour {}. Collez la vôtre dans son dossier.",
+            p.label()
+        ));
+    }
+    let http_autorite = match p.autorite.as_deref() {
+        Some(pem) => Some(cloud::serveurs::client_pour(
+            Some(pem),
+            Some(std::time::Duration::from_secs(600)),
+        )?),
+        None => None,
+    };
+    Ok(ModeleDistant {
+        endpoint: p.manifest.api_url.trim_end_matches('/').to_string(),
+        modele: cloud::strip_provider_prefix(&p.id, model.trim()),
+        cle,
+        http_autorite,
+    })
+}
+
 /// Le modèle distant actif vient d'échouer : s'il est introuvable chez son
 /// fournisseur, il sort de la liste jusqu'à sa prochaine sonde.
 pub fn signaler_echec_du_modele(

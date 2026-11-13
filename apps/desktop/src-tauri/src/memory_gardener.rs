@@ -218,8 +218,8 @@ pub fn lancer(app: AppHandle) {
 /// Le modèle qui trie : le moteur local déjà chargé, ou un fournisseur que la
 /// personne a autorisé pour ce tri. `None` : rien à faire, et rien n'est
 /// rechargé pour ça.
-async fn moteur_pret(core: &Core) -> Option<crate::taches_fond::Cible> {
-    crate::taches_fond::cible(core, crate::taches_fond::Tache::Memoire, false).await
+pub async fn moteur_pret(core: &Core) -> Option<crate::taches_fond::Cible> {
+    crate::taches_fond::cible_ou_autorise(core, crate::taches_fond::Tache::Memoire).await
 }
 
 /// Personne ne se sert du modèle depuis deux minutes. Le moteur local le dit
@@ -400,18 +400,10 @@ async fn un_passage(core: &Core) -> Result<(), String> {
 /// Tout l'historique est relu, la mémoire est rangée, les phrases d'accueil
 /// sont réécrites. Pendant ce temps le modèle est tenu comme utilisé : le
 /// délai avant déchargement ne court pas, et il repart de zéro à la fin.
-pub async fn trier_maintenant(core: &Core) -> Result<(), String> {
+pub async fn trier_maintenant(core: &Core, cible: crate::taches_fond::Cible) -> Result<(), String> {
     if progression().running {
         return Err("Un tri est déjà en cours.".into());
     }
-    let Some(cible) = moteur_pret(core).await else {
-        return Err(
-            "Aucun modèle local n'est chargé, et aucun fournisseur n'est autorisé pour le tri \
-             (dossier du fournisseur, dans la liste des modèles). Envoyez un message à un modèle \
-             local pour le charger, puis relancez le tri."
-                .into(),
-        );
-    };
     let echanges = collecter(core, None).await?;
     let sessions: HashSet<uuid::Uuid> = echanges.iter().map(|e| e.session).collect();
     progression_modifier(|p| {

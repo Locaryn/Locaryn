@@ -295,42 +295,48 @@ pub async fn list_model_metrics(
 
 /// Lance le tri complet de la mémoire, sans attendre l'inactivité. Rend la
 /// main aussitôt ; l'avancement se lit avec `memory_sort_status`.
+///
+/// `provider` + `model` : un modèle distant choisi pour ce tri seulement. Sans
+/// eux, le moteur local chargé, ou un fournisseur autorisé pour le tri.
 #[tauri::command]
-pub async fn force_memory_sort(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn force_memory_sort(
+    app: tauri::AppHandle,
+    provider: Option<String>,
+    model: Option<String>,
+) -> Result<(), String> {
     if crate::memory_gardener::progression().running {
         return Err("Un tri est déjà en cours.".into());
     }
-    // Refuser tout de suite quand il n'y a pas de modèle chargé : l'erreur
-    // arrive dans la réponse du clic, pas dans un état lu plus tard.
-    {
+    // Le modèle se résout avant de rendre la main : l'erreur arrive dans la
+    // réponse du clic, pas dans un état lu plus tard.
+    let cible = {
         let core = app.state::<Core>();
-        let providers = core
-            .storage
-            .providers
-            .active()
-            .await
-            .map_err(|e| e.to_string())?;
-        let charge = match providers {
-            Some(p) => {
-                p.engine == locaryn_shared_types::ProviderEngine::LlamaCpp
-                    && core.supervisor.is_healthy(&p.engine).await
-            }
-            None => false,
-        };
-        if !charge {
-            return Err(
-                "Aucun modèle local n'est chargé. Envoyez un message pour le charger, puis                  relancez le tri."
-                    .into(),
-            );
+        match (provider.as_deref(), model.as_deref()) {
+            (Some(p), Some(m)) => crate::taches_fond::cible_ponctuelle(&core, p, m).await?,
+            _ => crate::memory_gardener::moteur_pret(&core)
+                .await
+                .ok_or_else(|| SANS_MODELE.to_string())?,
         }
-    }
+    };
     tauri::async_runtime::spawn(async move {
         let core = app.state::<Core>();
-        if let Err(e) = crate::memory_gardener::trier_maintenant(&core).await {
+        if let Err(e) = crate::memory_gardener::trier_maintenant(&core, cible).await {
             tracing::warn!(erreur = %e, "tri forcé de la mémoire interrompu");
         }
     });
     Ok(())
+}
+
+/// Le refus quand rien ne peut trier ; l'interface propose alors un modèle
+/// distant pour ce tri.
+const SANS_MODELE: &str = "Aucun modèle local n'est chargé, et aucun fournisseur n'est autorisé \
+                           pour le tri. Choisissez un modèle distant pour ce tri.";
+
+/// Ce qui trierait maintenant sans rien demander : `true` quand le moteur
+/// local est chargé ou qu'un fournisseur est autorisé pour le tri.
+#[tauri::command]
+pub async fn memory_sort_ready(core: State<'_, Core>) -> Result<bool, String> {
+    Ok(crate::memory_gardener::moteur_pret(&core).await.is_some())
 }
 
 /// Où en est le tri : conversations lues, tâches faites, ce qui a été appris.
