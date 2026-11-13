@@ -561,8 +561,8 @@ export function ExtensionsSettings() {
     if (tab === "browse") await loadCatalog();
     setNotice(
       enable
-        ? `${ext.name} installée et activée — ${componentSummary(ext)}.`
-        : `${ext.name} installée, désactivée pour l'instant.`,
+        ? `${ext.display_name || ext.name} installée et activée — ${componentSummary(ext)}.`
+        : `${ext.display_name || ext.name} installée, désactivée pour l'instant.`,
     );
   }
 
@@ -635,12 +635,12 @@ export function ExtensionsSettings() {
       await refreshUpdates(true);
       setNotice(
         enable
-          ? `Autorisations de ${ext.name} enregistrées — ${componentSummary(ext)}.`
-          : `Autorisations de ${ext.name} enregistrées, extension laissée inactive.`,
+          ? `Autorisations de ${ext.display_name || ext.name} enregistrées — ${componentSummary(ext)}.`
+          : `Autorisations de ${ext.display_name || ext.name} enregistrées, extension laissée inactive.`,
       );
       return;
     }
-    setNotice(`Permissions de ${ext.name} enregistrées.`);
+    setNotice(`Permissions de ${ext.display_name || ext.name} enregistrées.`);
   }
 
   async function toggleEnabled(e: InstalledExtension) {
@@ -677,7 +677,7 @@ export function ExtensionsSettings() {
       const next = await core.updateExtension(e.id);
       await loadInstalled();
       await refreshUpdates(true);
-      setNotice(`${next.name} mise à jour — v${next.version}.`);
+      setNotice(`${next.display_name || next.name} mise à jour — v${next.version}.`);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -759,7 +759,7 @@ export function ExtensionsSettings() {
   }
 
   async function remove(e: InstalledExtension) {
-    if (!(await confirmer(`Désinstaller « ${e.name} » et supprimer ses fichiers ?`))) return;
+    if (!(await confirmer(`Désinstaller « ${e.display_name || e.name} » et supprimer ses fichiers ?`))) return;
     setBusy(e.id);
     try {
       publishInstalled(await core.removeExtension(e.id));
@@ -1187,7 +1187,7 @@ export function ExtensionsSettings() {
                           <div className="locaryn-box-head">
                             <div style={{ minWidth: 0 }}>
                               <h3 className="locaryn-box-name" data-no-translate>
-                                {e.name}
+                                {e.display_name || e.name}
                               </h3>
                               <span className="locaryn-box-brand">
                                 v{e.version} · driver {e.core?.driver}
@@ -1359,7 +1359,7 @@ export function ExtensionsSettings() {
                         <div className="locaryn-box-head">
                           <div>
                             <h3 className="locaryn-box-name" data-no-translate>
-                              {e.name}
+                              {e.display_name || e.name}
                             </h3>
                             <span className="locaryn-box-brand">
                               v{e.version}

@@ -465,10 +465,15 @@ async fn build_installed(core: &Core) -> Result<Vec<InstalledExtension>, String>
 
         out.push(InstalledExtension {
             id: row.id,
+            // Le nom produit du manifeste, le même que la boutique affiche :
+            // le slug ne sert qu'à défaut (« morph-voice-live » une fois
+            // installé, « Conversation vocale » dans la boutique).
             display_name: manifest
                 .as_ref()
-                .and_then(|m| m.description.as_ref())
-                .map(|_| row.name.clone())
+                .and_then(|m| m.display_name.as_deref())
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+                .map(str::to_string)
                 .unwrap_or_else(|| row.name.clone()),
             name: row.name.clone(),
             version: row.version,

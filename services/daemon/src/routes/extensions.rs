@@ -225,7 +225,14 @@ fn entry_to_installed(
     locaryn_shared_types::InstalledExtension {
         id: e.id,
         name: e.name.clone(),
-        display_name: e.name.clone(),
+        // Le nom produit du manifeste, comme la boutique ; le slug à défaut.
+        display_name: manifest
+            .as_ref()
+            .and_then(|m| m.display_name.as_deref())
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| e.name.clone()),
         version: e.version.clone(),
         api_version: e.api_version.clone(),
         description: manifest.as_ref().and_then(|m| m.description.clone()),

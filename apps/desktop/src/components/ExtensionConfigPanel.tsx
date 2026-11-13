@@ -565,7 +565,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
         open
         className="locaryn-card locaryn-modal-card"
         aria-modal="true"
-        aria-label={`Réglages de ${extension.name}`}
+        aria-label={`Réglages de ${extension.display_name || extension.name}`}
         style={{
           width: "min(680px, 92vw)",
           maxHeight: "82vh",
@@ -574,7 +574,7 @@ export function ExtensionConfigPanel({ extension, onClose }: Props) {
           padding: 20,
         }}
       >
-        <h3 style={{ marginBottom: 2 }}>{extension.name}</h3>
+        <h3 style={{ marginBottom: 2 }}>{extension.display_name || extension.name}</h3>
         <p className="locaryn-field-hint" style={{ marginBottom: 16 }}>
           v{extension.version}
           {extension.author ? ` · ${extension.author}` : ""} — réglages fournis par l'extension

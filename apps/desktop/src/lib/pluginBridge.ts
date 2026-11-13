@@ -144,6 +144,13 @@ export interface LocarynPluginAPI {
     on: (eventName: string, handler: (data: unknown) => void) => () => void;
     emit: (eventName: string, data?: unknown) => void;
   };
+  /** Les réglages que la personne a posés dans « Régler » (les champs de
+   *  `ui_contributions.settings_sections`). Un morph d'interface seule n'a
+   *  pas de serveur pour les lire dans son dossier : il les demande ici,
+   *  par le nom de son manifeste. */
+  settings: {
+    get: (extension: string) => Promise<Record<string, unknown>>;
+  };
 }
 
 /** Le modèle actif de la conversation et les modèles installés. */
@@ -385,6 +392,14 @@ class PluginBridgeManager {
         select: async (tag: string) => {
           if (!this.modelContext) throw new Error("Aucune conversation affichée.");
           await this.modelContext.select(tag);
+        },
+      },
+      settings: {
+        get: async (extension: string) => {
+          const installees = await core.listExtensions();
+          const cible = installees.find((e) => e.name === extension);
+          if (!cible) throw new Error(`Extension « ${extension} » non installée.`);
+          return (await core.getExtensionConfig(cible.id)).values;
         },
       },
       events: {
