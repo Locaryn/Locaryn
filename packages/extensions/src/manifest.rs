@@ -839,6 +839,17 @@ pub struct UiContributions {
     pub settings_sections: Vec<SettingsSection>,
 }
 
+impl UiContributions {
+    /// Vrai quand l'extension n'ajoute rien à l'interface.
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+            && self.nav_items.is_empty()
+            && self.studio_tabs.is_empty()
+            && self.composer_actions.is_empty()
+            && self.settings_sections.is_empty()
+    }
+}
+
 /// Contribution d'un composant ou d'une action à un point d'extension (Slot) de l'interface.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UiSlotContribution {

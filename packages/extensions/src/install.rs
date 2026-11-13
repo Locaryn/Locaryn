@@ -103,10 +103,13 @@ async fn install_into(
     // one of those counters despite being a complete, working package:
     // nothing to load in the loader's sense, but very much not nothing to
     // install.
-    let manifest_declares_a_provider_or_engine = report.manifest.cloud_provider.is_some()
+    // Même chose pour un morph d'interface seule (un bouton posé à côté du
+    // champ, un panneau) : `morph-voice-live` était refusé comme « vide ».
+    let manifest_declares_its_own_content = report.manifest.cloud_provider.is_some()
         || report.manifest.engine.is_some()
-        || report.manifest.core.is_some();
-    if loaded.counts().is_empty() && !manifest_declares_a_provider_or_engine {
+        || report.manifest.core.is_some()
+        || !report.manifest.ui.is_empty();
+    if loaded.counts().is_empty() && !manifest_declares_its_own_content {
         return Err(InstallError::Empty);
     }
 
@@ -424,6 +427,52 @@ mod tests {
             out.loaded.counts().is_empty(),
             "nothing for the loader to count here — that's the whole point"
         );
+    }
+
+    /// Un morph qui n'apporte qu'un élément d'interface (un bouton dans le
+    /// champ de saisie) s'installe : il n'a rien pour le chargeur, mais il
+    /// n'est pas vide pour autant (#198).
+    #[tokio::test]
+    async fn a_ui_only_morph_is_not_treated_as_empty() {
+        let base = std::env::temp_dir().join("locaryn-install-ui-only");
+        let _ = std::fs::remove_dir_all(&base);
+        let src = base.join("src");
+        std::fs::create_dir_all(src.join("dist")).unwrap();
+        std::fs::write(src.join("dist/ui.js"), "export {};").unwrap();
+        std::fs::write(
+            src.join("morph.json"),
+            r#"{
+                "apiVersion": "0.1",
+                "name": "morph-bouton",
+                "version": "0.1.0",
+                "ui_contributions": {
+                    "slots": [{
+                        "id": "bouton",
+                        "slot": "composer.before_send",
+                        "type": "custom-element",
+                        "entry": "dist/ui.js",
+                        "tag": "locaryn-bouton"
+                    }]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let workspace = base.join("ws");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let http = reqwest::Client::new();
+        let out = install(
+            &http,
+            &src.display().to_string(),
+            ExtensionScope::Workspace,
+            Some(&workspace),
+        )
+        .await
+        .expect("a UI-only morph must install");
+
+        assert_eq!(out.manifest.name, "morph-bouton");
+        assert!(!out.manifest.ui.is_empty());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// Hits github.com. Ignored by default so CI stays offline-safe; run with
