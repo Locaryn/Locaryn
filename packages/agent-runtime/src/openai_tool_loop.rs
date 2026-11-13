@@ -243,6 +243,16 @@ pub async fn run_openai_tool_loop(
         // Demander un secret n'a de sens que si un outil d'extension sait s'en servir.
         .chain(crate::coffre::outil_si_utile(&mcp_tools))
         .collect();
+    // Un nom ne s'offre qu'une fois, au premier qui le porte : l'appel d'un
+    // nom court partagé va à l'outil de l'application (servi en premier),
+    // jamais à l'extension. Lui offrir aussi la description de l'extension
+    // faisait croire au modèle qu'il agissait ailleurs. L'outil de
+    // l'extension reste joignable par son nom préfixé `mcp__…`.
+    let mut noms_vus = std::collections::HashSet::new();
+    let all_tools: Vec<_> = all_tools
+        .into_iter()
+        .filter(|t| noms_vus.insert(t.name.clone()))
+        .collect();
     // Une figure peut limiter les outils : seuls ceux qu'elle nomme restent
     // dans la liste offerte au modèle. Vide ou absent, tout passe.
     let all_tools = match &input.tools {
@@ -331,6 +341,20 @@ pub async fn run_openai_tool_loop(
         caches.extend(ecran.navigateur.iter().cloned());
     } else if !veut_externe {
         caches.extend(ecran.navigateur_externe.iter().cloned());
+    }
+    // Ce message nomme le navigateur de la personne (« dans mon navigateur »,
+    // « ouvre Opera ») : le navigateur intégré se range, chargeable à la
+    // demande. Offerts côte à côte, un petit modèle prenait l'intégré malgré
+    // sa description.
+    if recents.first().is_some_and(|d| d.navigateur_externe) && !ecran.navigateur_externe.is_empty()
+    {
+        caches.extend(
+            ecran
+                .navigateur
+                .difference(&ecran.navigateur_externe)
+                .filter(|n| !input.forced_tools.contains(*n))
+                .cloned(),
+        );
     }
     // Le contrôle du bureau, dernier recours : seulement quand la personne le
     // demande. Il n'est même plus chargeable sans elle — un modèle qui ne
