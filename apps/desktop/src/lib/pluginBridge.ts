@@ -133,11 +133,29 @@ export interface LocarynPluginAPI {
       tag: string;
       downloads?: { url: string; file: string; label?: string }[];
     }) => Promise<void>;
+    /** Le modèle de la conversation et ceux qu'on peut lui donner, comme le
+     *  sélecteur du composeur. Échoue tant qu'aucune conversation n'est
+     *  affichée. */
+    list: () => Promise<ChatModels>;
+    /** Changer le modèle de la conversation, comme le sélecteur du composeur. */
+    select: (tag: string) => Promise<void>;
   };
   events: {
     on: (eventName: string, handler: (data: unknown) => void) => () => void;
     emit: (eventName: string, data?: unknown) => void;
   };
+}
+
+/** Le modèle actif de la conversation et les modèles installés. */
+export interface ChatModels {
+  active: string;
+  installed: string[];
+}
+
+/** Ce que le composeur affiché prête aux panneaux pour le choix du modèle. */
+interface ModelContext {
+  list: () => ChatModels;
+  select: (tag: string) => Promise<void>;
 }
 
 /** L'hôte installe le modèle demandé par un panneau, avec son centre de tâches. */
@@ -157,6 +175,7 @@ class PluginBridgeManager {
   private currentSessionId: string | null = null;
   private currentDraftSetter: ((text: string | null) => void) | null = null;
   private submitHandlers = new Set<(text: string) => boolean | Promise<boolean>>();
+  private modelContext: ModelContext | null = null;
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map();
 
   constructor() {
@@ -175,6 +194,11 @@ class PluginBridgeManager {
     this.currentSubmitter = submit;
     this.currentSessionId = sessionId;
     this.currentDraftSetter = setDraft;
+  }
+
+  /** Le composeur affiché prête son choix de modèle ; `null` le retire. */
+  public registerModelContext(context: ModelContext | null) {
+    this.modelContext = context;
   }
 
   public unregisterChatContext() {
@@ -354,6 +378,14 @@ class PluginBridgeManager {
               }),
             );
           }),
+        list: async () => {
+          if (!this.modelContext) throw new Error("Aucune conversation affichée.");
+          return this.modelContext.list();
+        },
+        select: async (tag: string) => {
+          if (!this.modelContext) throw new Error("Aucune conversation affichée.");
+          await this.modelContext.select(tag);
+        },
       },
       events: {
         on: (eventName: string, handler: (data: unknown) => void) => {

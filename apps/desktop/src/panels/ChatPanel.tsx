@@ -3360,6 +3360,21 @@ ${preview}`,
     await refreshActiveModel();
   }
 
+  // Le choix du modèle prêté aux panneaux d'extension (`models.list/select`) :
+  // le même que le sélecteur du composeur.
+  const choixModeleRef = useRef({ activeModel, installedModels, handleSwitchModel });
+  choixModeleRef.current = { activeModel, installedModels, handleSwitchModel };
+  useEffect(() => {
+    pluginBridge.registerModelContext({
+      list: () => ({
+        active: choixModeleRef.current.activeModel,
+        installed: [...choixModeleRef.current.installedModels],
+      }),
+      select: (tag: string) => choixModeleRef.current.handleSwitchModel(tag),
+    });
+    return () => pluginBridge.registerModelContext(null);
+  }, []);
+
   return (
     <section
       className={`locaryn-chat${ephemeral ? " locaryn-chat-ephemeral" : ""}${survolDepot ? " is-depot" : ""}`}
