@@ -1,5 +1,5 @@
 import { Icon } from "@locaryn/ui-core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type UserLoginQr as LoginQr, core } from "../lib/core";
 import { useModeAcces } from "../lib/modeAcces";
@@ -15,12 +15,16 @@ type Props = {
 /** Un nouveau code toutes les 2 min 30 ; le serveur garde le précédent
  *  3 minutes, le temps de finir un scan commencé juste avant le changement. */
 const RENOUVELLEMENT_S = 150;
+/** Le code suivant est demandé un peu avant la fin : le service peut mettre
+ *  quelques secondes à le produire (adresse publique, box), et l'écran
+ *  restait sur l'ancien code, compte à rebours déjà relancé. */
+const AVANCE_S = 10;
 
 /**
- * Le QR de connexion d'un compte, à la manière d'une télé qu'on relie à son
- * téléphone : on scanne, la session de ce compte s'ouvre, sans identifiant ni
- * mot de passe. Le code change toutes les minutes et ne sert qu'une fois ; il
- * s'affiche aussi en clair pour une saisie à la main.
+ * Le QR de connexion d'un compte : le téléphone qui le scanne sait quel
+ * serveur joindre, puis demande le code à six caractères affiché ici. Le code
+ * n'est pas dans le QR — une photo du QR seule n'ouvre rien. Il change à
+ * chaque renouvellement et ne sert qu'une fois.
  *
  * Il porte l'adresse du mode d'accès choisi : celle que le panneau
  * d'appairage vient d'obtenir (Internet, tunnel), ou l'adresse locale. Les
@@ -35,33 +39,68 @@ export function UserLoginQr({ userId, username, distant, onClose }: Props) {
   const deuxVoies = Boolean(distant && transport);
   const [voie, setVoie] = useState<"distant" | "local">("distant");
   const cible = deuxVoies && voie === "distant" ? transport : null;
+  /** Le code suivant, déjà prêt, affiché d'un coup à la fin du décompte. */
+  const prochain = useRef<LoginQr | null>(null);
+  /** Le décompte, lu par la minuterie sans passer par un état React. */
+  const resteRef = useRef(RENOUVELLEMENT_S);
+
+  const demander = useCallback(
+    () => core.userLoginQr(userId, cible?.mode ?? "local", cible?.url),
+    [userId, cible?.mode, cible?.url],
+  );
 
   const renouveler = useCallback(async () => {
+    prochain.current = null;
     try {
-      setQr(await core.userLoginQr(userId, cible?.mode ?? "local", cible?.url));
+      setQr(await demander());
       setErreur(null);
+      resteRef.current = RENOUVELLEMENT_S;
       setReste(RENOUVELLEMENT_S);
     } catch (e) {
       setErreur(String(e).replace(/^Error:\s*/, ""));
     }
-  }, [userId, cible?.mode, cible?.url]);
+  }, [demander]);
 
   useEffect(() => {
     void renouveler();
   }, [renouveler]);
 
+  // Le décompte : le code suivant est demandé en avance, puis affiché pile à
+  // zéro. S'il n'est pas encore arrivé, on le demande et on l'attend.
   useEffect(() => {
+    let vivant = true;
     const t = window.setInterval(() => {
-      setReste((r) => {
-        if (r <= 1) {
-          void renouveler();
-          return RENOUVELLEMENT_S;
-        }
-        return r - 1;
-      });
+      const r = resteRef.current;
+      if (r === AVANCE_S + 1) {
+        void demander()
+          .then((suivant) => {
+            if (vivant) prochain.current = suivant;
+          })
+          .catch((e: unknown) => {
+            console.warn("code suivant non préparé, il sera demandé à la fin", e);
+          });
+      }
+      if (r > 1) {
+        resteRef.current = r - 1;
+        setReste(r - 1);
+        return;
+      }
+      const pret = prochain.current;
+      prochain.current = null;
+      resteRef.current = RENOUVELLEMENT_S;
+      setReste(RENOUVELLEMENT_S);
+      if (pret) {
+        setQr(pret);
+        setErreur(null);
+      } else {
+        void renouveler();
+      }
     }, 1000);
-    return () => window.clearInterval(t);
-  }, [renouveler]);
+    return () => {
+      vivant = false;
+      window.clearInterval(t);
+    };
+  }, [demander, renouveler]);
 
   useEffect(() => {
     const echap = (e: KeyboardEvent) => {
@@ -141,7 +180,8 @@ export function UserLoginQr({ userId, username, distant, onClose }: Props) {
           </>
         )}
         <p className="locaryn-field-hint">
-          Dans l'app Locaryn : « Scanner un QR code ». Nouveau code dans {reste} s.
+          Dans l'app Locaryn : « Scanner un QR code », puis saisir le code. Nouveau code dans{" "}
+          {reste} s.
         </p>
         {erreur && qr && <p className="locaryn-vp-error">{erreur}</p>}
       </div>

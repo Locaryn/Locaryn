@@ -87,7 +87,10 @@ pub async fn par_defaut(
         (None, None)
     };
 
-    let ip = match ip {
+    // Une box placée derrière une autre (un routeur derrière la Freebox) donne
+    // comme adresse « extérieure » son adresse sur le réseau de la première :
+    // privée, injoignable de dehors. On demande alors au service public.
+    let ip = match ip.filter(|ip| vraiment_publique(*ip)) {
         Some(ip) => ip,
         None => ip_exterieure(http).await?,
     };
@@ -204,8 +207,10 @@ async fn joignable(ip: IpAddr, port: u16) -> bool {
 async fn ip_exterieure(http: &reqwest::Client) -> Result<IpAddr, String> {
     match igd_tokio::search_gateway(SearchOptions::default()).await {
         Ok(gw) => match gw.get_external_ip().await {
-            Ok(ip) if !ip.is_unspecified() => return Ok(ip),
-            Ok(_) => tracing::debug!("la box ne connaît pas son adresse extérieure"),
+            Ok(ip) if vraiment_publique(ip) => return Ok(ip),
+            Ok(ip) => {
+                tracing::info!(%ip, "adresse « extérieure » de la box privée : box derrière une autre box")
+            }
             Err(e) => tracing::debug!(erreur = %e, "adresse extérieure refusée par la box"),
         },
         Err(e) => tracing::debug!(erreur = %e, "aucune box UPnP"),
@@ -224,6 +229,31 @@ async fn ip_exterieure(http: &reqwest::Client) -> Result<IpAddr, String> {
         .trim()
         .parse::<IpAddr>()
         .map_err(|_| "Adresse publique illisible.".to_string())
+}
+
+/// Une adresse joignable depuis Internet : ni privée, ni locale, ni réservée.
+///
+/// Le NAT d'opérateur reste « publique » ici : c'est bien l'adresse vue de
+/// dehors, et l'avertissement qui lui est propre dit pourquoi aucun port ne
+/// s'y ouvre.
+fn vraiment_publique(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation())
+        }
+        IpAddr::V6(v6) => {
+            let premier = v6.segments()[0];
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || (premier & 0xfe00) == 0xfc00
+                || (premier & 0xffc0) == 0xfe80)
+        }
+    }
 }
 
 /// 100.64.0.0/10 : l'espace du NAT d'opérateur (CGNAT).
@@ -305,6 +335,23 @@ mod tests {
             (b.cause, b.ligne.as_str()),
             ("box", "Port 7475 non confirmé ouvert")
         );
+    }
+
+    #[test]
+    fn une_adresse_privee_donnee_par_la_box_n_est_pas_publique() {
+        for ip in [
+            "172.16.0.42",
+            "192.168.1.254",
+            "10.0.0.1",
+            "127.0.0.1",
+            "0.0.0.0",
+            "fd00::1",
+        ] {
+            assert!(!vraiment_publique(ip.parse().expect("ip")), "{ip}");
+        }
+        for ip in ["82.64.12.34", "100.70.1.2", "2a01:e0a::1"] {
+            assert!(vraiment_publique(ip.parse().expect("ip")), "{ip}");
+        }
     }
 
     #[test]
