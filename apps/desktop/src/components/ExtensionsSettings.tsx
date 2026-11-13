@@ -759,7 +759,10 @@ export function ExtensionsSettings() {
   }
 
   async function remove(e: InstalledExtension) {
-    if (!(await confirmer(`Désinstaller « ${e.display_name || e.name} » et supprimer ses fichiers ?`))) return;
+    if (
+      !(await confirmer(`Désinstaller « ${e.display_name || e.name} » et supprimer ses fichiers ?`))
+    )
+      return;
     setBusy(e.id);
     try {
       publishInstalled(await core.removeExtension(e.id));

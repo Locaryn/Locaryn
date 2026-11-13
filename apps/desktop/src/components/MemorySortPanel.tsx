@@ -214,7 +214,10 @@ export function MemorySortPanel({ onFinished }: { onFinished: () => void }) {
               : "Relit tout l'historique, range les fiches et prépare les phrases d'accueil, sans attendre l'inactivité du modèle. Le modèle reste chargé pendant le tri."}
           </p>
           {pret === false && !running && (
-            <p>Aucun modèle local n'est chargé : le tri se fera avec un modèle distant de votre choix.</p>
+            <p>
+              Aucun modèle local n'est chargé : le tri se fera avec un modèle distant de votre
+              choix.
+            </p>
           )}
         </div>
         <button
