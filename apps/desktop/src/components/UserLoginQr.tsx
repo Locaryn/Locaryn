@@ -180,8 +180,8 @@ export function UserLoginQr({ userId, username, distant, onClose }: Props) {
           </>
         )}
         <p className="locaryn-field-hint">
-          Avec l'appareil photo du téléphone ou « Scanner un QR code » dans l'app Locaryn, puis saisir le code. Nouveau code dans{" "}
-          {reste} s.
+          Avec l'appareil photo du téléphone ou « Scanner un QR code » dans l'app Locaryn, puis
+          saisir le code. Nouveau code dans {reste} s.
         </p>
         {erreur && qr && <p className="locaryn-vp-error">{erreur}</p>}
       </div>
