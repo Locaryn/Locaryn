@@ -3075,6 +3075,7 @@ pub fn run() {
             save_image,
             generate_audio,
             pairing::apply_pairing_link,
+            pairing::read_connect_link,
             pairing::announce_pairing,
             pairing::confirm_pairing,
             pairing::redeem_login_code,

@@ -305,7 +305,7 @@ export function PhoneSimpleSettings() {
           ) : (
             <>
               <p>
-                Dans l'app Locaryn du téléphone, touchez « Scanner un QR code » et visez ce code.
+                Visez ce code avec l'appareil photo du téléphone, ou touchez « Scanner un QR code » dans l'app Locaryn.
               </p>
               {code?.qr_svg && (
                 <div

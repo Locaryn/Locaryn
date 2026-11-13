@@ -103,10 +103,13 @@ pub struct QrQuery {
     pub url: Option<String>,
 }
 
-/// Ce que porte un QR : l'adresse résolue, la charge (JSON ASCII) et son SVG.
+/// Ce que porte un QR : l'adresse résolue, la charge (JSON ASCII), le lien
+/// que le QR contient et son SVG.
 struct Charge {
     url: String,
     charge: String,
+    /// Ce que le QR contient : le lien `locaryn://connect?…`.
+    lien: String,
     svg: String,
     /// Mode `public` : pourquoi le port risque de ne pas être joignable.
     avertissement: Option<crate::acces_public::Avertissement>,
@@ -122,6 +125,7 @@ pub async fn qr(
     let Charge {
         url,
         charge,
+        lien,
         svg,
         avertissement,
     } = match construire_charge(&s, &mode, q.url, false).await {
@@ -147,6 +151,7 @@ pub async fn qr(
         "mode": mode,
         "url": url,
         "provisioning": charge,
+        "link": lien,
         "qr_svg": svg,
         // Le code ne part qu'a l'hote. Un appelant du reseau recoit le QR,
         // qui ne contient rien de secret, et rien d'autre : autrement le
@@ -276,7 +281,14 @@ async fn construire_charge(
     // identiques au caractere pres.
     let charge = locaryn_travel::qr::ascii_seul(&charge);
 
-    let svg = match locaryn_travel::qr::svg(&charge) {
+    // Le QR porte un lien `locaryn://connect?…`, pas le JSON : Google Lens et
+    // l'appareil photo savent ouvrir un lien, et Android le remet à l'app.
+    // Il est aussi plus court que le JSON (voir `lien_connexion`). Le JSON
+    // reste dans la réponse pour les clients qui le lisaient.
+    let lien = locaryn_config::lien_connexion::vers_lien(&provisioning)
+        .map_err(|e| erreur(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let svg = match locaryn_travel::qr::svg(&lien) {
         Ok(svg) => svg,
         Err(e) => {
             // Un PEM d'autorité tient dans un code, mais pas dans n'importe
@@ -290,6 +302,7 @@ async fn construire_charge(
     Ok(Charge {
         url,
         charge,
+        lien,
         svg,
         avertissement,
     })
@@ -377,7 +390,11 @@ pub async fn login_qr(
     let code = generer_code_connexion();
     let mode = q.mode.as_deref().unwrap_or("local").to_string();
     let Charge {
-        url, charge, svg, ..
+        url,
+        charge,
+        lien,
+        svg,
+        ..
     } = match construire_charge(&s, &mode, q.url, true).await {
         Ok(c) => c,
         Err(r) => return r,
@@ -399,6 +416,7 @@ pub async fn login_qr(
         "username": compte.username,
         "url": url,
         "provisioning": charge,
+        "link": lien,
         "qr_svg": svg,
         "ttl_seconds": CODE_CONNEXION_TTL.as_secs(),
     }))

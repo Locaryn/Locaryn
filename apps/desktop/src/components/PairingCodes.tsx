@@ -296,7 +296,7 @@ export function PairingCodes() {
             </button>
             <div className="locaryn-travel-say">
               <p className="locaryn-travel-title">Scannez avec le téléphone</p>
-              <p className="locaryn-travel-sub">Dans l'app Locaryn : « Scanner un QR code ».</p>
+              <p className="locaryn-travel-sub">Avec l'appareil photo du téléphone, ou dans l'app Locaryn : « Scanner un QR code ».</p>
 
               {/* Personne n'a encore scanné : on le dit, plutôt que de laisser
                   un blanc qui passerait pour une panne. */}
@@ -433,7 +433,7 @@ export function PairingCodes() {
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG local
                 dangerouslySetInnerHTML={{ __html: qrGrand }}
               />
-              <p className="locaryn-field-hint">Dans l'app Locaryn : « Scanner un QR code ».</p>
+              <p className="locaryn-field-hint">Avec l'appareil photo du téléphone, ou dans l'app Locaryn : « Scanner un QR code ».</p>
             </div>
           </dialog>,
           document.body,

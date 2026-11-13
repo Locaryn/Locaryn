@@ -512,6 +512,9 @@ const core = {
   signOut: () => invoke<MobileStatus>("sign_out"),
   /** Verify a scanned code and apply it. Throws with a phrased message. */
   applyPairingLink: (uri: string) => invoke<PairingResult>("apply_pairing_link", { uri }),
+  /** Lien `locaryn://connect?v=…` (QR lu par Google Lens ou le scanner) rendu
+   *  en JSON `Provisioning` ; `null` si ce n'est pas ce format. */
+  readConnectLink: (uri: string) => invoke<string | null>("read_connect_link", { uri }),
   /** Circuit B step 2: submit the 6-digit code shown under the QR on the host. */
   /** « J'ai scanné, je suis là » : fait apparaître le code sur l'hôte. */
   announcePairing: (deviceLabel?: string) => invoke<boolean>("announce_pairing", { deviceLabel }),
@@ -789,6 +792,7 @@ const demoCore: typeof core = {
     travelling: false,
     message: "Connecté (simulation).",
   }),
+  readConnectLink: async () => null,
   applyPairingLink: async () => ({
     server_name: "Atelier Vasseur",
     travelling: true,

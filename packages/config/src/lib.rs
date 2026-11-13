@@ -9,6 +9,7 @@
 
 pub mod api_fournisseur;
 pub mod git;
+pub mod lien_connexion;
 pub mod mtls;
 pub mod provision;
 

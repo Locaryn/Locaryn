@@ -76,6 +76,23 @@ pub fn apply(uri: &str, store: &mut servers::Store, now: u64) -> Result<PairingR
     Ok(result)
 }
 
+/// Un QR d'appairage ou de connexion sous forme de lien `locaryn://connect?v=…`
+/// (scanner de l'app, ou Google Lens via Android), rendu en JSON
+/// `Provisioning` : l'écran de confirmation et `register_server` le lisent
+/// exactement comme l'ancien QR en JSON brut.
+///
+/// `None` : ce n'est pas un lien de ce format (code de voyage, ancien JSON…).
+#[tauri::command]
+pub fn read_connect_link(uri: String) -> Result<Option<String>, String> {
+    if !locaryn_config::lien_connexion::est_lien(&uri) {
+        return Ok(None);
+    }
+    let p = locaryn_config::lien_connexion::depuis_lien(&uri)?;
+    serde_json::to_string(&p)
+        .map(Some)
+        .map_err(|e| format!("configuration illisible ({e})"))
+}
+
 /// Scanned from the camera, or handed over by Android as a `locaryn://` link.
 #[tauri::command]
 pub fn apply_pairing_link(uri: String) -> Result<PairingResult, String> {

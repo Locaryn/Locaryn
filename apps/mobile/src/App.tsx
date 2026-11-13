@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArchivesScreen } from "./components/ArchivesScreen";
 import { Chat } from "./components/Chat";
 import { PairingCodeEntry } from "./components/ConfirmServer";
@@ -185,21 +185,24 @@ export function App() {
       setScanError(null);
       try {
         // Deux sortes de codes se photographient de la même façon. Celui d'un
-        // premier appairage porte la configuration du serveur — adresse et
-        // certificat — et se reconnaît à ce qu'il commence par une accolade.
-        // Celui du mode voyage est un lien signé, et sa vérification est
-        // entièrement en Rust.
-        if (uri.trimStart().startsWith("{")) {
+        // premier appairage (ou d'une connexion à un compte) porte la
+        // configuration du serveur — adresse et certificat. Il arrive en lien
+        // `locaryn://connect?v=…`, que Google Lens sait ouvrir, ou, dans les
+        // QR d'avant, en JSON commençant par une accolade. Le lien est rendu
+        // en ce même JSON par le Rust, puis suit le même chemin. Celui du mode
+        // voyage est un lien signé, et sa vérification est entièrement en Rust.
+        const json = uri.trimStart().startsWith("{") ? uri : await api.readConnectLink(uri);
+        if (json !== null) {
           // Rien ne s'enregistre tout de suite : la caméra se refermait et le
           // téléphone parlait déjà à un autre serveur, sans que personne ait
           // vu à qui, ni par quel chemin. L'écran de confirmation s'interpose
           // avant que quoi que ce soit ne change.
-          const apercu = lireApercu(uri);
+          const apercu = lireApercu(json);
           if (!apercu) {
             setScanError("Ce code ne contient pas une configuration lisible.");
             return;
           }
-          setPendingProvisioning({ raw: uri, apercu });
+          setPendingProvisioning({ raw: json, apercu });
           return;
         }
         const result = await api.applyPairingLink(uri);
@@ -214,25 +217,37 @@ export function App() {
 
   // Android hands over the link that launched the application. Asking for it
   // rather than waiting to be pushed means a link that arrived before the
-  // interface existed is not lost.
+  // interface existed is not lost. À froid, `getCurrent` le rend ; à chaud
+  // (l'activité est en singleTask), `onOpenUrl` le reçoit. Le lien de
+  // lancement n'est traité qu'une fois : sans cela, chaque nouvelle identité
+  // d'`applyLink` rouvrait l'écran de confirmation d'un code déjà accepté.
+  const lienDeLancementTraite = useRef(false);
   useEffect(() => {
     if (coreMode !== "tauri") return;
     let cancelled = false;
+    let arreter: (() => void) | null = null;
     void (async () => {
       try {
         const { onOpenUrl, getCurrent } = await import("@tauri-apps/plugin-deep-link");
-        const launched = await getCurrent();
-        if (!cancelled && launched?.length) await applyLink(launched[0]);
-        await onOpenUrl((urls) => {
+        if (!lienDeLancementTraite.current) {
+          lienDeLancementTraite.current = true;
+          const launched = await getCurrent();
+          if (!cancelled && launched?.length) await applyLink(launched[0]);
+        }
+        const un = await onOpenUrl((urls) => {
           if (urls.length) void applyLink(urls[0]);
         });
-      } catch {
+        if (cancelled) un();
+        else arreter = un;
+      } catch (e) {
         // The plugin is absent on desktop builds; the in-app scanner covers
         // the same ground.
+        console.warn("liens locaryn:// indisponibles :", e);
       }
     })();
     return () => {
       cancelled = true;
+      arreter?.();
     };
   }, [applyLink]);
 

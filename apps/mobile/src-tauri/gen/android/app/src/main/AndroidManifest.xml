@@ -68,6 +68,20 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="locaryn" android:host="travel" />
             </intent-filter>
+            <!--
+              Les QR d'appairage et de connexion à un compte
+              (`locaryn://connect?v=1&…`, voir locaryn_config::lien_connexion).
+              Google Lens ou l'appareil photo ouvrent ce lien ; l'app montre
+              alors l'écran de confirmation du serveur ou celui du code à six
+              caractères, comme le scanner intégré. Le code n'est jamais dans
+              le lien.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="locaryn" android:host="connect" />
+            </intent-filter>
             <!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
             
             <!-- DEEP LINK PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
