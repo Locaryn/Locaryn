@@ -677,25 +677,22 @@ pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo
     } else {
         String::new()
     };
+    // « Démarré un jour » n'est pas « vivant » : chaque rafraîchissement
+    // interroge réellement le serveur. Une erreur dit qu'il est mort (le
+    // client est retiré, le prochain démarrage repart de zéro) ; un délai
+    // dépassé dit seulement qu'il est occupé, et on ne le coupe pas.
+    // Tous à la fois : l'un après l'autre, chaque serveur occupé ajoutait
+    // ses 5 s, et la liste « @ » du chat restait vide pendant ce temps.
+    let sondes = entries
+        .iter()
+        .map(|(name, _)| sonder(clients.get(name), name));
+    let etats = futures::future::join_all(sondes).await;
     let mut morts = Vec::new();
     let mut out = Vec::with_capacity(entries.len());
-    for (name, e) in entries {
-        // « Démarré un jour » n'est pas « vivant » : chaque rafraîchissement
-        // interroge réellement le serveur. Une erreur dit qu'il est mort (le
-        // client est retiré, le prochain démarrage repart de zéro) ; un délai
-        // dépassé dit seulement qu'il est occupé, et on ne le coupe pas.
-        let (vivant, tools) = match clients.get(&name) {
-            Some(c) => match tokio::time::timeout(Duration::from_secs(5), c.discover()).await {
-                Ok(Ok(caps)) => (true, caps.tools.into_iter().map(|t| t.name).collect()),
-                Ok(Err(err)) => {
-                    tracing::warn!(serveur = %name, erreur = %err, "connecteur MCP qui ne répond plus — marqué arrêté");
-                    morts.push(name.clone());
-                    (false, Vec::new())
-                }
-                Err(_) => (true, Vec::new()),
-            },
-            None => (false, Vec::new()),
-        };
+    for ((name, e), (vivant, tools, mort)) in entries.into_iter().zip(etats) {
+        if mort {
+            morts.push(name.clone());
+        }
         let companion = compagnon_attendu(&name, &entry_target(&e)).map(|(nom, procs)| Companion {
             name: nom.to_string(),
             running: processus_present(&liste_processus, procs),
@@ -724,6 +721,25 @@ pub async fn list_mcp_servers(core: State<'_, Core>) -> Result<Vec<McpServerInfo
         }
     }
     Ok(out)
+}
+
+/// L'état d'un connecteur : vivant, ses outils, et s'il est mort.
+async fn sonder(client: Option<&Arc<dyn McpClient>>, name: &str) -> (bool, Vec<String>, bool) {
+    let Some(c) = client else {
+        return (false, Vec::new(), false);
+    };
+    match tokio::time::timeout(Duration::from_secs(5), c.discover()).await {
+        Ok(Ok(caps)) => (
+            true,
+            caps.tools.into_iter().map(|t| t.name).collect(),
+            false,
+        ),
+        Ok(Err(err)) => {
+            tracing::warn!(serveur = %name, erreur = %err, "connecteur MCP qui ne répond plus — marqué arrêté");
+            (false, Vec::new(), true)
+        }
+        Err(_) => (true, Vec::new(), false),
+    }
 }
 
 #[tauri::command]

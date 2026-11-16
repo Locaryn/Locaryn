@@ -271,6 +271,9 @@ type MentionItem = {
 
 /** `@wsl ` (ou `@wsl:Ubu`) juste avant le curseur : la liste
  *  propose alors les distributions installées. */
+/** Au-delà, « @ » garde ce qu'il connaît : un connecteur occupé ne bloque plus la liste. */
+const DELAI_MENTIONS_MS = 4000;
+
 const MENTION_WSL = /(?:^|\s)@wsl(?::([\w.-]*)|\s)$/i;
 
 /** Durée de l'appui sur la jauge qui déclenche la compression. Assez longue
@@ -2990,68 +2993,86 @@ ${preview}`,
     }
   }
 
+  /**
+   * Ce que « @ » propose, d'après les connecteurs et skills connus.
+   *
+   * Sans eux (pas encore lus), la liste a déjà le navigateur et les morphs
+   * activés : elle s'affiche à la frappe, au lieu d'attendre que chaque
+   * connecteur ait répondu — un seul serveur MCP occupé la laissait vide.
+   */
+  const construireMentions = (mcp: McpServerInfo[], sk: SkillInfo[]): MentionItem[] => {
+    // Un morph activé se désigne d'un seul nom : ses connecteurs
+    // (`<morph>__<serveur>`) et ses skills passent avec lui, au lieu de
+    // trois lignes pour la même chose.
+    const morphs = extensions.filter((x) => x.enabled);
+    const duMorph = (nom: string) => morphs.find((x) => nom.startsWith(`${x.name}__`));
+    const libres = sk.filter((s) => !morphs.some((x) => x.name === s.source));
+    return [
+      {
+        name: "navigateur",
+        label: "navigateur",
+        hint: "Navigateur intégré de Locaryn, visible dans l'espace de travail",
+        icon: "globe" as const,
+      },
+      ...morphs.map((x) => {
+        const outils = mcp
+          .filter((c) => duMorph(c.name) === x)
+          .reduce((n, c) => n + c.tools.length, 0);
+        const skills = sk.filter((s) => s.source === x.name).length;
+        const detail = [
+          outils ? `${outils} outil${outils > 1 ? "s" : ""}` : "",
+          skills ? `${skills} skill${skills > 1 ? "s" : ""}` : "",
+        ]
+          .filter(Boolean)
+          .join(", ");
+        return {
+          name: x.name,
+          label: x.display_name || x.name,
+          hint: `Morph${detail ? ` · ${detail}` : ""}${x.description ? ` — ${x.description}` : ""}`,
+          icon: "extensions" as const,
+        };
+      }),
+      ...mcp
+        .filter((c) => !duMorph(c.name))
+        .map((c) => ({
+          name: c.name,
+          label: c.name,
+          hint: !c.running
+            ? "Connecteur MCP · arrêté"
+            : c.companion && !c.companion.running
+              ? `Connecteur MCP · ${c.companion.name} n'est pas ouvert`
+              : `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`,
+          icon: "plugs-connected" as const,
+        })),
+      ...libres.map((s) => ({
+        name: s.name,
+        label: s.name,
+        hint: `Skill${s.description ? ` — ${s.description}` : ""}`,
+        icon: "sparkle" as const,
+      })),
+    ];
+  };
+
   /** Rafraîchir en arrière-plan les connecteurs MCP et les skills sans bloquer la saisie. */
   const rafraichirMentions = async () => {
     if (mentionsFetchingRef.current) return;
     mentionsFetchingRef.current = true;
     try {
       const [mcp, sk] = await Promise.all([
-        core.listMcpServers().catch(() => [] as McpServerInfo[]),
-        core.listSkills().catch(() => [] as SkillInfo[]),
+        avantDelai(core.listMcpServers(), DELAI_MENTIONS_MS, "connecteurs MCP").catch(
+          (e: unknown) => {
+            console.warn("[@] connecteurs non lus :", e);
+            return connecteursRef.current ?? [];
+          },
+        ),
+        avantDelai(core.listSkills(), DELAI_MENTIONS_MS, "skills").catch((e: unknown) => {
+          console.warn("[@] skills non lus :", e);
+          return skillsRef.current ?? [];
+        }),
       ]);
       connecteursRef.current = mcp;
       skillsRef.current = sk;
-      // Un morph activé se désigne d'un seul nom : ses connecteurs
-      // (`<morph>__<serveur>`) et ses skills passent avec lui, au lieu de
-      // trois lignes pour la même chose.
-      const morphs = extensions.filter((x) => x.enabled);
-      const duMorph = (nom: string) => morphs.find((x) => nom.startsWith(`${x.name}__`));
-      const libres = sk.filter((s) => !morphs.some((x) => x.name === s.source));
-      const liste: MentionItem[] = [
-        {
-          name: "navigateur",
-          label: "navigateur",
-          hint: "Navigateur intégré de Locaryn, visible dans l'espace de travail",
-          icon: "globe" as const,
-        },
-        ...morphs.map((x) => {
-          const outils = mcp
-            .filter((c) => duMorph(c.name) === x)
-            .reduce((n, c) => n + c.tools.length, 0);
-          const skills = sk.filter((s) => s.source === x.name).length;
-          const detail = [
-            outils ? `${outils} outil${outils > 1 ? "s" : ""}` : "",
-            skills ? `${skills} skill${skills > 1 ? "s" : ""}` : "",
-          ]
-            .filter(Boolean)
-            .join(", ");
-          return {
-            name: x.name,
-            label: x.display_name || x.name,
-            hint: `Morph${detail ? ` · ${detail}` : ""}${x.description ? ` — ${x.description}` : ""}`,
-            icon: "extensions" as const,
-          };
-        }),
-        ...mcp
-          .filter((c) => !duMorph(c.name))
-          .map((c) => ({
-            name: c.name,
-            label: c.name,
-            hint: !c.running
-              ? "Connecteur MCP · arrêté"
-              : c.companion && !c.companion.running
-                ? `Connecteur MCP · ${c.companion.name} n'est pas ouvert`
-                : `Connecteur MCP · ${c.tools.length} outil${c.tools.length > 1 ? "s" : ""}`,
-            icon: "plugs-connected" as const,
-          })),
-        ...libres.map((s) => ({
-          name: s.name,
-          label: s.name,
-          hint: `Skill${s.description ? ` — ${s.description}` : ""}`,
-          icon: "sparkle" as const,
-        })),
-      ];
-      mentionsCacheRef.current = liste;
+      mentionsCacheRef.current = construireMentions(mcp, sk);
       mentionsTimestampRef.current = Date.now();
     } finally {
       mentionsFetchingRef.current = false;
@@ -3127,6 +3148,7 @@ ${preview}`,
         });
       }
     } else {
+      filtrerEtAfficher(construireMentions(connecteursRef.current ?? [], skillsRef.current ?? []));
       void rafraichirMentions().then(() => {
         if (mentionsCacheRef.current) filtrerEtAfficher(mentionsCacheRef.current);
       });
@@ -4135,7 +4157,7 @@ ${preview}`,
                 }
               >
                 <span style={{ display: "inline-flex" }}>
-                  <Icon name={isLocalModel ? "cpu" : "cloud"} size={14} />
+                  <Icon name={isLocalModel || distant.appareil ? "cpu" : "cloud"} size={14} />
                 </span>
                 <span className="locaryn-model-picker-label" style={{ fontWeight: 700 }}>
                   {activeModel
