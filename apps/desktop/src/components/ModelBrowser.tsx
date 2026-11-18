@@ -1992,6 +1992,7 @@ export function ModelBrowser({
                 alignItems: "center",
                 gap: "6px",
                 height: "100%",
+                minHeight: 32,
                 padding: "0 12px",
                 whiteSpace: "nowrap",
                 fontSize: "12px",

@@ -103,19 +103,33 @@
 }
 .lo-pres-dots {
   display: flex;
-  gap: 6px;
+  margin-left: -8px;
 }
+/* Le bouton fait 44 px pour le doigt ; le trait visible est dessiné dedans. */
 .lo-pres-dot {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.lo-pres-dot::before {
+  content: "";
   width: 16px;
   height: 6px;
-  padding: 0;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 3px;
-  cursor: pointer;
   transition: width 240ms var(--ease), background var(--dur-fast) var(--ease);
 }
-.lo-pres-dot.is-on {
+.lo-pres-dot:hover::before {
+  border-color: var(--text-faint);
+}
+.lo-pres-dot.is-on::before {
   width: 28px;
   background: var(--accent);
   border-color: var(--accent);

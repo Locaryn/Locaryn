@@ -237,8 +237,8 @@ body.locaryn-resizing .locaryn-resizer::after {
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   background: transparent;
   border: 1px solid transparent;
@@ -398,6 +398,7 @@ body.locaryn-resizing .locaryn-resizer::after {
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  min-height: 32px;
   flex: 1;
   padding: 5px var(--space-2);
   border: 0;
@@ -1659,6 +1660,9 @@ body.locaryn-resizing .locaryn-resizer::after {
 .locaryn-model-picker {
   justify-content: flex-start;
   text-align: left;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
 }
 .locaryn-model-picker-label,
 .locaryn-composer-model-label {
@@ -3423,6 +3427,7 @@ dialog:where([open]) {
   white-space: nowrap;
   transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
     background var(--dur-fast) var(--ease);
+  min-height: 32px;
 }
 .locaryn-chip-btn:hover:not(:disabled) {
   color: var(--text);
@@ -4030,6 +4035,7 @@ button.locaryn-chip-btn.locaryn-chip-on:hover:not(:disabled) {
   color: var(--text-dim);
   font-size: var(--text-xs);
   cursor: pointer;
+  min-height: 32px;
 }
 .locaryn-ws-trigger:hover {
   color: var(--text);
@@ -4726,6 +4732,9 @@ pre.md-code {
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease);
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
 }
 .locaryn-chip:hover {
   color: var(--text);
@@ -7168,8 +7177,8 @@ pre.md-code {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  height: 28px;
-  min-height: 28px;
+  height: var(--statusbar-h);
+  min-height: var(--statusbar-h);
   padding: 0 var(--space-4);
   background: var(--surface);
   border-top: 1px solid var(--border);
@@ -7279,6 +7288,7 @@ pre.md-code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-height: 32px;
 }
 .locaryn-res-name:hover {
   color: var(--text);
@@ -8214,8 +8224,8 @@ pre.md-code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   background: none;
   border: none;
@@ -11223,6 +11233,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   cursor: pointer;
   transition: all 0.15s ease;
   margin-right: 4px;
+  min-height: 32px;
 }
 .locaryn-ephemeral-topbar-btn:hover {
   background: rgba(204, 125, 114, 0.18);
@@ -12435,6 +12446,7 @@ div[style*="position: relative"][draggable]:hover > .img-gallery-send-btn {
   color: var(--accent-300);
   cursor: pointer;
   white-space: nowrap;
+  min-height: 32px;
 }
 .locaryn-box-detail:hover {
   color: var(--accent-200);
