@@ -50,7 +50,13 @@ pub(crate) async fn activer(
 ) -> Response {
     let fournisseurs = match s.storage.providers.list().await {
         Ok(f) => f,
-        Err(e) => return erreur(StatusCode::INTERNAL_SERVER_ERROR, "storage_error", e.to_string()),
+        Err(e) => {
+            return erreur(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "storage_error",
+                e.to_string(),
+            )
+        }
     };
     let Some(cible) = choisir(&fournisseurs, corps.mode) else {
         return erreur(
@@ -61,7 +67,11 @@ pub(crate) async fn activer(
     };
     match s.storage.providers.set_active(cible.id).await {
         Ok(actif) => (StatusCode::OK, Json(actif)).into_response(),
-        Err(e) => erreur(StatusCode::INTERNAL_SERVER_ERROR, "storage_error", e.to_string()),
+        Err(e) => erreur(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "storage_error",
+            e.to_string(),
+        ),
     }
 }
 
@@ -92,8 +102,14 @@ mod tests {
             fournisseur(ProviderKind::Remote, ProviderStatus::Healthy),
             fournisseur(ProviderKind::Local, ProviderStatus::Unknown),
         ];
-        assert_eq!(choisir(&liste, ConnectionMode::Local).unwrap().id, liste[1].id);
-        assert_eq!(choisir(&liste, ConnectionMode::Remote).unwrap().id, liste[0].id);
+        assert_eq!(
+            choisir(&liste, ConnectionMode::Local).unwrap().id,
+            liste[1].id
+        );
+        assert_eq!(
+            choisir(&liste, ConnectionMode::Remote).unwrap().id,
+            liste[0].id
+        );
     }
 
     #[test]
@@ -102,7 +118,10 @@ mod tests {
             fournisseur(ProviderKind::Remote, ProviderStatus::Healthy),
             fournisseur(ProviderKind::Local, ProviderStatus::Healthy),
         ];
-        assert_eq!(choisir(&liste, ConnectionMode::Auto).unwrap().id, liste[1].id);
+        assert_eq!(
+            choisir(&liste, ConnectionMode::Auto).unwrap().id,
+            liste[1].id
+        );
     }
 
     #[test]
@@ -112,7 +131,10 @@ mod tests {
         let deux = [local_eteint.clone(), distant.clone()];
         assert_eq!(choisir(&deux, ConnectionMode::Auto).unwrap().id, distant.id);
         let seul = [local_eteint.clone()];
-        assert_eq!(choisir(&seul, ConnectionMode::Auto).unwrap().id, local_eteint.id);
+        assert_eq!(
+            choisir(&seul, ConnectionMode::Auto).unwrap().id,
+            local_eteint.id
+        );
         assert!(choisir(&[], ConnectionMode::Remote).is_none());
     }
 }
