@@ -345,6 +345,36 @@ export interface TokenInfo {
   revoked_at: string | null;
 }
 
+/** Une connexion d'un appareil : heure, adresse et lieu (si la base est là). */
+export interface DeviceConnection {
+  at: string;
+  ip: string | null;
+  location: string | null;
+  client: string;
+  user_agent: string | null;
+  method: string;
+}
+
+/** Un appareil du compte : une session et son historique de connexions. */
+export interface DeviceInfo {
+  token_id: string;
+  label: string | null;
+  client: string;
+  created_at: string | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  /** L'appareil d'où l'on regarde : on ne se déconnecte pas sans le savoir. */
+  current: boolean;
+  history: DeviceConnection[];
+}
+
+export interface DevicesReport {
+  devices: DeviceInfo[];
+  geolocation: boolean;
+  attribution: string | null;
+}
+
 export const api = {
   /**
    * Ce que les extensions actives du serveur apportent.
@@ -446,6 +476,10 @@ export const api = {
   /** Les clés API et les sessions d'appareils de l'utilisateur courant. */
   async listTokens(): Promise<TokenInfo[]> {
     return http("/v1/auth/tokens");
+  },
+  /** Les appareils du compte et leurs connexions, jamais ceux d'un autre. */
+  async listDevices(): Promise<DevicesReport> {
+    return http<DevicesReport>("/v1/auth/devices");
   },
 
   /** Les permissions d'une conversation : ce que le modele peut faire ici. */

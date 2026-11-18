@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useCallback, useEffect, useState } from "react";
-import { type TokenInfo, type TrustLevel, type WebStatus, api } from "../lib/core";
+import { type DeviceInfo, type TokenInfo, type TrustLevel, type WebStatus, api } from "../lib/core";
 import { TRUST_LEVELS } from "../lib/trust";
 
 /** Les choix d'expiration d'une clé API, dans l'ordre où on les lit. */
@@ -15,6 +15,23 @@ function dateCourte(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+}
+
+/** Les familles de clients que le service reconnaît, en clair. */
+const CLIENTS: Record<string, string> = {
+  mobile: "Téléphone",
+  web: "Navigateur",
+  desktop: "Ordinateur",
+  cli: "Terminal",
+  app: "Application",
+};
+
+/** Où et quand l'appareil s'est montré pour la dernière fois. */
+function derniereConnexion(d: DeviceInfo): string {
+  const derniere = d.history[0];
+  const lieu = derniere?.location ?? derniere?.ip ?? null;
+  const quand = dateCourte(derniere?.at ?? d.last_used_at ?? d.created_at);
+  return lieu ? `${quand} · ${lieu}` : quand;
 }
 import {
   ACCENT_PRESETS,
@@ -56,7 +73,7 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
   const [done, setDone] = useState(false);
   // Les deux circuits, séparés dès la lecture : un écran par circuit.
   const [apiKeys, setApiKeys] = useState<TokenInfo[]>([]);
-  const [devices, setDevices] = useState<TokenInfo[]>([]);
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [newKeyLabel, setNewKeyLabel] = useState("");
   const [newKeyExpiry, setNewKeyExpiry] = useState<number | null>(null);
   // Les permissions par defaut des nouvelles conversations libres.
@@ -80,9 +97,14 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
     try {
       const tokens = await api.listTokens();
       setApiKeys(tokens.filter((t) => t.kind === "api"));
-      setDevices(tokens.filter((t) => t.kind === "session"));
     } catch {
       // Pas de compte : les listes restent vides, les sections ne s'affichent pas.
+    }
+    try {
+      setDevices((await api.listDevices()).devices);
+    } catch {
+      // Sans compte, le service refuse : la section ne s'affiche pas.
+      setDevices([]);
     }
     try {
       setApiFournisseur(await api.providerApi());
@@ -413,7 +435,7 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
           <div style={{ marginTop: 8 }}>
             {devices.map((d) => (
               <div
-                key={d.id}
+                key={d.token_id}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -424,10 +446,11 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
               >
                 <Icon name="devices" size={15} />
                 <span style={{ flex: 1 }}>
-                  <strong>{d.label ?? "Appareil"}</strong>
+                  <strong>{d.label ?? CLIENTS[d.client] ?? "Appareil"}</strong>
+                  {d.current && <span className="lo-hint"> · cet appareil</span>}
                   <span className="lo-hint">
                     {" "}
-                    · dernier usage {dateCourte(d.last_used_at ?? d.created_at)}
+                    · {CLIENTS[d.client] ?? d.client} · dernière connexion {derniereConnexion(d)}
                     {d.expires_at ? ` · session jusqu'au ${dateCourte(d.expires_at)}` : ""}
                     {d.revoked_at ? " · déconnecté" : ""}
                   </span>
@@ -437,11 +460,15 @@ export function Settings({ status, onBack, onSignedOut, onMemory }: Props) {
                     type="button"
                     className="lo-btn-ghost"
                     onClick={async () => {
-                      await api.revokeToken(d.id).catch(() => undefined);
+                      try {
+                        await api.revokeToken(d.token_id);
+                      } catch (e) {
+                        setError(`Déconnexion impossible : ${String(e)}`);
+                      }
                       await reload();
                     }}
                   >
-                    Déconnecter
+                    {d.current ? "Me déconnecter" : "Déconnecter"}
                   </button>
                 )}
               </div>
