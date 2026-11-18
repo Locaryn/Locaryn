@@ -375,6 +375,19 @@ export interface DevicesReport {
   attribution: string | null;
 }
 
+/** Un outil qui attend l'accord de l'utilisateur, tel que le flux l'annonce. */
+export interface ToolApprovalRequest {
+  call_id: string;
+  tool: string;
+  args?: Record<string, unknown>;
+  risk: "low" | "medium" | "high" | "critical";
+  reason?: string;
+  diff?: string;
+}
+
+/** `once` : cet appel ; `session` : cette conversation ; `always` : toujours. */
+export type ApprovalScope = "once" | "session" | "always";
+
 export const api = {
   /**
    * Ce que les extensions actives du serveur apportent.
@@ -854,8 +867,31 @@ export const api = {
     });
   },
 
-  /** One reply, gathered from the token events of the SSE stream. */
-  async send(text: string, sessionId: string): Promise<{ text: string; images: MediaResult[] }> {
+  /** Répondre à une demande d'approbation : seule cette route réveille
+   *  l'agent qui attend. */
+  async answerApproval(
+    request: ToolApprovalRequest,
+    allow: boolean,
+    scope: ApprovalScope,
+  ): Promise<void> {
+    await http<{ status: string }>("/v1/approvals", {
+      method: "POST",
+      body: {
+        call_id: request.call_id,
+        tool: request.tool,
+        decision: allow ? "allow" : "deny",
+        scope,
+      },
+    });
+  },
+
+  /** One reply, gathered from the token events of the SSE stream.
+   *  `onApproval` reçoit les outils qui attendent un accord pendant le flux. */
+  async send(
+    text: string,
+    sessionId: string,
+    onApproval?: (request: ToolApprovalRequest) => void,
+  ): Promise<{ text: string; images: MediaResult[] }> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -898,8 +934,18 @@ export const api = {
               text?: string;
               kind?: string;
               artifact_id?: string;
-            };
+            } & Partial<ToolApprovalRequest>;
             if (ev.type === "token" && ev.text) reply += ev.text;
+            if (ev.type === "tool_approval" && ev.call_id && ev.tool && ev.risk) {
+              onApproval?.({
+                call_id: ev.call_id,
+                tool: ev.tool,
+                args: ev.args,
+                risk: ev.risk,
+                reason: ev.reason,
+                diff: ev.diff,
+              });
+            }
             if (ev.type === "artifact" && ev.kind === "image_png" && ev.artifact_id) {
               artifactIds.push(ev.artifact_id);
             }

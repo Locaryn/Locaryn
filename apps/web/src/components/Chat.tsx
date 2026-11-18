@@ -4,9 +4,11 @@ import {
   type Conversation,
   type MediaResult,
   type Message,
+  type ToolApprovalRequest,
   type WebStatus,
   api,
 } from "../lib/core";
+import { ApprovalDialog } from "./ApprovalDialog";
 import { Drawer } from "./Drawer";
 import { type Destination, MainMenu } from "./MainMenu";
 
@@ -40,6 +42,8 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
   const canFigures = capabilities.includes("figures");
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // Les outils qui attendent un accord, dans l'ordre d'arrivée.
+  const [approbations, setApprobations] = useState<ToolApprovalRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<MediaResult | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -122,7 +126,11 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
         sessionId = (await api.newConversation()).id;
         setCurrentId(sessionId);
       }
-      const reply = await api.send(text, sessionId);
+      const reply = await api.send(text, sessionId, (demande) =>
+        setApprobations((file) =>
+          file.some((d) => d.call_id === demande.call_id) ? file : [...file, demande],
+        ),
+      );
       setMessages((m) => [
         ...m,
         { id: `a${Date.now()}`, role: "assistant", content: reply.text, images: reply.images },
@@ -296,6 +304,16 @@ export function Chat({ status, onGo, capabilities, initialId }: Props) {
             />
           </div>
         </div>
+      )}
+      {approbations[0] && (
+        <ApprovalDialog
+          key={approbations[0].call_id}
+          request={approbations[0]}
+          onDone={(erreur) => {
+            if (erreur) setError(erreur);
+            setApprobations((file) => file.slice(1));
+          }}
+        />
       )}
     </div>
   );
