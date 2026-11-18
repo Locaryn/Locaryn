@@ -2,6 +2,7 @@ import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { FREE_CHAT_PATH } from "../../lib/constants";
 import { type InstalledExtension, type Project, core } from "../../lib/core";
+import { echecJournalise } from "../../lib/messages";
 import { getSlotContributions } from "../extensions/SlotRegistry";
 
 export type WorkspaceKind = "local" | "ssh" | "remote" | "none" | "cloud" | "temp";
@@ -94,7 +95,7 @@ export function WorkspacePicker({
     core
       .listProjects()
       .then((list) => setProjects(list.filter((p) => p.path !== FREE_CHAT_PATH)))
-      .catch(() => {});
+      .catch(echecJournalise("WorkspacePicker : listProjects"));
     setSshWorkspaces(loadSavedSshWorkspaces());
 
     function onDown(e: MouseEvent) {

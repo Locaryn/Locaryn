@@ -1,6 +1,7 @@
 import { Icon, type IconName } from "@locaryn/ui-core";
 import { useEffect, useMemo, useState } from "react";
 import { type CloudModel, core as coreApi } from "../lib/core";
+import { echecJournalise } from "../lib/messages";
 import {
   type ModelFamily,
   SEED_CATALOG,
@@ -62,7 +63,7 @@ export function QuickModelSelector({
     if (!isOpen) return;
     fetchFullRegistry()
       .then((res) => setRegistry(res.families))
-      .catch(() => {});
+      .catch(echecJournalise("QuickModelSelector : fetchFullRegistry"));
   }, [isOpen]);
 
   /**

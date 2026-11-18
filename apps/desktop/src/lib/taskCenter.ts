@@ -6,6 +6,7 @@
 import type { IconName } from "@locaryn/ui-core";
 import { useSyncExternalStore } from "react";
 import { type NotificationGroup, core } from "./core";
+import { echecJournalise } from "./messages";
 import { jouerSon, notifierSysteme } from "./osNotify";
 
 /** Douze entrées maximum : au-delà, la pile n'est plus lisible, elle archive. */
@@ -153,17 +154,23 @@ function refleterDansLaBarre(): void {
   const enCours = tasks.filter((t) => t.status === "running");
   if (enCours.length === 0) {
     const echoue = tasks.some((t) => t.status === "error" && !t.read);
-    void core.setTaskbarProgress(echoue ? "error" : "none").catch(() => {});
+    void core
+      .setTaskbarProgress(echoue ? "error" : "none")
+      .catch(echecJournalise("taskCenter : setTaskbarProgress"));
     return;
   }
   const connus = enCours.map((t) => t.progress).filter((p): p is number => typeof p === "number");
   if (connus.length === 0) {
     // Rien de chiffre : la barre defile, ce qui dit « ca travaille » sans
     // pretendre savoir combien il reste.
-    void core.setTaskbarProgress("indeterminate").catch(() => {});
+    void core
+      .setTaskbarProgress("indeterminate")
+      .catch(echecJournalise("taskCenter : setTaskbarProgress"));
     return;
   }
-  void core.setTaskbarProgress("normal", Math.min(...connus)).catch(() => {});
+  void core
+    .setTaskbarProgress("normal", Math.min(...connus))
+    .catch(echecJournalise("taskCenter : setTaskbarProgress"));
 }
 
 /** La duree d'une tache, pour savoir si sa fin merite une banniere. */

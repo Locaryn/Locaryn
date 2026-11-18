@@ -9,6 +9,7 @@ import {
   type RuntimeCapabilities,
   core,
 } from "../lib/core";
+import { echecJournalise } from "../lib/messages";
 import { isNsfwLora } from "../lib/modelSafety";
 import { getSlotContributions } from "./extensions/SlotRegistry";
 
@@ -374,19 +375,19 @@ export function EngineSettings({
       .then((r) => {
         if (!cancelled) setRuntime(r);
       })
-      .catch(() => {});
+      .catch(echecJournalise("EngineSettings : llamaRuntimeStatus"));
     core
       .runtimeCapabilities()
       .then((c) => {
         if (!cancelled) setCaps(c);
       })
-      .catch(() => {});
+      .catch(echecJournalise("EngineSettings : runtimeCapabilities"));
     core
       .getInferenceConfig()
       .then((c) => {
         if (!cancelled) setEngineCfg(c);
       })
-      .catch(() => {});
+      .catch(echecJournalise("EngineSettings : getInferenceConfig"));
     core
       .listLoraAdapters()
       .then((l) => {
@@ -414,7 +415,7 @@ export function EngineSettings({
       core
         .runtimeCapabilities()
         .then(setCaps)
-        .catch(() => {});
+        .catch(echecJournalise("EngineSettings : runtimeCapabilities"));
     } catch (e) {
       setInstallError(String(e).replace(/^Error:\s*/, ""));
     } finally {
@@ -453,7 +454,7 @@ export function EngineSettings({
       .then((exts) => {
         if (!cancelled) setExtensions(exts);
       })
-      .catch(() => {});
+      .catch(echecJournalise("EngineSettings : listExtensions"));
     return () => {
       cancelled = true;
     };

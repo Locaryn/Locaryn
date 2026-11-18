@@ -6,6 +6,7 @@ import { type EtatSession, SessionRow } from "../components/SessionRow";
 import { type InstalledExtension, type Project, type Session, core } from "../lib/core";
 import { confirmer, demanderTexte, informer, pickFolder } from "../lib/dialog";
 import { focusPremiereEntree, navigationMenu, useMenuUnique } from "../lib/menuUnique";
+import { echecVisible } from "../lib/messages";
 import { ecrirePressePapiers } from "../lib/pressePapiers";
 import { useSimpleUi } from "../lib/profile";
 import {
@@ -883,7 +884,9 @@ export function LeftPanel({
                             role="menuitem"
                             onClick={() => {
                               setMenuFor(null);
-                              core.openModelsFolder(p.path).catch(() => {});
+                              core
+                                .openModelsFolder(p.path)
+                                .catch(echecVisible("Ouverture du dossier"));
                             }}
                           >
                             <Icon name="project" size={15} /> Ouvrir le dossier
@@ -893,7 +896,7 @@ export function LeftPanel({
                             role="menuitem"
                             onClick={() => {
                               setMenuFor(null);
-                              ecrirePressePapiers(p.path).catch(() => {});
+                              ecrirePressePapiers(p.path).catch(echecVisible("Copie du chemin"));
                             }}
                           >
                             <Icon name="check" size={15} /> Copier le chemin

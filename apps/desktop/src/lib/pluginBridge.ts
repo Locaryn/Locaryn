@@ -8,6 +8,7 @@ import {
   type TachesDistantes,
   core,
 } from "./core";
+import { type GenreMessage, afficherMessage } from "./messages";
 import { getProfile } from "./profile";
 
 /**
@@ -360,13 +361,7 @@ class PluginBridgeManager {
         },
       },
       ui: {
-        showToast: (message: string, type: "info" | "success" | "warning" | "error" = "info") => {
-          window.dispatchEvent(
-            new CustomEvent("locaryn:toast", {
-              detail: { message, type },
-            }),
-          );
-        },
+        showToast: (message: string, type: GenreMessage = "info") => afficherMessage(message, type),
         dispatchAction: (actionId: string, payload?: unknown) => {
           window.dispatchEvent(
             new CustomEvent(`locaryn:action:${actionId}`, {

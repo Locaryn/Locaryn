@@ -47,6 +47,7 @@ import {
 } from "./cloud/CloudProviderFolder";
 
 import { confirmer } from "../lib/dialog";
+import { echecJournalise } from "../lib/messages";
 type Props = {
   /** Download / Install model to local storage. */
   onInstall: (
@@ -794,7 +795,7 @@ export function ModelBrowser({
       .then((models) => {
         if (active) setAirllmInstalled(new Set(models.map((m) => m.repo)));
       })
-      .catch(() => {});
+      .catch(echecJournalise("ModelBrowser : airllmInstalled"));
     return () => {
       active = false;
     };

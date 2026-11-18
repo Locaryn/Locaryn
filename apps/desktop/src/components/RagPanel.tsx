@@ -1,6 +1,7 @@
 import { Icon } from "@locaryn/ui-core";
 import { useEffect, useRef, useState } from "react";
 import { type RagHit, type RagStatus, core } from "../lib/core";
+import { echecJournalise } from "../lib/messages";
 
 /** Text-ish files we can index directly (a PDF/DOCX would need extraction). */
 const TEXT_EXT = [
@@ -110,7 +111,7 @@ export function RagPanel({ projectId, onClose }: Props) {
       .then((s) => {
         if (!cancelled) setStatus(s);
       })
-      .catch(() => {});
+      .catch(echecJournalise("RagPanel : ragStatus"));
     return () => {
       cancelled = true;
     };

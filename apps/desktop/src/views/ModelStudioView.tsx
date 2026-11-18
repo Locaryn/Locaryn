@@ -6,6 +6,7 @@ import {
   type RuntimeCapabilities,
   core,
 } from "../lib/core";
+import { echecJournalise } from "../lib/messages";
 
 type Props = {
   onOpenMarketplace?: () => void;
@@ -74,19 +75,19 @@ export function ModelStudioView({ onOpenMarketplace, onOpenSettings }: Props) {
       .then((c) => {
         if (!cancelled) setCaps(c);
       })
-      .catch(() => {});
+      .catch(echecJournalise("ModelStudioView : runtimeCapabilities"));
     core
       .getInferenceConfig()
       .then((c) => {
         if (!cancelled) setCfg(c);
       })
-      .catch(() => {});
+      .catch(echecJournalise("ModelStudioView : getInferenceConfig"));
     core
       .listLoraAdapters()
       .then((l) => {
         if (!cancelled) setLora(l);
       })
-      .catch(() => {});
+      .catch(echecJournalise("ModelStudioView : listLoraAdapters"));
     return () => {
       cancelled = true;
     };

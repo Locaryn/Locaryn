@@ -21,6 +21,7 @@ import {
 } from "../lib/core";
 import type { ModelFit as FitType } from "../lib/core";
 import { useI18n } from "../lib/i18n";
+import { echecJournalise } from "../lib/messages";
 import { decrireModele } from "../lib/modelName";
 import { findMetric, formatRate, formatSpeed } from "./SpeedBadge";
 type Lang = "fr" | "en";
@@ -240,7 +241,7 @@ export function ModelResidency() {
       void core
         .signalerActivite()
         .then(() => refresh())
-        .catch(() => {});
+        .catch(echecJournalise("ModelResidency : signalerActivite"));
     };
     window.addEventListener("keydown", surActivite);
     window.addEventListener("pointerdown", surActivite);

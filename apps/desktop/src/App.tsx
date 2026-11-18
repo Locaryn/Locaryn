@@ -9,6 +9,7 @@ import { ConnectorsSettings } from "./components/ConnectorsSettings";
 import { DownloadBubble } from "./components/DownloadBubble";
 import { ExtensionsSettings } from "./components/ExtensionsSettings";
 import { FirstRunPresentation } from "./components/FirstRunPresentation";
+import { Messages } from "./components/Messages";
 import { ModelBrowser } from "./components/ModelBrowser";
 import { ModelResidency } from "./components/ModelResidency";
 import { ModeleTropLourd } from "./components/ModeleTropLourd";
@@ -47,6 +48,7 @@ import {
   listenInstallProgress,
   reportInstallProgress,
 } from "./lib/extensionInstallProgress";
+import { echecJournalise } from "./lib/messages";
 import type { ModelDownloadSource } from "./lib/modelRegistry";
 import { MODEL_INSTALL_EVENT, type PluginModelInstallRequest } from "./lib/pluginBridge";
 import { useProfile } from "./lib/profile";
@@ -247,7 +249,9 @@ export function App() {
     void rechargerAttention();
     // L'événement est le chemin normal ; la relecture au montage rattrape les
     // questions posées avant que l'écran n'existe.
-    const un = listen("locaryn://attention", () => void rechargerAttention()).catch(() => null);
+    const un = listen("locaryn://attention", () => void rechargerAttention()).catch(
+      echecJournalise("App : listen"),
+    );
     return () => {
       void un.then((f) => f?.());
     };
@@ -478,7 +482,7 @@ export function App() {
       // plugin a été désactivé ou retiré, on coupe aussi un tunnel qui aurait
       // été laissé actif par la session précédente.
       if (!caps.has("travel-tunnel")) {
-        void core.setTravelMode(null).catch(() => {});
+        void core.setTravelMode(null).catch(echecJournalise("App : setTravelMode"));
       }
       // Les noyaux installés alimentent le choix à la création de session.
       // Relue toutes les vingt secondes : sans changement, l'état garde son
@@ -614,17 +618,17 @@ export function App() {
         .then((url) => {
           if (url) handleUrl(url);
         })
-        .catch(() => {});
+        .catch(echecJournalise("App : pendingDeepLink"));
       // Liens reçus pendant que l'app tourne : événement natif du plugin puis
       // re-émission Rust (une seule suffit, les deux ne se gênent pas).
       listen<string[]>("deep-link://new-url", (ev) => {
         ev.payload?.forEach(handleUrl);
       })
         .then((un) => unlisteners.push(un))
-        .catch(() => {});
+        .catch(echecJournalise("App : écoute des liens profonds"));
       listen<string>("locaryn://deep-link", (ev) => handleUrl(ev.payload))
         .then((un) => unlisteners.push(un))
-        .catch(() => {});
+        .catch(echecJournalise("App : écoute des liens profonds"));
     } else {
       // En démo (navigateur), on simule un lien par ancre : #locaryn://install?src=…
       const fromHash = () => {
@@ -655,7 +659,11 @@ export function App() {
         }
         const groupes = await Promise.all(
           projects.map(
-            async (p) => [p.id, await core.listSessions(p.id).catch(() => null)] as const,
+            async (p) =>
+              [
+                p.id,
+                await core.listSessions(p.id).catch(echecJournalise("App : listSessions")),
+              ] as const,
           ),
         );
         setSessionsByProject((prev) => {
@@ -699,7 +707,7 @@ export function App() {
 
       // Free chats live in a hidden internal project so they never show up
       // inside a real one. Keep it out of the sidebar's project list.
-      const free = await core.freeChatProject().catch(() => null);
+      const free = await core.freeChatProject().catch(echecJournalise("App : freeChatProject"));
       setFreeProject(free);
 
       const projs = await core.listProjects();
@@ -1754,6 +1762,7 @@ export function App() {
           l'application entiere. */}
         <UpdateDialog />
         <SupportDialog />
+        <Messages />
         {/* Micro, caméra, position… : demandés par l'app, pas par la bulle de Windows. */}
         <WebPermissionPrompt />
         {/* Un chargement refusé par la prudence choisie se dit dans une fenêtre. */}

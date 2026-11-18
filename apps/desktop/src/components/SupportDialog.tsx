@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type EtatSoutien, core, coreMode } from "../lib/core";
+import { echecJournalise, echecVisible } from "../lib/messages";
 
 /** Envoyé par la conversation à la fin d'une réponse. */
 export const REPONSE_FINIE_EVENT = "locaryn:reponse-finie";
@@ -131,7 +132,7 @@ export function SupportDialog() {
           .then((e) => {
             if (e.proposer) setEtat(e);
           })
-          .catch(() => {});
+          .catch(echecJournalise("SupportDialog : soutienEtat"));
       }, 1500);
     };
     window.addEventListener(REPONSE_FINIE_EVENT, surReponse);
@@ -160,7 +161,7 @@ export function SupportDialog() {
 
   async function repondre(choix: "oui" | "tout" | "non") {
     if (choix === "non") {
-      await core.soutienRepondre("non").catch(() => {});
+      await core.soutienRepondre("non").catch(echecVisible("Enregistrement de la réponse"));
       setEtat(null);
       return;
     }
@@ -214,7 +215,9 @@ export function SupportDialog() {
                   // Le premier « Non » est déjà une réponse : retenue tout de
                   // suite, même si la fenêtre se ferme avant la seconde
                   // question. « Bon, d'accord » la remplace.
-                  void core.soutienRepondre("non").catch(() => {});
+                  void core
+                    .soutienRepondre("non")
+                    .catch(echecVisible("Enregistrement de la réponse"));
                   setVue("sur");
                 }}
               >

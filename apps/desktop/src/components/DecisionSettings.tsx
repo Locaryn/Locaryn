@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { type EtatDecisions, core, isTauri } from "../lib/core";
+import { echecJournalise } from "../lib/messages";
 
 type Progres = { etape: string; detail: string; fini: boolean; erreur: string | null };
 
@@ -30,7 +31,7 @@ export function DecisionSettings() {
         setErreur(ev.payload.erreur);
         void core.decisionsEtat().then(setEtat);
       }
-    }).catch(() => null);
+    }).catch(echecJournalise("DecisionSettings : decisionsEtat"));
     return () => {
       void un.then((f) => f?.());
     };

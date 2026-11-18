@@ -8,6 +8,7 @@ import {
   type InstalledExtension,
   core,
 } from "../../lib/core";
+import { echecVisible } from "../../lib/messages";
 import { ecrirePressePapiers } from "../../lib/pressePapiers";
 import { DynamicPluginWidget } from "../extensions/DynamicPluginWidget";
 import { ExtensionSlot } from "../extensions/ExtensionSlot";
@@ -533,7 +534,11 @@ function CloudGatewayCard({
           <button
             type="button"
             className="locaryn-chip"
-            onClick={() => void core.cloudProviderOpenDashboard(provider.id).catch(() => {})}
+            onClick={() =>
+              void core
+                .cloudProviderOpenDashboard(provider.id)
+                .catch(echecVisible("Ouverture du tableau de bord"))
+            }
             title="Ouvrir le tableau de bord dans le navigateur"
           >
             Ouvrir le tableau de bord
@@ -759,7 +764,7 @@ function CloudAccountCard({ provider }: { provider: CloudProvider }) {
           <button
             type="button"
             className="locaryn-chip"
-            onClick={() => void ouvrirLien(lien).catch(() => {})}
+            onClick={() => void ouvrirLien(lien).catch(echecVisible("Ouverture du lien"))}
             title="Si la page ne s'est pas ouverte"
           >
             Ouvrir la page de connexion

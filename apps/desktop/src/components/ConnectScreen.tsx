@@ -2,6 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useEffect, useState } from "react";
 import { type CertificateStatus, type Provisioning, core } from "../lib/core";
 import { pickAnyFile } from "../lib/dialog";
+import { echecJournalise } from "../lib/messages";
 
 type Props = {
   provisioning: Provisioning;
@@ -30,7 +31,7 @@ export function ConnectScreen({ provisioning, onConnected }: Props) {
     core
       .clientCertificateStatus()
       .then(setCert)
-      .catch(() => {});
+      .catch(echecJournalise("ConnectScreen : clientCertificateStatus"));
   }, []);
 
   // Passer sur l'onglet d'appairage, c'est frapper a la porte de l'hote : on

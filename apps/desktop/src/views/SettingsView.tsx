@@ -39,6 +39,7 @@ import {
 } from "../lib/core";
 import { getPendingInstall, subscribeDeepLink } from "../lib/deepLink";
 import { useI18n } from "../lib/i18n";
+import { echecJournalise } from "../lib/messages";
 import { updateProfile, useProfile } from "../lib/profile";
 import { type AccountSection, AccountView } from "./AccountView";
 import { ProjectSettings } from "./ProjectSettings";
@@ -364,7 +365,7 @@ export function SettingsView({
       .then((i) => {
         if (!cancelled) setInfo(i);
       })
-      .catch(() => {});
+      .catch(echecJournalise("SettingsView : appInfo"));
     return () => {
       cancelled = true;
     };
@@ -415,7 +416,7 @@ export function SettingsView({
         .then((e) => {
           if (!annule) setApiActive(e.enabled);
         })
-        .catch(() => {});
+        .catch(echecJournalise("SettingsView : providerApiStatus"));
     };
     const ouvrirCles = () => {
       setApiActive(true);

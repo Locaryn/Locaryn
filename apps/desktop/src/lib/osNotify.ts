@@ -25,6 +25,7 @@
  */
 
 import { type NotificationGroup, type NotificationPrefs, core } from "./core";
+import { echecJournalise } from "./messages";
 
 type ModuleNotification = {
   isPermissionGranted: () => Promise<boolean>;
@@ -56,7 +57,7 @@ async function charger(): Promise<ModuleNotification | null> {
   if (!module) {
     module = import("@tauri-apps/plugin-notification")
       .then((m) => m as unknown as ModuleNotification)
-      .catch(() => null);
+      .catch(echecJournalise("osNotify : import"));
   }
   return module;
 }
@@ -142,7 +143,7 @@ export async function jouerSon(): Promise<void> {
     if (!ctx) return;
     // Une politique d'autoplay peut tenir le contexte en veille : la reprise
     // ne marche que depuis un geste, d'où le réveilleur posé au premier.
-    if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+    if (ctx.state === "suspended") await ctx.resume().catch(echecJournalise("osNotify : resume"));
     // Sol puis do — une montée, « c'est prêt » — au lieu d'un carillon ou
     // d'un cliquetis. Assez bas pour ne pas sursauter, assez net pour percer.
     const t = ctx.currentTime;
@@ -196,7 +197,8 @@ function reveillerAudio(): void {
   if (reveille || typeof window === "undefined") return;
   reveille = true;
   const reprise = () => {
-    if (audio && audio.state === "suspended") void audio.resume().catch(() => {});
+    if (audio && audio.state === "suspended")
+      void audio.resume().catch(echecJournalise("osNotify : resume"));
   };
   window.addEventListener("pointerdown", reprise, { once: true });
   window.addEventListener("keydown", reprise, { once: true });

@@ -1,0 +1,65 @@
+/* Messages passagers : pile en bas à droite, au-dessus de la barre d'état. */
+.locaryn-messages {
+  position: fixed;
+  right: var(--space-3);
+  bottom: calc(var(--statusbar-h) + var(--space-3));
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(380px, calc(100vw - 2 * var(--space-3)));
+  pointer-events: none;
+}
+.locaryn-message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  pointer-events: auto;
+  animation: lo-rise var(--dur-med) var(--ease-out) both;
+}
+.locaryn-message.is-error {
+  border-color: rgba(var(--danger-rgb), 0.55);
+}
+.locaryn-message.is-warning {
+  border-color: rgba(var(--warn-rgb), 0.55);
+}
+.locaryn-message-texte {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.locaryn-message-fermer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: -6px -6px -6px 0;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+}
+.locaryn-message-fermer:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-message-fermer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .locaryn-message {
+    animation: none;
+  }
+}

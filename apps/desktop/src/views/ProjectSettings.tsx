@@ -4,6 +4,7 @@ import { type Project, type RagStatus, core } from "../lib/core";
 import { trustInfo } from "../lib/trust";
 
 import { confirmer, informer } from "../lib/dialog";
+import { echecVisible } from "../lib/messages";
 type Props = {
   projects: Project[];
   /** Called after a project is archived so the caller can refresh its list. */
@@ -159,7 +160,11 @@ export function ProjectSettings({ projects, onArchived }: Props) {
               <button
                 type="button"
                 className="locaryn-btn-ghost"
-                onClick={() => core.openModelsFolder(selected.path).catch(() => {})}
+                onClick={() =>
+                  core
+                    .openModelsFolder(selected.path)
+                    .catch(echecVisible("Ouverture du dossier du projet"))
+                }
               >
                 <Icon name="project" size={15} /> Ouvrir le dossier
               </button>

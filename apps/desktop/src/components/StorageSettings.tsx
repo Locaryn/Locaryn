@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type MigrationProgress, type StorageInfo, core, formatBytes } from "../lib/core";
 import { pickFolder } from "../lib/dialog";
+import { echecVisible } from "../lib/messages";
 
 type Props = {
   /** Jump to the model marketplace, where weights are actually managed. */
@@ -194,7 +195,9 @@ export function StorageSettings({ onOpenMarketplace }: Props) {
           type="button"
           className="locaryn-btn-ghost"
           disabled={busy}
-          onClick={() => core.openModelsFolder().catch(() => {})}
+          onClick={() =>
+            core.openModelsFolder().catch(echecVisible("Ouverture du dossier des modèles"))
+          }
         >
           Ouvrir le dossier des modèles
         </button>

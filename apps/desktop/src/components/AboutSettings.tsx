@@ -8,6 +8,7 @@ import {
   core,
   coreMode,
 } from "../lib/core";
+import { echecJournalise } from "../lib/messages";
 import { PRESENTATION_REPLAY } from "../lib/presentation";
 import { CAPS } from "./EngineSettings";
 import { JournauxSettings } from "./JournauxSettings";
@@ -55,19 +56,19 @@ export function AboutSettings() {
       .then((i) => {
         if (!cancelled) setInfo(i);
       })
-      .catch(() => {});
+      .catch(echecJournalise("AboutSettings : appInfo"));
     core
       .runtimeCapabilities()
       .then((c) => {
         if (!cancelled) setCaps(c);
       })
-      .catch(() => {});
+      .catch(echecJournalise("AboutSettings : runtimeCapabilities"));
     core
       .llamaRuntimeStatus()
       .then((r) => {
         if (!cancelled) setRuntime(r);
       })
-      .catch(() => {});
+      .catch(echecJournalise("AboutSettings : llamaRuntimeStatus"));
     return () => {
       cancelled = true;
     };

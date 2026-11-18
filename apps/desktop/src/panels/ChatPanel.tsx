@@ -58,6 +58,7 @@ import { confirmer, informer, pickSaveFile } from "../lib/dialog";
 import { recordTextGenerationDuration } from "../lib/durationEstimator";
 import { useI18n } from "../lib/i18n";
 import { loadMediaObjectUrl, toMediaUrl } from "../lib/media";
+import { echecJournalise } from "../lib/messages";
 import { nomCourt } from "../lib/modelName";
 import { jouerSon, notifierSysteme } from "../lib/osNotify";
 import { pluginBridge } from "../lib/pluginBridge";
@@ -772,7 +773,7 @@ export function ChatPanel({
         .then((r) => {
           if (r.loaded) setAttente((a) => (a === "charge" ? "lit" : a));
         })
-        .catch(() => {});
+        .catch(echecJournalise("ChatPanel : modelResidency"));
     }, 2000);
     return () => window.clearInterval(t);
   }, [attente]);
@@ -1302,7 +1303,7 @@ ${d.texte}`
           setWorkspace({ kind: "local", id: p.id, label: p.name, path: p.path });
         }
       })
-      .catch(() => {});
+      .catch(echecJournalise("ChatPanel : listProjects"));
   }, [projectId]);
 
   async function handleWorkspaceChange(next: WorkspaceSelection) {
@@ -4052,7 +4053,7 @@ ${preview}`,
                 void core
                   .modelAbilities()
                   .then(setAbilities)
-                  .catch(() => {});
+                  .catch(echecJournalise("ChatPanel : modelAbilities"));
               }}
               onClick={() => fileRef.current?.click()}
             >

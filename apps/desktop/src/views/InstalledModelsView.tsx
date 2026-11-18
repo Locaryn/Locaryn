@@ -19,6 +19,7 @@ import { classifyModel, nsfwReason } from "../lib/modelSafety";
 import { VUE_RECHOISIE } from "../lib/vues";
 
 import { confirmer, informer } from "../lib/dialog";
+import { echecJournalise } from "../lib/messages";
 type Props = {
   installedModels: string[];
   onSelectModelForChat: (modelTag: string) => void;
@@ -191,7 +192,7 @@ export function InstalledModelsView({
     core
       .appInfo()
       .then((info) => setModelsDir(info.models_dir || `${info.data_dir}/models`))
-      .catch(() => {});
+      .catch(echecJournalise("InstalledModelsView : appInfo"));
     void core
       .listModelMetrics()
       .then(setMetrics)
