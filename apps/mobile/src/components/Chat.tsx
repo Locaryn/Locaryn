@@ -1165,11 +1165,7 @@ export function Chat({
         onNiveauAvant={setNiveauAvant}
       />
 
-      <ToolApprovalModal
-        approval={pendingApproval}
-        onResolve={handleResolveApproval}
-        onCancel={() => setPendingApproval(null)}
-      />
+      <ToolApprovalModal approval={pendingApproval} onResolve={handleResolveApproval} />
     </div>
   );
 }

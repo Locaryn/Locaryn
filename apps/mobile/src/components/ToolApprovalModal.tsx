@@ -1,16 +1,10 @@
 import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
-import type {
-  RiskLevel,
-  RiskScope,
-  ToolApprovalDecision,
-  ToolApprovalRequest,
-} from "../lib/core";
+import type { RiskLevel, RiskScope, ToolApprovalDecision, ToolApprovalRequest } from "../lib/core";
 
 type Props = {
   approval: ToolApprovalRequest | null;
   onResolve: (decision: ToolApprovalDecision) => void;
-  onCancel?: () => void;
 };
 
 const RISK_LABELS: Record<RiskLevel, string> = {
@@ -27,7 +21,7 @@ const RISK_CLASSES: Record<RiskLevel, string> = {
   critical: "lo-risk-critical",
 };
 
-export function ToolApprovalModal({ approval, onResolve, onCancel }: Props) {
+export function ToolApprovalModal({ approval, onResolve }: Props) {
   const [scope, setScope] = useState<RiskScope>("once");
 
   if (!approval) return null;
@@ -55,8 +49,10 @@ export function ToolApprovalModal({ approval, onResolve, onCancel }: Props) {
   const formattedArgs = args ? JSON.stringify(args, null, 2) : null;
 
   return (
-    <div className="lo-modal-backdrop" onClick={onCancel}>
-      <div className="lo-modal" onClick={(e) => e.stopPropagation()}>
+    // Le fond ne ferme pas : une demande fermée sans réponse laisse l'agent
+    // attendre jusqu'au délai. La croix, elle, refuse explicitement.
+    <div className="lo-modal-backdrop">
+      <div className="lo-modal" role="dialog" aria-modal="true">
         <div className="lo-modal-header">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className={`lo-risk-pill ${RISK_CLASSES[risk] ?? "lo-risk-medium"}`}>
@@ -64,22 +60,21 @@ export function ToolApprovalModal({ approval, onResolve, onCancel }: Props) {
             </span>
             <span className="lo-modal-title">Demande d'autorisation</span>
           </div>
-          {onCancel && (
-            <button
-              type="button"
-              className="lo-btn-ghost"
-              style={{
-                width: "auto",
-                minHeight: "auto",
-                padding: "4px 8px",
-                border: "none",
-                fontSize: 16,
-              }}
-              onClick={onCancel}
-            >
-              <Icon name="close" size={18} />
-            </button>
-          )}
+          <button
+            type="button"
+            className="lo-btn-ghost"
+            aria-label="Refuser et fermer"
+            style={{
+              width: 44,
+              minHeight: 44,
+              padding: 0,
+              border: "none",
+              fontSize: 16,
+            }}
+            onClick={handleDeny}
+          >
+            <Icon name="close" size={18} />
+          </button>
         </div>
 
         <div className="lo-modal-body">
