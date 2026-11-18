@@ -28,6 +28,7 @@ mod routes;
 
 use std::collections::HashMap;
 mod acces_public;
+mod fournisseur_actif;
 mod adresse_locale;
 mod auth;
 mod chat_gpu;
@@ -620,6 +621,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/v1/provider-api", get(provider_api_status))
         .route("/v1/providers", get(list_providers))
+        // `locaryn provider use auto|local|remote`.
+        .route("/v1/providers/active", post(fournisseur_actif::activer))
         .route("/v1/supervisor/status", get(supervisor_status))
         .route("/v1/supervisor/start", post(supervisor_start))
         .route("/v1/supervisor/stop", post(supervisor_stop))
