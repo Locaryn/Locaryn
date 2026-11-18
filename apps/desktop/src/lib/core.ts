@@ -2884,7 +2884,7 @@ const tauriCore: CoreApi = {
   notificationPrefs: () => invoke<NotificationPrefs>("get_notification_prefs"),
   setNotificationPrefs: (prefs) => invoke<void>("set_notification_prefs", { prefs }),
   windowPreferences: () => invoke<WindowPreferences>("get_window_preferences"),
-  setWindowPreferences: (prefs) => invoke<void>("set_window_preferences", { prefs }),
+  setWindowPreferences: (preferences) => invoke<void>("set_window_preferences", { preferences }),
   setTaskbarProgress: (status, progress) =>
     invoke<void>("set_taskbar_progress", { state: { status, progress: progress ?? null } }),
 

@@ -7889,6 +7889,9 @@ pub fn run() {
 // mal et s'oublie facilement — c'est précisément ce que signale clippy.
 
 #[cfg(test)]
+mod liaisons_tests;
+
+#[cfg(test)]
 mod suppression_modele_tests {
     use super::fichier_du_modele;
 
