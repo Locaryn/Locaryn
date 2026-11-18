@@ -1,9 +1,9 @@
 import { Icon, LoProgress } from "@locaryn/ui-core";
 import { open } from "@tauri-apps/plugin-shell";
-import { type Update, check } from "@tauri-apps/plugin-updater";
+import { type DownloadEvent, check } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { core, coreMode } from "../lib/core";
+import { type MajBeta, core, coreMode } from "../lib/core";
 import { notifierSysteme } from "../lib/osNotify";
 
 const RELEASES_URL = "https://github.com/Locaryn/Locaryn/releases";
@@ -72,13 +72,44 @@ export function demanderVerification() {
   window.dispatchEvent(new CustomEvent(CHECK_UPDATE_EVENT));
 }
 
+/**
+ * Une version à installer, d'où qu'elle vienne : l'`Update` du plugin (canal
+ * stable) ou une version du canal bêta, cherchée et posée côté Rust.
+ */
+interface VersionTrouvee {
+  version: string;
+  body?: string;
+  date?: string;
+  downloadAndInstall(onEvent?: (ev: DownloadEvent) => void): Promise<void>;
+}
+
+function depuisBeta(maj: MajBeta): VersionTrouvee {
+  return {
+    version: maj.version,
+    body: maj.body ?? undefined,
+    date: maj.date ?? undefined,
+    downloadAndInstall: (onEvent) =>
+      core.installerMajBeta((ev) => {
+        if (!onEvent) return;
+        if (ev.event === "Started") {
+          onEvent({
+            event: "Started",
+            data: { contentLength: ev.data.contentLength ?? undefined },
+          });
+        } else {
+          onEvent(ev);
+        }
+      }),
+  };
+}
+
 type Etat =
   | { sorte: "ferme" }
   | { sorte: "recherche" }
   | { sorte: "ajour"; version: string | null }
-  | { sorte: "trouvee"; update: Update }
-  | { sorte: "telecharge"; update: Update; recu: number; total: number | null }
-  | { sorte: "posee"; update: Update }
+  | { sorte: "trouvee"; update: VersionTrouvee }
+  | { sorte: "telecharge"; update: VersionTrouvee; recu: number; total: number | null }
+  | { sorte: "posee"; update: VersionTrouvee }
   | { sorte: "erreur"; message: string };
 
 function formatOctets(n: number): string {
@@ -198,7 +229,9 @@ export function UpdateDialog() {
   // « Mises à jour automatiques » : une version trouvée sans qu'on l'ait
   // demandée s'installe seule, au repos, sans ouvrir cette fenêtre.
   const autoRef = useRef(true);
-  const enAttenteRef = useRef<Update | null>(null);
+  // « Canal Bêta » (À propos) : les pré-versions sont proposées aussi.
+  const betaRef = useRef(false);
+  const enAttenteRef = useRef<VersionTrouvee | null>(null);
   const installeRef = useRef(false);
 
   const fermer = useCallback(() => setEtat({ sorte: "ferme" }), []);
@@ -239,8 +272,11 @@ export function UpdateDialog() {
       }
       if (visible) setEtat({ sorte: "recherche" });
       try {
-        let update: Update | null = null;
-        if (emuleRef.current) {
+        let update: VersionTrouvee | null = null;
+        if (betaRef.current) {
+          const beta = await core.chercherMajBeta();
+          update = beta ? depuisBeta(beta) : null;
+        } else if (emuleRef.current) {
           try {
             update = await check({ target: "windows-aarch64" });
           } catch {
@@ -249,7 +285,7 @@ export function UpdateDialog() {
             update = null;
           }
         }
-        update ??= await check();
+        if (!betaRef.current) update ??= await check();
         if (!update) {
           setEtat(visible ? { sorte: "ajour", version: null } : { sorte: "ferme" });
           return;
@@ -276,6 +312,7 @@ export function UpdateDialog() {
         .getUpdatePrefs()
         .then((p) => {
           autoRef.current = p.automatic;
+          betaRef.current = p.beta;
         })
         .catch((e) => console.warn("[mise à jour] réglage illisible :", e));
     void lire();
@@ -347,7 +384,7 @@ export function UpdateDialog() {
     return () => window.removeEventListener("keydown", surTouche);
   }, [etat.sorte, fermer]);
 
-  async function installer(update: Update) {
+  async function installer(update: VersionTrouvee) {
     setEtat({ sorte: "telecharge", update, recu: 0, total: null });
     // Le téléchargement annonce chaque morceau reçu — des milliers par
     // seconde. Un rendu par morceau relançait la transition de la barre à

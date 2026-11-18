@@ -8,7 +8,7 @@ import {
   core,
   coreMode,
 } from "../lib/core";
-import { echecJournalise } from "../lib/messages";
+import { afficherMessage, echecJournalise } from "../lib/messages";
 import { PRESENTATION_REPLAY } from "../lib/presentation";
 import { CAPS } from "./EngineSettings";
 import { JournauxSettings } from "./JournauxSettings";
@@ -22,9 +22,7 @@ export function AboutSettings() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [caps, setCaps] = useState<RuntimeCapabilities | null>(null);
   const [runtime, setRuntime] = useState<LlamaRuntimeStatus | null>(null);
-  const [appBetaChannel, setAppBetaChannel] = useState<boolean>(() => {
-    return localStorage.getItem("locaryn_app_beta_channel") === "true";
-  });
+  const [appBetaChannel, setAppBetaChannel] = useState(false);
   const [showBetaMorphs, setShowBetaMorphs] = useState<boolean>(() => {
     return localStorage.getItem("locaryn_show_beta_morphs") !== "false";
   });
@@ -34,18 +32,35 @@ export function AboutSettings() {
   useEffect(() => {
     core
       .getUpdatePrefs()
-      .then((p) => setMajAuto(p.automatic))
+      .then((p) => {
+        setMajAuto(p.automatic);
+        setAppBetaChannel(p.beta);
+      })
       .catch((e) => console.warn("réglage des mises à jour illisible :", e));
   }, []);
 
   function changerMajAuto(automatic: boolean) {
     setMajAuto(automatic);
     core
-      .setUpdatePrefs({ automatic })
+      .setUpdatePrefs({ automatic, beta: appBetaChannel })
       .then(() => window.dispatchEvent(new CustomEvent(MAJ_AUTO_CHANGEE)))
       .catch((e) => {
         console.warn("réglage des mises à jour non enregistré :", e);
+        afficherMessage("Réglage des mises à jour non enregistré.", "error");
         setMajAuto(!automatic);
+      });
+  }
+
+  // Le canal suivi par l'updater : la prochaine vérification le prend.
+  function changerCanalBeta(beta: boolean) {
+    setAppBetaChannel(beta);
+    core
+      .setUpdatePrefs({ automatic: majAuto, beta })
+      .then(() => window.dispatchEvent(new CustomEvent(MAJ_AUTO_CHANGEE)))
+      .catch((e) => {
+        console.warn("canal de mise à jour non enregistré :", e);
+        afficherMessage("Canal de mise à jour non enregistré.", "error");
+        setAppBetaChannel(!beta);
       });
   }
 
@@ -211,10 +226,7 @@ export function AboutSettings() {
             </div>
             <LoSwitch
               checked={appBetaChannel}
-              onChange={(checked) => {
-                setAppBetaChannel(checked);
-                localStorage.setItem("locaryn_app_beta_channel", checked ? "true" : "false");
-              }}
+              onChange={changerCanalBeta}
               label="Activer le canal de mise à jour Bêta de l'application"
             />
           </div>

@@ -37,6 +37,9 @@ pub struct UpdatePrefs {
     /// Mettre à jour l'application et les extensions sans rien demander.
     #[serde(default = "vrai")]
     pub automatic: bool,
+    /// Suivre aussi les pré-versions de l'application (voir `canal_beta`).
+    #[serde(default)]
+    pub beta: bool,
 }
 
 fn vrai() -> bool {
@@ -45,7 +48,10 @@ fn vrai() -> bool {
 
 impl Default for UpdatePrefs {
     fn default() -> Self {
-        Self { automatic: true }
+        Self {
+            automatic: true,
+            beta: false,
+        }
     }
 }
 
@@ -191,10 +197,15 @@ mod tests {
     fn les_mises_a_jour_sont_actives_par_defaut_et_le_reglage_tient() {
         let dir = std::env::temp_dir().join(format!("locaryn-maj-{}", std::process::id()));
         assert!(UpdatePrefs::load(&dir).automatic);
-        UpdatePrefs { automatic: false }
-            .save(&dir)
-            .expect("réglage écrit");
+        assert!(!UpdatePrefs::load(&dir).beta, "le canal bêta est un choix");
+        UpdatePrefs {
+            automatic: false,
+            beta: true,
+        }
+        .save(&dir)
+        .expect("réglage écrit");
         assert!(!UpdatePrefs::load(&dir).automatic);
+        assert!(UpdatePrefs::load(&dir).beta);
         std::fs::write(UpdatePrefs::chemin(&dir), "pas du json").expect("fichier abîmé");
         assert!(
             UpdatePrefs::load(&dir).automatic,

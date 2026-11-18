@@ -825,6 +825,10 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           draft: false
+          # Une version à tiret (`0.5.0-beta.1`) sort en pré-version : GitHub
+          # ne la sert pas par `releases/latest`, donc le canal stable ne la
+          # voit pas ; le canal bêta de l'application, lui, la propose.
+          prerelease: ${{ contains(env.VER, '-') }}
           # Le tag n'existe pas encore quand la publication part d'une branche
           # `release/*` : l'action le crée au commit publié. Sur un push de tag,
           # cette valeur désigne déjà ce tag — identique, donc sans effet.

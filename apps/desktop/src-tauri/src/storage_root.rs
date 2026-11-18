@@ -251,6 +251,29 @@ pub async fn storage_info() -> Result<StorageInfo, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Le volume qui porte le dossier des modèles, sans parcourir ce dossier :
+/// assez léger pour la veille de l'espace disque, qui le relit souvent.
+/// `None` : aucun volume reconnu (montage inhabituel).
+#[tauri::command]
+pub async fn espace_disque_modeles() -> Result<Option<DriveInfo>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let modeles = locaryn_config::models_dir();
+        volumes()
+            .into_iter()
+            .filter(|(mount, _, _)| same_volume(&modeles, mount))
+            // Le montage le plus précis : `/home` plutôt que `/`.
+            .max_by_key(|(mount, _, _)| mount.as_os_str().len())
+            .map(|(mount, total_bytes, free_bytes)| DriveInfo {
+                mount: mount.to_string_lossy().to_string(),
+                total_bytes,
+                free_bytes,
+                is_current: true,
+            })
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 fn lire_stockage() -> Result<StorageInfo, String> {
     let root = locaryn_config::storage_root();
     let entries = vec![

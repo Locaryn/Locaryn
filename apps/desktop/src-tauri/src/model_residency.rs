@@ -800,6 +800,32 @@ pub async fn eject_chat_model(core: State<'_, Core>) -> Result<ResidencyStatus, 
     model_residency(core).await
 }
 
+/// L'événement que reçoit l'interface quand un modèle est déchargé faute
+/// d'activité : elle en fait une notification du groupe « Modèles en
+/// mémoire ».
+pub const EVENEMENT_EJECTION: &str = "locaryn://modele-decharge-inactivite";
+
+/// Relayer à l'interface chaque éjection par inactivité du superviseur.
+pub fn relayer_ejections(app: tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+    let mut ejections = app.state::<Core>().supervisor.abonner_ejections();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match ejections.recv().await {
+                Ok(moteur) => {
+                    if let Err(e) = app.emit(EVENEMENT_EJECTION, moteur.as_token()) {
+                        tracing::warn!(erreur = %e, "éjection par inactivité non relayée");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(perdues)) => {
+                    tracing::debug!(perdues, "éjections par inactivité sautées");
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1859,7 +1859,26 @@ export interface ModelAbilities {
 export interface UpdatePrefs {
   /** Cochée par défaut : tout se met à jour seul, au repos. */
   automatic: boolean;
+  /** Suivre aussi les pré-versions de l'application. */
+  beta: boolean;
 }
+
+/** Une version trouvée sur le canal bêta. */
+export interface MajBeta {
+  version: string;
+  body: string | null;
+  /** RFC 3339, tel que le manifeste le donne. */
+  date: string | null;
+}
+
+/** La progression d'une installation bêta : la forme des `DownloadEvent` du plugin. */
+export type ProgressionMaj =
+  | { event: "Started"; data: { contentLength: number | null } }
+  | { event: "Progress"; data: { chunkLength: number } }
+  | { event: "Finished" };
+
+/** Diffusé par le service quand un modèle est déchargé faute d'activité. */
+export const EVENEMENT_EJECTION = "locaryn://modele-decharge-inactivite";
 
 export interface NotificationPrefs {
   /** A `false`, aucune banniere du systeme ne part. */
@@ -2190,6 +2209,10 @@ export interface CoreApi {
   forgetContext(id: string): Promise<void>;
   getUpdatePrefs(): Promise<UpdatePrefs>;
   setUpdatePrefs(prefs: UpdatePrefs): Promise<void>;
+  /** Une version plus récente sur le canal bêta, pré-versions comprises. */
+  chercherMajBeta(): Promise<MajBeta | null>;
+  /** Télécharge et pose la version trouvée par `chercherMajBeta`. */
+  installerMajBeta(onEvent: (ev: ProgressionMaj) => void): Promise<void>;
   /** Personne ne s'en sert et aucun modèle n'est chargé : l'application peut se remplacer. */
   appAuRepos(): Promise<boolean>;
   /** La mise à jour qui va s'installer relancera l'application sans fenêtre. */
@@ -2355,6 +2378,8 @@ export interface CoreApi {
   ): Promise<CertificateStatus>;
 
   storageInfo(): Promise<StorageInfo>;
+  /** Le volume du dossier des modèles, sans parcourir le dossier. */
+  espaceDisqueModeles(): Promise<DriveInfo | null>;
   /** Point Locaryn at `newRoot`, optionally relocating the existing data.
    *  Progress arrives on the `storage-migration` event. */
   setStorageRoot(newRoot: string, moveData: boolean): Promise<StorageInfo>;
@@ -2851,6 +2876,12 @@ const tauriCore: CoreApi = {
   forgetContext: (id) => invoke<void>("forget_context", { id }),
   getUpdatePrefs: () => invoke<UpdatePrefs>("get_update_prefs"),
   setUpdatePrefs: (prefs) => invoke<void>("set_update_prefs", { prefs }),
+  chercherMajBeta: () => invoke<MajBeta | null>("chercher_maj_beta"),
+  installerMajBeta: (onEvent) => {
+    const progression = new Channel<ProgressionMaj>();
+    progression.onmessage = onEvent;
+    return invoke<void>("installer_maj_beta", { progression });
+  },
   appAuRepos: () => invoke<boolean>("app_au_repos"),
   preparerRedemarrageSilencieux: () => invoke<void>("preparer_redemarrage_silencieux"),
   notificationPrefs: () => invoke<NotificationPrefs>("get_notification_prefs"),
@@ -3019,6 +3050,7 @@ const tauriCore: CoreApi = {
     invoke<void>("set_saved_password", { serverUrl, username, password }),
 
   storageInfo: () => invoke<StorageInfo>("storage_info"),
+  espaceDisqueModeles: () => invoke<DriveInfo | null>("espace_disque_modeles"),
   setStorageRoot: (newRoot, moveData) =>
     invoke<StorageInfo>("set_storage_root", { args: { new_root: newRoot, move_data: moveData } }),
   cleanTemp: () => invoke<number>("clean_temp"),
@@ -4686,9 +4718,13 @@ Contenu de démonstration, avec **du gras** et une liste :
   },
   async setNotificationPrefs() {},
   async getUpdatePrefs() {
-    return { automatic: true };
+    return { automatic: true, beta: false };
   },
   async setUpdatePrefs() {},
+  async chercherMajBeta() {
+    return null;
+  },
+  async installerMajBeta() {},
   // L'aperçu navigateur n'a pas de binaire à remplacer.
   async appAuRepos() {
     return false;
@@ -5206,6 +5242,12 @@ Contenu de démonstration, avec **du gras** et une liste :
   getSavedPassword: async () => null,
   setSavedPassword: async () => {},
 
+  espaceDisqueModeles: async () => ({
+    mount: "D:\\",
+    total_bytes: 1_000_000_000_000,
+    free_bytes: 56_489_000_000,
+    is_current: true,
+  }),
   storageInfo: async () => ({
     root: "C:/Users/you/.locaryn/data",
     configured: false,

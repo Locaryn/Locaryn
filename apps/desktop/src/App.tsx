@@ -57,6 +57,7 @@ import { suivreSousAgents } from "./lib/sousAgents";
 import { keepIfEqual } from "./lib/stableState";
 import { taskCenter } from "./lib/taskCenter";
 import { extraitPourTitre } from "./lib/titreConversation";
+import { useVeilleSysteme } from "./lib/veilleSysteme";
 import { VUE_RECHOISIE } from "./lib/vues";
 import {
   KINDS,
@@ -130,6 +131,7 @@ function memesSessions(a: Session[], b: Session[]): boolean {
 const VUE_ACTIVE = "locaryn:vue-active";
 
 export function App() {
+  useVeilleSysteme();
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);

@@ -32,6 +32,7 @@ mod memory;
 mod memory_gardener;
 mod mentions;
 mod mises_a_jour;
+mod canal_beta;
 mod model_abilities;
 mod model_recommendations;
 mod model_residency;
@@ -7351,6 +7352,7 @@ async fn boot(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + S
     });
     // Les extensions se tiennent à jour seules, au repos (Locaryn/Locaryn#88).
     mises_a_jour::demarrer(app.clone());
+    model_residency::relayer_ejections(app.clone());
     Ok(())
 }
 
@@ -7549,6 +7551,7 @@ pub fn run() {
             server_mode::create_server_user,
             server_mode::delete_server_user,
             storage_root::storage_info,
+            storage_root::espace_disque_modeles,
             storage_root::set_storage_root,
             storage_root::clean_temp,
             pull_model,
@@ -7582,6 +7585,8 @@ pub fn run() {
             check_hardware,
             model_abilities::model_abilities,
             mises_a_jour::get_update_prefs,
+            canal_beta::chercher_maj_beta,
+            canal_beta::installer_maj_beta,
             mises_a_jour::set_update_prefs,
             mises_a_jour::app_au_repos,
             notifications::get_notification_prefs,

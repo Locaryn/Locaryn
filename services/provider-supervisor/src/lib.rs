@@ -222,6 +222,10 @@ struct SupervisorInner {
     /// Il ne compte pas comme une utilisation : le compte à rebours continue,
     /// et le modèle est éjecté à l'échéance même au milieu de ce travail.
     arriere_plan: std::sync::atomic::AtomicUsize,
+    /// Les moteurs arrêtés faute d'activité. L'hôte s'y abonne pour prévenir
+    /// la personne : sans ce signal, elle découvrait l'éjection en repayant
+    /// le chargement au message suivant.
+    ejections: tokio::sync::broadcast::Sender<ProviderEngine>,
 }
 
 /// Tant qu'il vit, le modèle sert quelqu'un (voir [`Supervisor::utilisation`]).
@@ -291,6 +295,12 @@ impl Supervisor {
             > 0
     }
 
+    /// Chaque moteur arrêté par le délai d'inactivité, au moment où il
+    /// s'arrête. Un abonné trop lent perd les plus anciens, jamais le suivant.
+    pub fn abonner_ejections(&self) -> tokio::sync::broadcast::Receiver<ProviderEngine> {
+        self.inner.ejections.subscribe()
+    }
+
     /// Create a new supervisor wired to the given storage.
     pub fn new(cfg: SupervisorConfig, storage: Storage) -> Self {
         let http = reqwest::Client::builder()
@@ -309,6 +319,7 @@ impl Supervisor {
                 extension_engines: Mutex::new(HashMap::new()),
                 occupe_utilisateur: std::sync::atomic::AtomicUsize::new(0),
                 arriere_plan: std::sync::atomic::AtomicUsize::new(0),
+                ejections: tokio::sync::broadcast::channel(8).0,
             }),
         }
     }
@@ -1217,6 +1228,10 @@ impl Supervisor {
                     .providers
                     .set_status_by_engine(&engine, ProviderStatus::Unknown)
                     .await;
+                // Personne n'écoute (service sans interface) : rien à prévenir.
+                if self.inner.ejections.send(engine.clone()).is_err() {
+                    tracing::debug!(?engine, "éjection par inactivité sans abonné");
+                }
             }
         }
     }
