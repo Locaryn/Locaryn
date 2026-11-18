@@ -3148,7 +3148,10 @@ mod approbation_tests {
 
     #[test]
     fn un_refus_dit_deny() {
-        assert_eq!(corps_approbation(&decision(false, "once"))["decision"], "deny");
+        assert_eq!(
+            corps_approbation(&decision(false, "once"))["decision"],
+            "deny"
+        );
     }
 }
 
