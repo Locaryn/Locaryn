@@ -1767,9 +1767,22 @@ pub struct ToolApprovalRequest {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolApprovalDecision {
     pub call_id: String,
+    /// L'outil concerné : la porte du service s'en sert pour retenir un
+    /// accord « toujours ».
+    pub tool: String,
     pub allow: bool,
     pub scope: String,
-    pub audit_note: Option<String>,
+}
+
+/// Le corps de `POST /v1/approvals`, la seule route qui réveille la porte
+/// d'approbation de l'agent sur le service.
+fn corps_approbation(decision: &ToolApprovalDecision) -> serde_json::Value {
+    serde_json::json!({
+        "call_id": decision.call_id,
+        "tool": decision.tool,
+        "decision": if decision.allow { "allow" } else { "deny" },
+        "scope": decision.scope,
+    })
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2983,13 +2996,9 @@ async fn approve_tool_call(decision: ToolApprovalDecision) -> Result<(), String>
     let (client, server, session) = authenticated()?;
     let base = server.current_url.trim_end_matches('/');
     let resp = client
-        .post(format!("{base}/v1/tasks/{}/approve", decision.call_id))
+        .post(format!("{base}/v1/approvals"))
         .bearer_auth(&session.token)
-        .json(&serde_json::json!({
-            "allow": decision.allow,
-            "scope": decision.scope,
-            "audit_note": decision.audit_note,
-        }))
+        .json(&corps_approbation(&decision))
         .send()
         .await
         .map_err(|_| unreachable(&server))?;
@@ -3109,6 +3118,38 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("erreur au démarrage de Locaryn");
+}
+
+#[cfg(test)]
+mod approbation_tests {
+    use super::{corps_approbation, ToolApprovalDecision};
+
+    fn decision(allow: bool, scope: &str) -> ToolApprovalDecision {
+        ToolApprovalDecision {
+            call_id: "call_42".into(),
+            tool: "write_file".into(),
+            allow,
+            scope: scope.into(),
+        }
+    }
+
+    #[test]
+    fn un_accord_porte_ce_que_le_service_attend() {
+        assert_eq!(
+            corps_approbation(&decision(true, "always")),
+            serde_json::json!({
+                "call_id": "call_42",
+                "tool": "write_file",
+                "decision": "allow",
+                "scope": "always",
+            })
+        );
+    }
+
+    #[test]
+    fn un_refus_dit_deny() {
+        assert_eq!(corps_approbation(&decision(false, "once"))["decision"], "deny");
+    }
 }
 
 #[cfg(test)]

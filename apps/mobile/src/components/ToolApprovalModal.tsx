@@ -1,25 +1,11 @@
 import { Icon } from "@locaryn/ui-core";
 import { useState } from "react";
-
-export type RiskLevel = "low" | "medium" | "high" | "critical";
-export type RiskScope = "once" | "session" | "always";
-
-export interface ToolApprovalRequest {
-  call_id: string;
-  tool: string;
-  args?: Record<string, unknown>;
-  risk: RiskLevel;
-  reason?: string;
-  diff?: string;
-  is_remote?: boolean;
-}
-
-export interface ToolApprovalDecision {
-  call_id: string;
-  allow: boolean;
-  scope: RiskScope;
-  audit_note?: string;
-}
+import type {
+  RiskLevel,
+  RiskScope,
+  ToolApprovalDecision,
+  ToolApprovalRequest,
+} from "../lib/core";
 
 type Props = {
   approval: ToolApprovalRequest | null;
@@ -51,6 +37,7 @@ export function ToolApprovalModal({ approval, onResolve, onCancel }: Props) {
   function handleAllow() {
     onResolve({
       call_id,
+      tool,
       allow: true,
       scope,
     });
@@ -59,6 +46,7 @@ export function ToolApprovalModal({ approval, onResolve, onCancel }: Props) {
   function handleDeny() {
     onResolve({
       call_id,
+      tool,
       allow: false,
       scope: "once",
     });

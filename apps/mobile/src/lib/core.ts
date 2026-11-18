@@ -39,9 +39,10 @@ export interface ToolApprovalRequest {
 
 export interface ToolApprovalDecision {
   call_id: string;
+  /** L'outil concerné : le service s'en sert pour retenir un « toujours ». */
+  tool: string;
   allow: boolean;
   scope: RiskScope;
-  audit_note?: string;
 }
 
 export interface UserProfile {
