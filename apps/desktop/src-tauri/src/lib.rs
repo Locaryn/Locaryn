@@ -68,7 +68,6 @@ use futures::StreamExt as _;
 use locaryn_agent_runtime::{Agent, AgentInput, EventStream, OpenAiCompatAgent};
 use locaryn_auth::{Keychain, SystemKeychain};
 use locaryn_events::StreamEvent;
-use locaryn_preview::{PreviewOrigin, PreviewRender};
 use locaryn_provider_supervisor::{Supervisor, SupervisorConfig};
 use locaryn_shared_types::{
     ArtifactKind, ConnectionMode, Health, Message, MessageRole, Project, Provider, ProviderEngine,
@@ -148,12 +147,6 @@ struct Core {
     /// d'embeddings à la fin de la fonction qui l'a lancé.
     #[allow(dead_code)]
     embed_server: Arc<tokio::sync::Mutex<Option<(String, std::process::Child)>>>,
-    /// Pending tool-approval decisions (doc 11 §5/§6.5 wire protocol).
-    /// One entry per in-flight `StreamEvent::ToolApproval`. The agent loop
-    /// parks here until the user posts back via `approve_tool_call`.
-    /// Wire surface is in place; the agent-side resume lands in V1.1.
-    #[allow(dead_code)]
-    pending_approvals: Arc<tokio::sync::Mutex<HashMap<String, PendingApproval>>>,
     /// Ce qui attend l'attention de l'utilisateur : les questions du modèle et
     /// les alertes de l'application. Une seule pour toute l'application, comme
     /// la porte d'approbation — une question posée dans un projet doit se voir
@@ -187,16 +180,6 @@ impl Core {
         .ok()?;
         locaryn_sdk::LocarynClient::with_client(sess.server_url, Some(sess.token), http).ok()
     }
-}
-
-/// One in-flight approval prompt, parked on the runtime until the user
-/// resolves it on the desktop (or the daemon receives a CLI answer).
-#[allow(dead_code)]
-struct PendingApproval {
-    created: std::time::Instant,
-    effective_risk: locaryn_events::Risk,
-    tool: String,
-    remote_target: Option<String>,
 }
 
 // ============================================================================
@@ -471,7 +454,6 @@ async fn init_core() -> anyhow::Result<Core> {
         reponses_vives: reponses_vives::ReponsesVives::default(),
         arriere_plan_stop: Arc::new(memory_gardener::Interrupteur::default()),
         embed_server: Arc::new(tokio::sync::Mutex::new(None)),
-        pending_approvals: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         cores: core_engines::CoreManager::new(),
     })
 }
@@ -501,72 +483,6 @@ async fn core_health(core: State<'_, Core>) -> Result<Health, String> {
         mode: core.mode,
         active_provider: provider_summary,
     })
-}
-
-#[tauri::command]
-fn resolve_preview(artifact_id: String) -> PreviewRender {
-    locaryn_preview::resolve_render(
-        locaryn_preview::PreviewRequest {
-            artifact_id,
-            kind: locaryn_shared_types::ArtifactKind::Html,
-            allow_network: false,
-        },
-        PreviewOrigin::Tauri,
-    )
-}
-
-/// Materialise a browser-recorded audio blob for MCP clients that accept a
-/// local path (Telegram and bridge transports). The path is confined to the
-/// application's scratch directory and the UI removes it after sending.
-#[tauri::command]
-fn write_test_audio(audio_base64: String, mime_type: String) -> Result<String, String> {
-    use base64::Engine as _;
-
-    let encoded = audio_base64
-        .split_once(",")
-        .map(|(_, data)| data)
-        .unwrap_or(audio_base64.as_str());
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|e| format!("audio base64 invalide : {e}"))?;
-    if bytes.is_empty() {
-        return Err("l'enregistrement audio est vide".into());
-    }
-    if bytes.len() > 25 * 1024 * 1024 {
-        return Err("l'enregistrement audio dépasse 25 Mo".into());
-    }
-
-    let extension = if mime_type.contains("ogg") || mime_type.contains("opus") {
-        "ogg"
-    } else if mime_type.contains("mpeg") || mime_type.contains("mp3") {
-        "mp3"
-    } else if mime_type.contains("mp4") || mime_type.contains("m4a") {
-        "m4a"
-    } else {
-        "webm"
-    };
-    let path = locaryn_config::ensure_temp_dir().join(format!(
-        "locaryn-test-{}.{}",
-        Uuid::new_v4(),
-        extension
-    ));
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().to_string())
-}
-
-/// Remove only scratch audio files created by `write_test_audio`.
-#[tauri::command]
-fn remove_test_audio(path: String) -> Result<(), String> {
-    let root = locaryn_config::ensure_temp_dir();
-    let candidate = std::path::PathBuf::from(&path);
-    if candidate.parent() != Some(root.as_path())
-        || !candidate
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with("locaryn-test-"))
-    {
-        return Err("chemin audio de test refusé".into());
-    }
-    std::fs::remove_file(candidate).map_err(|e| e.to_string())
 }
 
 /// Copy a generated voice note only after the user explicitly chose a
@@ -785,95 +701,6 @@ async fn append_assistant_message(
     content: String,
 ) -> Result<(), String> {
     append_chat_message(core, session_id, "assistant".into(), content).await
-}
-
-// ============================================================================
-// Image generation defaults
-// ============================================================================
-
-/// Defaults applied whenever an image is generated without explicit overrides
-/// (the `/image` slash command, the composer button). These used to be
-/// hardcoded, so the user could not tell — let alone choose — what quality was
-/// used. Named presets keep it understandable and let an agent pick a cheap
-/// one for throwaway assets (a personal-project icon needs no 1024px render).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ImageDefaults {
-    /// "draft" (256) | "standard" (512) | "high" (768) | "max" (1024) | "custom"
-    pub quality: String,
-    pub width: u32,
-    pub height: u32,
-    /// 0 = let the model family decide (turbo models are clamped anyway).
-    pub steps: u32,
-    pub cfg_scale: f32,
-    /// "gpu" | "auto" | "lowvram"
-    pub vram_mode: String,
-    pub negative_prompt: String,
-    /// Variants per request, 1-8. Rendering several in one run pays the model
-    /// load and prompt encoding once: measured 40 s per extra image against
-    /// 58 s for a separate run.
-    #[serde(default = "default_variants")]
-    pub variants: u32,
-}
-
-fn default_variants() -> u32 {
-    1
-}
-
-impl Default for ImageDefaults {
-    fn default() -> Self {
-        Self {
-            quality: "standard".into(),
-            width: 512,
-            height: 512,
-            steps: 0,
-            cfg_scale: 0.0,
-            vram_mode: "auto".into(),
-            negative_prompt: String::new(),
-            variants: default_variants(),
-        }
-    }
-}
-
-impl ImageDefaults {
-    fn path(data_dir: &std::path::Path) -> std::path::PathBuf {
-        data_dir.join("image_defaults.json")
-    }
-    fn load(data_dir: &std::path::Path) -> Self {
-        std::fs::read_to_string(Self::path(data_dir))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
-    }
-    fn save(&self, data_dir: &std::path::Path) -> anyhow::Result<()> {
-        std::fs::write(Self::path(data_dir), serde_json::to_string_pretty(self)?)?;
-        Ok(())
-    }
-    /// Resolution implied by a named quality preset.
-    fn size_for(quality: &str) -> Option<u32> {
-        match quality {
-            "draft" => Some(256),
-            "standard" => Some(512),
-            "high" => Some(768),
-            "max" => Some(1024),
-            _ => None,
-        }
-    }
-}
-
-#[tauri::command]
-fn get_image_defaults(core: State<'_, Core>) -> ImageDefaults {
-    ImageDefaults::load(&core.data_dir)
-}
-
-#[tauri::command]
-fn set_image_defaults(core: State<'_, Core>, config: ImageDefaults) -> Result<(), String> {
-    let mut cfg = config;
-    // A named preset drives the resolution; "custom" keeps whatever was sent.
-    if let Some(px) = ImageDefaults::size_for(&cfg.quality) {
-        cfg.width = px;
-        cfg.height = px;
-    }
-    cfg.save(&core.data_dir).map_err(|e| e.to_string())
 }
 
 // ============================================================================
@@ -1580,24 +1407,6 @@ async fn create_session(
     .await;
 
     Ok(session)
-}
-
-/// Rename a session.
-#[tauri::command]
-async fn update_session_title(
-    core: State<'_, Core>,
-    session_id: Uuid,
-    title: String,
-) -> Result<(), String> {
-    let trimmed = title.trim().to_string();
-    if trimmed.is_empty() {
-        return Err("title cannot be empty".into());
-    }
-    core.storage
-        .sessions
-        .update_title(session_id, &trimmed)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 /// Ask the active model to produce a concise title for a session based on the
@@ -6567,40 +6376,6 @@ fn contexte_du_catalogue(core: &Core, p: &locaryn_shared_types::Provider) -> Opt
         .map(|n| n.min(u64::from(u32::MAX)) as u32)
 }
 
-/// Fenetre de contexte maximale que le moteur courant peut offrir, pour
-/// borner le curseur du panneau : proposer 128k a un modele entraîne pour
-/// 32k, c'est inviter une demande que le moteur va reduire en silence.
-///
-/// La source est le lanceur : il ecrit `model_ctx_capacity.json` au
-/// demarrage, lu depuis le GGUF du modele charge (`train_context` + marge de
-/// 50 % pour les modeles a RoPE scalé). L'autre source etait `/api/show`
-/// d'Ollama, partie avec lui.
-///
-/// `None` : rien n'a repondu — le panneau garde son maximum générique.
-#[tauri::command]
-async fn get_model_ctx_capacity(core: State<'_, Core>) -> Result<Option<u32>, String> {
-    // Sans moteur actif, il n'y a pas de capacité a annoncer : le dire vaut
-    // mieux que rendre celle d'un moteur qui ne tourne pas.
-    core.storage
-        .providers
-        .active()
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "aucun fournisseur actif".to_string())?;
-
-    // La capacité ecrite par le lanceur au demarrage.
-    let cap_path = core.data_dir.join("model_ctx_capacity.json");
-    if let Ok(s) = std::fs::read_to_string(&cap_path) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
-            if let Some(n) = v.get("max_ctx").and_then(|m| m.as_u64()) {
-                let cap = n.min(u32::MAX as u64) as u32;
-                return Ok(Some(cap.max(4096)));
-            }
-        }
-    }
-    Ok(None)
-}
-
 // ============================================================================
 // Hardware detection
 // ============================================================================
@@ -7754,7 +7529,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             core_health,
-            resolve_preview,
             list_projects,
             create_project,
             archive_project,
@@ -7773,7 +7547,6 @@ pub fn run() {
             plan_task,
             list_sessions,
             create_session,
-            update_session_title,
             generate_session_title,
             delete_session,
             archive_session,
@@ -7868,7 +7641,6 @@ pub fn run() {
             approve_tool_call,
             update_provider_model_params,
             get_provider_model_params,
-            get_model_ctx_capacity,
             context_status,
             model_recommendations::model_recommendation,
             browser::browser_show,
@@ -8042,7 +7814,6 @@ pub fn run() {
             extensions::install_extension_on_device,
             extensions::browse_extension_catalog,
             extensions::refresh_extension_catalog,
-            extensions::catalog_entry_details,
             extensions::list_catalog_sources,
             extensions::add_catalog_source,
             extensions::set_catalog_source_enabled,
@@ -8065,12 +7836,8 @@ pub fn run() {
             mcp_servers::start_mcp_server,
             mcp_servers::stop_mcp_server,
             mcp_servers::invoke_mcp_tool,
-            write_test_audio,
-            remove_test_audio,
             save_audio_as,
             save_image_as,
-            get_image_defaults,
-            set_image_defaults,
             get_model_preferences,
             set_model_preferences,
             get_window_preferences,

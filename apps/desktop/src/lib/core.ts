@@ -1301,17 +1301,6 @@ export interface ImageIntent {
   reason: string;
 }
 
-export interface ImageDefaults {
-  quality: string;
-  width: number;
-  height: number;
-  steps: number;
-  cfg_scale: number;
-  vram_mode: string;
-  negative_prompt: string;
-  variants: number;
-}
-
 /** A plan produced by the model for a substantial request. */
 export interface TaskPlan {
   needs_plan: boolean;
@@ -2115,9 +2104,6 @@ export interface CoreApi {
    * c'est ce que `/workflow` impose.
    */
   planTask(request: string, force?: boolean): Promise<TaskPlan>;
-  /** Legacy wire method used by older image extensions. */
-  getImageDefaults(): Promise<ImageDefaults>;
-  setImageDefaults(config: ImageDefaults): Promise<void>;
   /** Background call: 1-click next-step suggestions after an answer. */
   /** `question` est le message auquel la réponse répond : sans lui, les
    *  suggestions ne savent pas de quoi parle la conversation. */
@@ -2148,8 +2134,6 @@ export interface CoreApi {
   /** `coreId` = id de l'extension de noyau (OpenClaw, Hermes…) ; absent =
    *  noyau Locaryn natif. */
   createSession(projectId: string, title?: string, coreId?: string | null): Promise<Session>;
-  /** Rename a session. */
-  updateSessionTitle(sessionId: string, title: string): Promise<void>;
   /** Ask the LLM to generate and persist a concise title for a session. */
   generateSessionTitle(sessionId: string, firstPrompt: string, explicit?: boolean): Promise<string>;
   /** Permanently delete a session and its messages. */
@@ -2547,9 +2531,6 @@ export interface CoreApi {
    *  ainsi qu'arrive un compagnon d'appareil. */
   installExtensionOnDevice(source: string): Promise<InstalledExtension>;
 
-  /** Save a browser-recorded audio blob for tools that require a local path. */
-  writeTestAudio(audioBase64: string, mimeType: string): Promise<string>;
-  removeTestAudio(path: string): Promise<void>;
   /** Copy a generated voice note to a user-selected destination. */
   saveAudioAs(sourcePath: string, destinationPath: string): Promise<void>;
   /** Legacy image artifact action; generation itself belongs to a plugin. */
@@ -2559,10 +2540,6 @@ export interface CoreApi {
   approveToolCall: (decision: ToolApprovalDecision) => Promise<void>;
   updateProviderModelParams(params: ModelParams): Promise<void>;
   getProviderModelParams(): Promise<ModelParams>;
-  /** Plus grande fenetre de contexte que le modele/moteur actif peut offrir
-   *  (Ollama /api/show, GGUF du modele charge). `null` : inconnue — l'UI
-   *  garde son maximum generique. */
-  getModelCtxCapacity(): Promise<number | null>;
   /** La fenêtre de contexte : réglée, réellement chargée, et plafond du modèle. */
   contextStatus(): Promise<ContextStatus>;
   modelRecommendation(): Promise<ModelRecommendation | null>;
@@ -2831,15 +2808,11 @@ const tauriCore: CoreApi = {
   appendAssistantMessage: (sessionId, content) =>
     invoke<void>("append_assistant_message", { sessionId, content }),
   planModelRuntime: (model) => invoke<RuntimePlan>("plan_model_runtime", { model }),
-  getImageDefaults: () => invoke<ImageDefaults>("get_image_defaults"),
-  setImageDefaults: (config) => invoke<void>("set_image_defaults", { config }),
   getModelPreferences: () => invoke<ModelPreferences>("get_model_preferences"),
   setModelPreferences: (preferences) => invoke<void>("set_model_preferences", { preferences }),
   listSessions: (projectId) => invoke<Session[]>("list_sessions", { projectId }),
   createSession: (projectId, title, coreId) =>
     invoke<Session>("create_session", { projectId, title: title ?? null, coreId: coreId ?? null }),
-  updateSessionTitle: (sessionId, title) =>
-    invoke<void>("update_session_title", { sessionId, title }),
   generateSessionTitle: (sessionId, firstPrompt, explicit) =>
     invoke<string>("generate_session_title", {
       sessionId,
@@ -3197,9 +3170,6 @@ const tauriCore: CoreApi = {
   connectionInfo: () => invoke<ConnectionInfo>("connection_info"),
   installExtensionOnDevice: (source) =>
     invoke<InstalledExtension>("install_extension_on_device", { source }),
-  writeTestAudio: (audioBase64, mimeType) =>
-    invoke<string>("write_test_audio", { audioBase64, mimeType }),
-  removeTestAudio: (path) => invoke<void>("remove_test_audio", { path }),
   saveAudioAs: (sourcePath, destinationPath) =>
     invoke<void>("save_audio_as", { sourcePath, destinationPath }),
   saveImageAs: (sourcePath, destinationPath) =>
@@ -3208,7 +3178,6 @@ const tauriCore: CoreApi = {
 
   updateProviderModelParams: (params) => invoke("update_provider_model_params", { params }),
   getProviderModelParams: () => invoke<ModelParams>("get_provider_model_params"),
-  getModelCtxCapacity: () => invoke<number | null>("get_model_ctx_capacity"),
   contextStatus: () => invoke<ContextStatus>("context_status"),
   modelRecommendation: () => invoke<ModelRecommendation | null>("model_recommendation"),
   compressChatContext: (sessionId) => invoke<number>("compress_chat_context", { sessionId }),
@@ -3369,16 +3338,6 @@ const tauriCore: CoreApi = {
 // Demo implementation — canned data for browser-based UI development
 // ============================================================================
 
-let demoImageDefaults: ImageDefaults = {
-  quality: "standard",
-  width: 512,
-  height: 512,
-  steps: 0,
-  cfg_scale: 0,
-  vram_mode: "auto",
-  negative_prompt: "",
-  variants: 1,
-};
 let demoOutilsAlleges = false;
 let demoModelPreferences: ModelPreferences = { tts_model: null, image_model: null };
 let demoLocalProfile: LocalProfile = { display_name: "", avatar_path: null };
@@ -4557,11 +4516,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     "Vérifier le CSS associé",
     "Ajouter un test pour ce composant",
   ],
-  getImageDefaults: async () => demoImageDefaults,
-  setImageDefaults: async (config) => {
-    // Stateful like the real backend, so the settings UI behaves identically.
-    demoImageDefaults = { ...config };
-  },
   getModelPreferences: async () => demoModelPreferences,
   setModelPreferences: async (preferences) => {
     demoModelPreferences = { ...preferences };
@@ -4606,7 +4560,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     demoSessions.push(s);
     return s;
   },
-  updateSessionTitle: async () => {},
   generateSessionTitle: async (_sessionId, firstPrompt) => {
     const words = firstPrompt.trim().split(/\s+/).slice(0, 5);
     return words.join(" ").replace(/[.!?\n]+$/, "");
@@ -5856,8 +5809,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     arguments: args,
     message: `Outil ${tool} simulé en mode navigateur. Lancez Locaryn Tauri pour un compte réel.`,
   }),
-  writeTestAudio: async () => "demo://audio",
-  removeTestAudio: async () => {},
   saveAudioAs: async (sourcePath, destinationPath) => {
     // Browser preview fallback: trigger a normal download when no native
     // filesystem command is available.
@@ -5893,9 +5844,6 @@ Contenu de démonstration, avec **du gras** et une liste :
   },
   async contextStatus() {
     return { configured: 8192, running: 8192, cap: 32768 };
-  },
-  async getModelCtxCapacity() {
-    return null;
   },
   async compressChatContext() {
     // Demo: rien a compresser, la conversation n'est pas persistee.

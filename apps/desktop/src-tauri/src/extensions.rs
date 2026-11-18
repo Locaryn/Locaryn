@@ -21,8 +21,8 @@ use locaryn_extensions::manifest::PluginManifest;
 use locaryn_extensions::{latest_github_version, version_gt, SourceError};
 use locaryn_mcp::{McpClient, McpConfig, McpServerEntry, Transport};
 use locaryn_shared_types::{
-    CatalogEntry, CatalogSnapshot, CatalogSource, ExtensionComponents, ExtensionEcosystem,
-    ExtensionKind, ExtensionPermissionState, ExtensionScope, InstalledExtension, Permission,
+    CatalogSnapshot, CatalogSource, ExtensionComponents, ExtensionEcosystem, ExtensionKind,
+    ExtensionPermissionState, ExtensionScope, InstalledExtension, Permission,
 };
 use locaryn_storage::NewExtension;
 use serde::{Deserialize, Serialize};
@@ -2565,18 +2565,6 @@ fn parse_ecosystem(s: &str) -> Option<ExtensionEcosystem> {
         "mcp" => Some(ExtensionEcosystem::Mcp),
         _ => None,
     }
-}
-
-/// One catalog entry, resolved for the details pane.
-#[tauri::command]
-pub async fn catalog_entry_details(
-    core: State<'_, Core>,
-    id: String,
-) -> Result<Option<CatalogEntry>, String> {
-    let client = locaryn_extensions::CatalogClient::new(core.http.clone());
-    Ok(client
-        .cached()
-        .and_then(|s| s.entries.into_iter().find(|e| e.id == id)))
 }
 
 #[cfg(test)]
