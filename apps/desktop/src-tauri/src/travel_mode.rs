@@ -176,27 +176,6 @@ pub async fn set_travel_mode(args: SetTravel) -> Result<TravelStatus, String> {
         .to_string())
 }
 
-/// The code that puts a phone back on the local network.
-#[tauri::command]
-pub async fn travel_home_code() -> Result<TravelStatus, String> {
-    let req = daemon("/v1/travel/home").await?;
-    let resp = req.send().await.map_err(|_| not_running())?;
-    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(TravelStatus {
-        active: false,
-        provider: None,
-        link: body
-            .get("link")
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-        qr_svg: body
-            .get("qr_svg")
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-        blocker: None,
-    })
-}
-
 /// Le caractère que la personne donne au modèle, s'il lui en donne un.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsigneSysteme {

@@ -2,6 +2,7 @@ import { Icon } from "@locaryn/ui-core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type MemoryEntry, type MemoryGroup, core } from "../lib/core";
 import { taskCenter } from "../lib/taskCenter";
+import "../styles/memoire.css";
 import { MemorySortPanel } from "./MemorySortPanel";
 
 /**
@@ -164,6 +165,10 @@ export function MemorySettings() {
           onBack={() => setOpenId(null)}
           onForget={() => void forget(ouverte)}
           onRemoveDetail={(d) => void removeDetail(ouverte, d)}
+          onUpdated={(updated) =>
+            setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
+          }
+          onError={(message) => setError(message)}
           busy={forgetting === ouverte.id}
         />
       ) : (
@@ -247,19 +252,64 @@ export function MemorySettings() {
   );
 }
 
+/** Ce qu'une modification de fiche envoie au cœur, et ce qu'elle rend. */
+type Modification = () => Promise<MemoryEntry>;
+
 function MemoryDetail({
   entry,
   onBack,
   onForget,
   onRemoveDetail,
+  onUpdated,
+  onError,
   busy,
 }: {
   entry: MemoryEntry;
   onBack: () => void;
   onForget: () => void;
   onRemoveDetail: (detail: string) => void;
+  onUpdated: (entry: MemoryEntry) => void;
+  onError: (message: string) => void;
   busy: boolean;
 }) {
+  const [titre, setTitre] = useState(entry.title);
+  const [resume, setResume] = useState(entry.summary);
+  const [enregistrement, setEnregistrement] = useState(false);
+
+  // Une autre fiche ouverte, ou la même relue : les champs repartent d'elle.
+  useEffect(() => {
+    setTitre(entry.title);
+    setResume(entry.summary);
+  }, [entry.title, entry.summary]);
+
+  async function appliquer(modification: Modification) {
+    setEnregistrement(true);
+    try {
+      onUpdated(await modification());
+    } catch (e) {
+      onError(String(e).replace(/^Error:\s*/, ""));
+      setTitre(entry.title);
+      setResume(entry.summary);
+    } finally {
+      setEnregistrement(false);
+    }
+  }
+
+  function enregistrerTitre() {
+    const propre = titre.trim();
+    if (!propre || propre === entry.title) {
+      setTitre(entry.title);
+      return;
+    }
+    void appliquer(() => core.renameMemoryEntry(entry.id, propre));
+  }
+
+  function enregistrerResume() {
+    const propre = resume.trim();
+    if (propre === entry.summary) return;
+    void appliquer(() => core.setMemorySummary(entry.id, propre));
+  }
+
   return (
     <div className="locaryn-memory-detail">
       <div className="locaryn-memory-detail-head">
@@ -271,11 +321,51 @@ function MemoryDetail({
         </button>
       </div>
 
-      <h3 className="locaryn-memory-detail-title">{entry.title}</h3>
+      <input
+        className="locaryn-memory-edit-title"
+        aria-label="Titre de la fiche"
+        value={titre}
+        disabled={enregistrement}
+        onChange={(e) => setTitre(e.target.value)}
+        onBlur={enregistrerTitre}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setTitre(entry.title);
+        }}
+      />
+
+      <div className="locaryn-memory-detail-section">
+        <p className="locaryn-memory-detail-label">Groupe</p>
+        <div className="locaryn-memory-edit-groups" role="radiogroup" aria-label="Groupe">
+          {GROUPS.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              role="radio"
+              aria-checked={entry.group === g.id}
+              className={entry.group === g.id ? "is-on" : undefined}
+              disabled={enregistrement}
+              onClick={() => {
+                if (g.id !== entry.group) void appliquer(() => core.setMemoryGroup(entry.id, g.id));
+              }}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="locaryn-memory-detail-section">
         <p className="locaryn-memory-detail-label">Résumé</p>
-        <p className="locaryn-memory-detail-summary">{entry.summary}</p>
+        <textarea
+          className="locaryn-memory-edit-summary"
+          aria-label="Résumé de la fiche"
+          rows={2}
+          value={resume}
+          disabled={enregistrement}
+          onChange={(e) => setResume(e.target.value)}
+          onBlur={enregistrerResume}
+        />
       </div>
 
       {entry.details.length > 0 && (

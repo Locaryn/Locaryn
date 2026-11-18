@@ -6227,32 +6227,10 @@ impl ModelParams {
     fn path(data_dir: &std::path::Path) -> std::path::PathBuf {
         data_dir.join("model_params.json")
     }
-    fn load(data_dir: &std::path::Path) -> Self {
-        std::fs::read_to_string(Self::path(data_dir))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
-    }
     fn save(&self, data_dir: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(Self::path(data_dir), serde_json::to_string_pretty(self)?)?;
         Ok(())
     }
-}
-
-/// Ce que la boucle d'envoi applique réellement, si le fournisseur actif en
-/// porte — sinon la dernière valeur choisie dans le panneau, à défaut de
-/// mieux. Lire le fichier seul aurait pu montrer des curseurs qui ne
-/// correspondent plus à rien depuis qu'un autre fournisseur est devenu actif.
-#[tauri::command]
-async fn get_provider_model_params(core: State<'_, Core>) -> Result<ModelParams, String> {
-    if let Ok(Some(active)) = core.storage.providers.active().await {
-        if let Some(cfg) = active.config {
-            if let Ok(params) = serde_json::from_value::<ModelParams>(cfg) {
-                return Ok(params);
-            }
-        }
-    }
-    Ok(ModelParams::load(&core.data_dir))
 }
 
 /// Enregistre les paramètres de génération, et les rend réellement actifs.
@@ -6647,65 +6625,6 @@ async fn app_info(core: State<'_, Core>) -> Result<AppInfo, String> {
         arch: std::env::consts::ARCH.to_string(),
         host_arch: locaryn_llmfit::hardware::host_arch().to_string(),
         emulated: locaryn_llmfit::hardware::running_emulated(),
-    })
-}
-
-// ============================================================================
-// Runtime plan — auto GPU/RAM routing
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub struct RuntimePlan {
-    pub model: String,
-    pub size_gb: f64,
-    pub vram_gb: f64,
-    pub ram_gb: f64,
-    pub mode: String,
-    pub label: String,
-    pub gpu_layers: i32,
-    pub n_cpu_moe: i32,
-}
-
-#[tauri::command]
-async fn plan_model_runtime(_core: State<'_, Core>, model: String) -> Result<RuntimePlan, String> {
-    let models_dir = locaryn_config::models_dir();
-    let path = models_dir.join(&model);
-    let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-    let size_gb = size_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-
-    let hw = HARDWARE_CACHE.get().cloned().unwrap_or_else(|| {
-        probe_hardware().unwrap_or(HardwareSpec {
-            total_ram_gb: 16,
-            total_vram_gb: 0,
-            recommended_size_label: "tiny (1-7B)".to_string(),
-            cpu_cores: 4,
-        })
-    });
-    let vram_gb = hw.total_vram_gb as f64;
-    let ram_gb = hw.total_ram_gb as f64;
-
-    let (mode, label, gpu_layers) = if size_gb <= vram_gb * 0.9 {
-        ("gpu", String::new(), -1)
-    } else if size_gb <= ram_gb * 0.8 {
-        (
-            "offload",
-            format!("offload RAM ({:.1} GB)", size_gb - vram_gb),
-            0,
-        )
-    } else {
-        ("heavy", "low VRAM".to_string(), 0)
-    };
-
-    Ok(RuntimePlan {
-        model,
-        size_gb,
-        vram_gb,
-        ram_gb,
-        mode: mode.to_string(),
-        label,
-        gpu_layers,
-        n_cpu_moe: 0,
     })
 }
 
@@ -7585,7 +7504,6 @@ pub fn run() {
             airllm::airllm_setup,
             airllm::airllm_install,
             airllm::airllm_installed,
-            airllm::airllm_uninstall,
             airllm::configure_airllm_provider,
             list_models,
             list_incompatible_models,
@@ -7620,7 +7538,6 @@ pub fn run() {
             api_fournisseur::create_api_key,
             api_fournisseur::revoke_api_key,
             server_mode::set_server_mode,
-            server_mode::restart_server,
             server_mode::provisioning,
             server_mode::list_server_users,
             compte_machine::machine_account,
@@ -7640,7 +7557,6 @@ pub fn run() {
             delete_model_cmd,
             approve_tool_call,
             update_provider_model_params,
-            get_provider_model_params,
             context_status,
             model_recommendations::model_recommendation,
             browser::browser_show,
@@ -7678,7 +7594,6 @@ pub fn run() {
             project_context::remember_context,
             project_context::list_context,
             project_context::set_context_scope,
-            project_context::set_context_summary,
             project_context::remove_context_detail,
             project_context::forget_context,
             model_residency::model_residency,
@@ -7709,12 +7624,10 @@ pub fn run() {
             model_residency::signaler_activite,
             model_residency::caution_level,
             model_residency::caution_reserves,
-            cloud_providers::cloud_usage,
             cloud_providers::cloud_usage_of,
             cloud_providers::cloud_provider_account,
             model_residency::set_caution_level,
             open_models_folder,
-            plan_model_runtime,
             runtime_capabilities,
             list_lora_adapters,
             set_lora_adapters,
@@ -7729,7 +7642,6 @@ pub fn run() {
             travel_mode::travel_relay_sign_in,
             travel_mode::travel_status,
             travel_mode::set_travel_mode,
-            travel_mode::travel_home_code,
             travel_mode::pairing_code,
             travel_mode::user_login_qr,
             live_watch::watch_live_session,
@@ -7835,7 +7747,6 @@ pub fn run() {
             mcp_servers::remove_mcp_server,
             mcp_servers::start_mcp_server,
             mcp_servers::stop_mcp_server,
-            mcp_servers::invoke_mcp_tool,
             save_audio_as,
             save_image_as,
             get_model_preferences,

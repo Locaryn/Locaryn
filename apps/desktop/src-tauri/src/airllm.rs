@@ -224,14 +224,6 @@ pub async fn airllm_installed() -> Result<Vec<AirllmModelMeta>, String> {
     Ok(read_installed())
 }
 
-/// Remove a model from the AirLLM registry (weights stay in the HF cache).
-#[tauri::command]
-pub async fn airllm_uninstall(repo: String) -> Result<(), String> {
-    let models = read_installed();
-    let kept: Vec<AirllmModelMeta> = models.into_iter().filter(|m| m.repo != repo).collect();
-    write_installed(&kept).map_err(|e| e.to_string())
-}
-
 /// Activate an AirLLM model as the chat provider. Like `configure_provider`
 /// for llama.cpp: switching model shuts down the running AirLLM server, and
 /// the next message respawns it with the new weights.

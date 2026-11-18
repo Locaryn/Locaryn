@@ -255,19 +255,6 @@ pub async fn set_context_scope(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn set_context_summary(
-    core: State<'_, Core>,
-    id: String,
-    summary: String,
-) -> Result<(), String> {
-    core.storage
-        .project_context
-        .set_summary(&id, &summary)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 /// Retire un détail d'une fiche, en gardant les autres.
 #[tauri::command]
 pub async fn remove_context_detail(

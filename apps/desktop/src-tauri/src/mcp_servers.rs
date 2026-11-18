@@ -911,57 +911,6 @@ pub async fn stop_mcp_server(core: State<'_, Core>, name: String) -> Result<(), 
     Ok(())
 }
 
-/// Invoke one tool through a registered MCP server. The test bench uses the
-/// same client/runtime path as the agent, so a green result proves the actual
-/// endpoint and not a second mock implementation.
-#[tauri::command]
-pub async fn invoke_mcp_tool(
-    app: tauri::AppHandle,
-    core: State<'_, Core>,
-    name: String,
-    tool: String,
-    args: serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    let client = if let Some(client) = core.mcp.running.read().await.get(&name).cloned() {
-        client
-    } else {
-        let entry = {
-            let cfg = core.mcp.config.lock().unwrap();
-            cfg.mcp_servers.get(&name).cloned()
-        }
-        .ok_or_else(|| format!("« {name} » n'est pas enregistré."))?;
-        let client: Arc<dyn McpClient> = Arc::from(core.mcp.build_client(&entry));
-        client
-            .discover()
-            .await
-            .map_err(|e| format!("{name} n'a pas répondu : {e}. Vérifiez la commande ou l'URL."))?;
-        core.mcp
-            .running
-            .write()
-            .await
-            .insert(name.clone(), client.clone());
-        client
-    };
-
-    let appel = async {
-        client
-            .invoke_tool(&tool, &args)
-            .await
-            .map_err(|e| format!("outil {tool} sur {name} : {e}"))
-    };
-    // Le Studio d'une extension d'image passe par le même arbitre que la
-    // conversation : le modèle de conversation laisse la carte le temps du
-    // rendu. L'outil est désigné par son nom complet, sans ambiguïté.
-    let complet = locaryn_agent_runtime::mcp_tools::mcp_tool_name(&name, &tool);
-    match crate::gpu_arbiter::invoquer_arbitre(&app, &complet, &args, appel).await {
-        Some(resultat) => resultat,
-        None => client
-            .invoke_tool(&tool, &args)
-            .await
-            .map_err(|e| format!("outil {tool} sur {name} : {e}")),
-    }
-}
-
 /// Combien de temps on laisse à un serveur pour répondre au signal de fin.
 const FIN_DE_REPONSE_DELAI: std::time::Duration = std::time::Duration::from_secs(3);
 

@@ -353,7 +353,6 @@ pub async fn set_server_mode(args: SetServerArgs) -> Result<ServerStatus, String
 }
 
 /// Restarts the daemon server. If stopped, starts it up.
-#[tauri::command]
 pub async fn restart_server() -> Result<ServerStatus, String> {
     let status = server_status().await?;
     let port = status.port;

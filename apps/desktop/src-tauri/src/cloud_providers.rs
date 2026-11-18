@@ -112,13 +112,6 @@ pub async fn cloud_provider_account(
     cloud::account(&host(&core), &provider, &action, code.as_deref()).await
 }
 
-/// Les limites d'utilisation du compte du fournisseur actif (Claude, Codex…),
-/// pour la jauge du chat. `None` quand le modèle actif n'en a pas.
-#[tauri::command]
-pub async fn cloud_usage(core: State<'_, Core>) -> Result<Option<serde_json::Value>, String> {
-    Ok(cloud::usage_of_active(&host(&core)).await)
-}
-
 /// Les limites d'un fournisseur précis (dossier ouvert dans la liste des
 /// modèles), `null` s'il n'en publie pas.
 #[tauri::command]

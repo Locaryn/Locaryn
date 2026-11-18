@@ -11,7 +11,6 @@ use locaryn_agent_runtime::gpu_standard::{
     ConversationEngine, GpuToolMap, GpuToolSource, StandardArbiter,
 };
 use locaryn_shared_types::ProviderEngine;
-use serde_json::Value;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -86,15 +85,4 @@ pub fn arbitre(app: &AppHandle) -> StandardArbiter {
 
 pub fn handle(app: &AppHandle) -> GpuArbiterHandle {
     GpuArbiterHandle::new(arbitre(app))
-}
-
-/// Un appel venu du Studio d'une extension : même arbitrage, rechargement
-/// aussitôt après. `None` : outil ordinaire.
-pub async fn invoquer_arbitre(
-    app: &AppHandle,
-    tool: &str,
-    args: &Value,
-    appel: impl std::future::Future<Output = Result<Value, String>>,
-) -> Option<Result<Value, String>> {
-    arbitre(app).around(tool, args, appel).await
 }

@@ -1796,20 +1796,6 @@ export interface LoraScale {
   scale: number;
 }
 
-/** How a model should be run on this machine (auto routing). */
-export interface RuntimePlan {
-  model: string;
-  size_gb: number;
-  vram_gb: number;
-  ram_gb: number;
-  /** "gpu" | "offload" | "heavy" */
-  mode: string;
-  /** Suffix shown next to the model name, e.g. "offload RAM". */
-  label: string;
-  gpu_layers: number;
-  n_cpu_moe: number;
-}
-
 export interface RagSource {
   source: string;
   chunks: number;
@@ -2127,8 +2113,6 @@ export interface CoreApi {
   /** Defaults for secondary model-backed features in the account profile. */
   getModelPreferences(): Promise<ModelPreferences>;
   setModelPreferences(preferences: ModelPreferences): Promise<void>;
-  /** How this machine should run a model (auto GPU / RAM-offload routing). */
-  planModelRuntime(model: string): Promise<RuntimePlan>;
   listSessions(projectId: string): Promise<Session[]>;
   /** Create a chat; `title` auto-names it (e.g. from the first prompt). */
   /** `coreId` = id de l'extension de noyau (OpenClaw, Hermes…) ; absent =
@@ -2202,7 +2186,6 @@ export interface CoreApi {
   }): Promise<ContextEntry>;
   /** Change la portee d'une fiche. Refuse d'ecraser un meme titre. */
   setContextScope(id: string, scope: ContextScope): Promise<ContextEntry>;
-  setContextSummary(id: string, summary: string): Promise<void>;
   removeContextDetail(id: string, detail: string): Promise<ContextEntry>;
   forgetContext(id: string): Promise<void>;
   getUpdatePrefs(): Promise<UpdatePrefs>;
@@ -2289,12 +2272,10 @@ export interface CoreApi {
     onLine?: (text: string) => void,
   ): Promise<{ repo: string; installedAt: string }>;
   airllmInstalled(): Promise<{ repo: string; installedAt: string }[]>;
-  airllmUninstall(repo: string): Promise<void>;
   configureAirllmProvider(repo: string): Promise<Provider>;
 
   serverStatus(): Promise<ServerStatus>;
   setServerMode(enabled: boolean, port?: number): Promise<ServerStatus>;
-  restartServer(): Promise<ServerStatus>;
   listServerUsers(): Promise<ServerUserSummary[]>;
   /** Le QR de connexion d'un compte : code temporaire, sans mot de passe. */
   /** `mode` : le transport du QR (local par défaut), `url` : son adresse ou son port. */
@@ -2476,8 +2457,6 @@ export interface CoreApi {
   /** Connecter le compte d'un relais : jeton collé, ou commande de connexion
    *  de l'outil qui ouvre elle-même le navigateur. */
   travelRelaySignIn(provider: string, token?: string): Promise<void>;
-  /** The code that puts a phone back on the local network. */
-  travelHomeCode(): Promise<TravelStatus>;
   /** Le code d'appairage d'un téléphone : `local`, `public` ou `tunnel`. */
   pairingCode(mode: PairingMode, url?: string): Promise<PairingCode>;
   /** Le modèle qui nomme les conversations. `null` : aucun, rien ne tourne. */
@@ -2518,8 +2497,6 @@ export interface CoreApi {
   /** Start a server and return the tools it announced. */
   startMcpServer(name: string): Promise<string[]>;
   stopMcpServer(name: string): Promise<void>;
-  /** Invoke a tool through the same MCP client used by the agent runtime. */
-  invokeMcpTool(name: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
   /** Invoke a tool exposed by any enabled extension through the generic bridge. */
   invokeExtensionTool(tool: string, args: Record<string, unknown>): Promise<string>;
   /** Le même appel, mais sur le serveur auquel ce poste est connecté, avec le
@@ -2539,7 +2516,6 @@ export interface CoreApi {
   /** Send the user verdict+scope back to the runtime (doc 11 s6.5). */
   approveToolCall: (decision: ToolApprovalDecision) => Promise<void>;
   updateProviderModelParams(params: ModelParams): Promise<void>;
-  getProviderModelParams(): Promise<ModelParams>;
   /** La fenêtre de contexte : réglée, réellement chargée, et plafond du modèle. */
   contextStatus(): Promise<ContextStatus>;
   modelRecommendation(): Promise<ModelRecommendation | null>;
@@ -2691,8 +2667,6 @@ export interface CoreApi {
   rapportsEnvoyer(message: string | null): Promise<void>;
   ouvrirChemin(chemin: string, action: "explorer" | "terminal" | "vscode"): Promise<void>;
   decisionsInstaller(): Promise<EtatDecisions>;
-  /** Les limites de l'abonnement du modèle actif, `null` s'il n'en a pas. */
-  cloudUsage(): Promise<CloudUsage | null>;
   /** Les limites d'un fournisseur précis, même s'il ne sert pas la conversation. */
   cloudUsageOf(providerId: string): Promise<CloudUsage | null>;
   /** Les tâches de fond autorisées chez un fournisseur. */
@@ -2807,7 +2781,6 @@ const tauriCore: CoreApi = {
     invoke<void>("append_chat_message", { sessionId, role, content }),
   appendAssistantMessage: (sessionId, content) =>
     invoke<void>("append_assistant_message", { sessionId, content }),
-  planModelRuntime: (model) => invoke<RuntimePlan>("plan_model_runtime", { model }),
   getModelPreferences: () => invoke<ModelPreferences>("get_model_preferences"),
   setModelPreferences: (preferences) => invoke<void>("set_model_preferences", { preferences }),
   listSessions: (projectId) => invoke<Session[]>("list_sessions", { projectId }),
@@ -2873,7 +2846,6 @@ const tauriCore: CoreApi = {
   rememberContext: (args) => invoke<ContextEntry>("remember_context", { args }),
   setContextScope: (id, scope) =>
     invoke<ContextEntry>("set_context_scope", { args: { id, scope } }),
-  setContextSummary: (id, summary) => invoke<void>("set_context_summary", { id, summary }),
   removeContextDetail: (id, detail) =>
     invoke<ContextEntry>("remove_context_detail", { id, detail }),
   forgetContext: (id) => invoke<void>("forget_context", { id }),
@@ -2961,7 +2933,6 @@ const tauriCore: CoreApi = {
     });
   },
   airllmInstalled: () => invoke<{ repo: string; installedAt: string }[]>("airllm_installed"),
-  airllmUninstall: (repo) => invoke<void>("airllm_uninstall", { repo }),
   configureAirllmProvider: (repo) => invoke<Provider>("configure_airllm_provider", { repo }),
   listModels: (endpoint) => invoke<string[]>("list_models", { endpoint }),
   listIncompatibleModels: () => invoke<string[]>("list_incompatible_models"),
@@ -2976,7 +2947,6 @@ const tauriCore: CoreApi = {
   serverStatus: () => invoke<ServerStatus>("server_status"),
   setServerMode: (enabled, port) =>
     invoke<ServerStatus>("set_server_mode", { args: { enabled, port: port ?? null } }),
-  restartServer: () => invoke<ServerStatus>("restart_server"),
   listServerUsers: () => invoke<ServerUserSummary[]>("list_server_users"),
   userLoginQr: (userId, mode, url) =>
     invoke<UserLoginQr>("user_login_qr", { userId, mode: mode ?? null, url: url ?? null }),
@@ -3126,7 +3096,6 @@ const tauriCore: CoreApi = {
   setTravelMode: (provider) => invoke<TravelStatus>("set_travel_mode", { args: { provider } }),
   travelRelaySignIn: (provider, token) =>
     invoke<void>("travel_relay_sign_in", { args: { provider, token: token ?? null } }),
-  travelHomeCode: () => invoke<TravelStatus>("travel_home_code"),
   pairingCode: (mode, url) => invoke<PairingCode>("pairing_code", { mode, url }),
   systemPrompt: () => invoke<SystemPrompt>("consigne_systeme"),
   setSystemPrompt: (texte) => invoke<SystemPrompt>("definir_consigne_systeme", { texte }),
@@ -3164,7 +3133,6 @@ const tauriCore: CoreApi = {
   removeMcpServer: (name) => invoke<McpServerInfo[]>("remove_mcp_server", { name }),
   startMcpServer: (name) => invoke<string[]>("start_mcp_server", { name }),
   stopMcpServer: (name) => invoke<void>("stop_mcp_server", { name }),
-  invokeMcpTool: (name, tool, args) => invoke<unknown>("invoke_mcp_tool", { name, tool, args }),
   invokeExtensionTool: (tool, args) => invoke<string>("invoke_extension_tool", { tool, args }),
   invokeServerTool: (tool, args) => invoke<string>("invoke_server_tool", { tool, args }),
   connectionInfo: () => invoke<ConnectionInfo>("connection_info"),
@@ -3177,7 +3145,6 @@ const tauriCore: CoreApi = {
   approveToolCall: (decision) => invoke("approve_tool_call", { payload: decision }),
 
   updateProviderModelParams: (params) => invoke("update_provider_model_params", { params }),
-  getProviderModelParams: () => invoke<ModelParams>("get_provider_model_params"),
   contextStatus: () => invoke<ContextStatus>("context_status"),
   modelRecommendation: () => invoke<ModelRecommendation | null>("model_recommendation"),
   compressChatContext: (sessionId) => invoke<number>("compress_chat_context", { sessionId }),
@@ -3310,7 +3277,6 @@ const tauriCore: CoreApi = {
   rapportsEnvoyer: (message) => invoke<void>("rapports_envoyer", { message }),
   ouvrirChemin: (chemin, action) => invoke<void>("open_path_with", { chemin, action }),
   decisionsInstaller: () => invoke<EtatDecisions>("laya_installer"),
-  cloudUsage: () => invoke<CloudUsage | null>("cloud_usage"),
   cloudUsageOf: (providerId) => invoke<CloudUsage | null>("cloud_usage_of", { providerId }),
   tachesDistantes: (providerId) => invoke<TachesDistantes>("taches_distantes", { providerId }),
   tachesDistantesEcrire: (providerId, reglages) =>
@@ -4533,16 +4499,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     demoLocalProfile = { ...demoLocalProfile, avatar_path: null };
     return demoLocalProfile;
   },
-  planModelRuntime: async (model) => ({
-    model,
-    size_gb: 4.2,
-    vram_gb: 6,
-    ram_gb: 32,
-    mode: "gpu",
-    label: "",
-    gpu_layers: -1,
-    n_cpu_moe: 0,
-  }),
   listSessions: async (projectId) => demoSessions.filter((s) => s.project_id === projectId),
   createSession: async (projectId, title, coreId) => {
     demoSessionCounter += 1;
@@ -4697,7 +4653,6 @@ Contenu de démonstration, avec **du gras** et une liste :
   async setContextScope() {
     throw new Error("Changer la portée exige l'application Locaryn, pas le navigateur.");
   },
-  async setContextSummary() {},
   async removeContextDetail(id) {
     return {
       id,
@@ -5007,7 +4962,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     return { repo, installedAt: new Date().toISOString() };
   },
   airllmInstalled: async () => [],
-  airllmUninstall: async () => {},
   configureAirllmProvider: async (repo) => {
     await sleep(200);
     const p: Provider = {
@@ -5116,15 +5070,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     };
     return demoServeur;
   },
-  restartServer: async () => ({
-    running: true,
-    bind: "0.0.0.0",
-    port: 7474,
-    url: "https://192.168.1.188:7474",
-    accounts: 1,
-    fingerprint: "BD:E9:FA:13:1A:62:B6:93",
-    blocker: null,
-  }),
   watchLiveSession: async () => false,
   localRepliesRunning: async () => [],
   followLocalReply: async () => false,
@@ -5682,13 +5627,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     qr_svg: null,
     blocker: null,
   }),
-  travelHomeCode: async () => ({
-    active: false,
-    provider: null,
-    link: null,
-    qr_svg: null,
-    blocker: null,
-  }),
   pairingCode: async (mode) => ({
     mode,
     url: mode === "local" ? "http://192.168.1.20:7474" : "https://exemple.invalide:7474",
@@ -5803,12 +5741,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     "active_call",
   ],
   stopMcpServer: async () => {},
-  invokeMcpTool: async (_name, tool, args) => ({
-    demo: true,
-    tool,
-    arguments: args,
-    message: `Outil ${tool} simulé en mode navigateur. Lancez Locaryn Tauri pour un compte réel.`,
-  }),
   saveAudioAs: async (sourcePath, destinationPath) => {
     // Browser preview fallback: trigger a normal download when no native
     // filesystem command is available.
@@ -5848,17 +5780,6 @@ Contenu de démonstration, avec **du gras** et une liste :
   async compressChatContext() {
     // Demo: rien a compresser, la conversation n'est pas persistee.
     return 0;
-  },
-  async getProviderModelParams() {
-    return {
-      temperature: 0.7,
-      top_p: 0.95,
-      top_k: 40,
-      ctx_size: 8192,
-      max_tokens: 0,
-      repeat_penalty: 1.1,
-      seed: -1,
-    };
   },
   async runtimeCapabilities() {
     return {
@@ -6095,9 +6016,6 @@ Contenu de démonstration, avec **du gras** et une liste :
     await new Promise((r) => setTimeout(r, 300));
     demoResident = { model: null, pinned: false, since: Date.now() };
     return demoResidencyStatus();
-  },
-  async cloudUsage() {
-    return null;
   },
   async cloudUsageOf() {
     return null;

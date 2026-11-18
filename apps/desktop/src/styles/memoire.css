@@ -1,0 +1,72 @@
+/* Édition directe d'une fiche de mémoire : titre, groupe, résumé. */
+.locaryn-memory-edit-title {
+  width: 100%;
+  min-height: 40px;
+  margin: var(--space-4) 0 0;
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+.locaryn-memory-edit-title:hover:not(:disabled) {
+  border-color: var(--border);
+}
+.locaryn-memory-edit-title:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.locaryn-memory-edit-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.locaryn-memory-edit-groups > button {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.locaryn-memory-edit-groups > button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.locaryn-memory-edit-groups > button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.locaryn-memory-edit-groups > button.is-on {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.locaryn-memory-edit-groups > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.locaryn-memory-edit-summary {
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-2);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+.locaryn-memory-edit-summary:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
